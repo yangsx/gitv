@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { GraphLayout, NodePosition, Edge, StashMarker } from '$lib/bindings/types';
+	import type { GraphLayout, Color, NodePosition, Edge, StashMarker } from '$lib/bindings/types';
 
 	interface Props {
 		layout: GraphLayout;
@@ -22,6 +22,10 @@
 	let canvas: HTMLCanvasElement;
 
 	const PADDING_LEFT = 12;
+
+	function colorToCss(c: Color): string {
+		return `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(2)})`;
+	}
 
 	$effect(() => {
 		if (!canvas || !layout) return;
@@ -75,19 +79,12 @@
 		const x = colX(node.column);
 		const y = rowY(node.row, startRow);
 
+		ctx.globalAlpha = node.is_dimmed ? 0.35 : 1.0;
 		ctx.beginPath();
 		ctx.arc(x, y, nodeRadius, 0, Math.PI * 2);
-		ctx.fillStyle = node.color;
+		ctx.fillStyle = colorToCss(node.color);
 		ctx.fill();
-
-		if (node.is_dimmed) {
-			ctx.globalAlpha = 0.35;
-			ctx.beginPath();
-			ctx.arc(x, y, nodeRadius, 0, Math.PI * 2);
-			ctx.fillStyle = '#888';
-			ctx.fill();
-			ctx.globalAlpha = 1.0;
-		}
+		ctx.globalAlpha = 1.0;
 	}
 
 	function drawEdge(ctx: CanvasRenderingContext2D, edge: Edge, startRow: number) {
@@ -97,8 +94,8 @@
 		const y2 = rowY(edge.to_row, startRow);
 
 		ctx.beginPath();
-		ctx.strokeStyle = edge.is_dimmed ? '#888' : edge.color;
 		ctx.globalAlpha = edge.is_dimmed ? 0.35 : 0.8;
+		ctx.strokeStyle = colorToCss(edge.color);
 		ctx.lineWidth = 1.5;
 
 		if (edge.from_col === edge.to_col) {

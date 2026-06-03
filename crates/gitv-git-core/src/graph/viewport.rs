@@ -35,7 +35,7 @@ impl GraphLayout {
             nodes,
             stash_markers,
             edges,
-            max_column: self.max_column,
+            total_columns: self.total_columns,
         }
     }
 }

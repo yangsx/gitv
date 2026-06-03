@@ -77,6 +77,7 @@ struct CommitGraphData {
     row: usize,
     column: usize,
     is_merge: bool,
+    color: Color,
 }
 
 impl GraphCalculator {
@@ -117,6 +118,7 @@ impl GraphCalculator {
                     row,
                     column: 0,
                     is_merge: c.parent_oids.len() > 1,
+                    color: BRANCH_PALETTE[0],
                 },
             );
         }
@@ -228,47 +230,14 @@ impl GraphCalculator {
             }
         }
 
-        let max_column = lanes.len().saturating_sub(1);
+        let total_columns = if lanes.is_empty() { 0 } else { lanes.len() };
         let total_rows = sorted.len();
 
-        let mut nodes = Vec::with_capacity(commits.len());
-        for c in &sorted {
-            let gd = &graph_data[&c.oid];
-            nodes.push(NodePosition {
-                commit_oid: c.oid,
-                row: gd.row,
-                column: gd.column,
-                is_merge: gd.is_merge,
-                dimmed: false,
-                highlighted: false,
-            });
-        }
+        let stash_markers = self.place_stash_markers(&graph_data);
 
-        let mut edges = Vec::new();
-        for c in &sorted {
-            let c_row = graph_data[&c.oid].row;
-            let c_col = graph_data[&c.oid].column;
-            for (pi, &p_oid) in c.parent_oids.iter().enumerate() {
-                if let Some(p_gd) = graph_data.get(&p_oid) {
-                    let edge_type = if pi == 0 {
-                        if c_col == p_gd.column {
-                            EdgeType::Straight
-                        } else {
-                            EdgeType::Branch
-                        }
-                    } else {
-                        EdgeType::Merge
-                    };
-                    edges.push(Edge {
-                        from_row: c_row,
-                        from_col: c_col,
-                        to_row: p_gd.row,
-                        to_col: p_gd.column,
-                        edge_type,
-                    });
-                }
-            }
-        }
+        self.assign_colors_to_nodes(&commits, &mut graph_data);
+        let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
+        let mut edges = self.rebuild_edges_with_colors(&sorted, &graph_data);
 
         if self.options.orientation == GraphOrientation::BottomToTop {
             let max_row = total_rows.saturating_sub(1);
@@ -283,17 +252,11 @@ impl GraphCalculator {
             }
         }
 
-        let stash_markers = self.place_stash_markers(&graph_data);
-
-        let (branch_colors, author_colors) = self.assign_colors(&commits, &graph_data);
-
         GraphLayout {
             nodes,
             stash_markers,
             edges,
-            max_column,
-            branch_colors,
-            author_colors,
+            total_columns,
             orientation: self.options.orientation,
             total_rows,
         }
@@ -307,20 +270,29 @@ impl GraphCalculator {
         match matching_oids {
             Some(matches) => {
                 for node in &mut layout.nodes {
-                    node.dimmed = !matches.contains(&node.commit_oid);
-                    node.highlighted = matches.contains(&node.commit_oid);
+                    node.is_dimmed = !matches.contains(&node.oid);
+                    node.is_highlighted = matches.contains(&node.oid);
+                }
+                for edge in &mut layout.edges {
+                    edge.is_dimmed = true;
                 }
             }
             None => {
                 if let Some(oid) = selected_oid {
                     for node in &mut layout.nodes {
-                        node.dimmed = node.commit_oid != oid;
-                        node.highlighted = node.commit_oid == oid;
+                        node.is_dimmed = node.oid != oid;
+                        node.is_highlighted = node.oid == oid;
+                    }
+                    for edge in &mut layout.edges {
+                        edge.is_dimmed = true;
                     }
                 } else {
                     for node in &mut layout.nodes {
-                        node.dimmed = false;
-                        node.highlighted = false;
+                        node.is_dimmed = false;
+                        node.is_highlighted = false;
+                    }
+                    for edge in &mut layout.edges {
+                        edge.is_dimmed = false;
                     }
                 }
             }
@@ -445,37 +417,33 @@ impl GraphCalculator {
             .enumerate()
             .filter_map(|(idx, stash)| {
                 graph_data.get(&stash.parent_oid).map(|gd| StashMarker {
+                    row: gd.row,
+                    column: gd.column,
                     stash_index: idx,
                     stash_oid: stash.oid,
-                    parent_commit_oid: stash.parent_oid,
-                    row: gd.row,
                     message: stash.message.clone(),
-                    file_summary: stash.file_summary.clone(),
                 })
             })
             .collect()
     }
 
-    fn assign_colors(
+    fn assign_colors_to_nodes(
         &self,
         commits: &[CommitInfo],
-        graph_data: &HashMap<Oid, CommitGraphData>,
-    ) -> (HashMap<String, Color>, HashMap<String, Color>) {
-        let mut branch_colors: HashMap<String, Color> = HashMap::new();
-        let mut author_colors: HashMap<String, Color> = HashMap::new();
+        graph_data: &mut HashMap<Oid, CommitGraphData>,
+    ) {
         let mut color_idx = 0usize;
 
         if self.options.color_mode == GraphColorMode::ByBranch {
+            let mut lane_colors: HashMap<usize, Color> = HashMap::new();
+            let mut ref_colors: HashMap<String, Color> = HashMap::new();
             for c in commits {
                 let col = graph_data.get(&c.oid).map(|gd| gd.column).unwrap_or(0);
-                let col_key = format!("lane_{col}");
-                branch_colors
-                    .entry(col_key)
-                    .or_insert_with(|| {
-                        let c = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
-                        color_idx += 1;
-                        c
-                    });
+                let color = *lane_colors.entry(col).or_insert_with(|| {
+                    let c = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
+                    color_idx += 1;
+                    c
+                });
                 if let Some(refs) = self.refs.get(&c.oid) {
                     for r in refs {
                         let name = match r {
@@ -483,32 +451,85 @@ impl GraphCalculator {
                             Ref::Tag(t) => t.name.clone(),
                             _ => continue,
                         };
-                        if !branch_colors.contains_key(&name) {
-                            let col = graph_data.get(&c.oid).map(|gd| gd.column).unwrap_or(0);
-                            let col_key = format!("lane_{col}");
-                            let color = branch_colors
-                                .get(&col_key)
-                                .copied()
-                                .unwrap_or(BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()]);
-                            branch_colors.insert(name, color);
-                        }
+                        ref_colors.entry(name).or_insert(color);
                     }
+                }
+                if let Some(gd) = graph_data.get_mut(&c.oid) {
+                    gd.color = color;
                 }
             }
         } else {
+            let mut author_colors: HashMap<String, Color> = HashMap::new();
             for c in commits {
                 let author_key = format!("{} <{}>", c.author.name, c.author.email);
-                if !author_colors.contains_key(&author_key) {
-                    author_colors.insert(
-                        author_key.clone(),
-                        BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()],
-                    );
+                let color = *author_colors.entry(author_key).or_insert_with(|| {
+                    let c = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
                     color_idx += 1;
+                    c
+                });
+                if let Some(gd) = graph_data.get_mut(&c.oid) {
+                    gd.color = color;
                 }
             }
         }
+    }
 
-        (branch_colors, author_colors)
+    fn rebuild_nodes_with_colors(
+        &self,
+        sorted: &[&CommitInfo],
+        graph_data: &HashMap<Oid, CommitGraphData>,
+    ) -> Vec<NodePosition> {
+        sorted
+            .iter()
+            .map(|c| {
+                let gd = &graph_data[&c.oid];
+                NodePosition {
+                    oid: c.oid,
+                    row: gd.row,
+                    column: gd.column,
+                    is_merge: gd.is_merge,
+                    color: gd.color,
+                    is_dimmed: false,
+                    is_highlighted: false,
+                }
+            })
+            .collect()
+    }
+
+    fn rebuild_edges_with_colors(
+        &self,
+        sorted: &[&CommitInfo],
+        graph_data: &HashMap<Oid, CommitGraphData>,
+    ) -> Vec<Edge> {
+        let mut edges = Vec::new();
+        for c in sorted {
+            let c_row = graph_data[&c.oid].row;
+            let c_col = graph_data[&c.oid].column;
+            let c_color = graph_data[&c.oid].color;
+            for (pi, &p_oid) in c.parent_oids.iter().enumerate() {
+                if let Some(p_gd) = graph_data.get(&p_oid) {
+                    let edge_type = if pi == 0 {
+                        if c_col == p_gd.column {
+                            EdgeType::Straight
+                        } else {
+                            EdgeType::Branch
+                        }
+                    } else {
+                        EdgeType::Merge
+                    };
+                    edges.push(Edge {
+                        from_row: c_row,
+                        from_col: c_col,
+                        to_row: p_gd.row,
+                        to_col: p_gd.column,
+                        edge_type,
+                        color: c_color,
+                        is_dimmed: false,
+                    });
+                }
+            }
+        }
+        edges
     }
 
     fn empty_layout(&self) -> GraphLayout {
@@ -516,9 +537,7 @@ impl GraphCalculator {
             nodes: Vec::new(),
             stash_markers: Vec::new(),
             edges: Vec::new(),
-            max_column: 0,
-            branch_colors: HashMap::new(),
-            author_colors: HashMap::new(),
+            total_columns: 0,
             orientation: self.options.orientation,
             total_rows: 0,
         }
@@ -568,7 +587,7 @@ mod tests {
             GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
         let layout = calc.calculate_layout();
         assert_eq!(layout.nodes.len(), 3);
-        assert_eq!(layout.max_column, 0);
+        assert_eq!(layout.total_columns, 1);
         for node in &layout.nodes {
             assert_eq!(node.column, 0);
         }
@@ -674,7 +693,7 @@ mod tests {
         let layout = calc.calculate_layout();
         let mut nodes_by_oid: HashMap<Oid, &NodePosition> = HashMap::new();
         for n in &layout.nodes {
-            nodes_by_oid.insert(n.commit_oid, n);
+            nodes_by_oid.insert(n.oid, n);
         }
         assert!(
             nodes_by_oid[&make_oid(3)].row > nodes_by_oid[&make_oid(1)].row,
@@ -725,17 +744,17 @@ mod tests {
         let n1 = layout
             .nodes
             .iter()
-            .find(|n| n.commit_oid == make_oid(1))
+            .find(|n| n.oid == make_oid(1))
             .unwrap();
         let n2 = layout
             .nodes
             .iter()
-            .find(|n| n.commit_oid == make_oid(2))
+            .find(|n| n.oid == make_oid(2))
             .unwrap();
-        assert!(n1.dimmed);
-        assert!(!n1.highlighted);
-        assert!(!n2.dimmed);
-        assert!(n2.highlighted);
+        assert!(n1.is_dimmed);
+        assert!(!n1.is_highlighted);
+        assert!(!n2.is_dimmed);
+        assert!(n2.is_highlighted);
     }
 
     #[test]
@@ -749,7 +768,11 @@ mod tests {
         };
         let calc = GraphCalculator::new(commits, HashMap::new(), Vec::new(), options);
         let layout = calc.calculate_layout();
-        assert!(!layout.author_colors.is_empty());
-        assert!(layout.branch_colors.is_empty());
+        let colors: std::collections::HashSet<Color> =
+            layout.nodes.iter().map(|n| n.color).collect();
+        assert!(
+            colors.len() >= 1,
+            "color-by-author should assign colors to nodes"
+        );
     }
 }

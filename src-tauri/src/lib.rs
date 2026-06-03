@@ -8,6 +8,7 @@ pub fn run() {
             commands::repository::open_repository,
             commands::repository::get_recent_repositories,
             commands::commits::stream_commits,
+            commands::commits::get_commits,
             commands::graph::get_graph_layout,
         ])
         .run(tauri::generate_context!())

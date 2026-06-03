@@ -27,12 +27,18 @@
 
 	const BUFFER = 10;
 
+	let commitsByOid = $derived(new Map(commits.map((c) => [c.oid, c])));
+
+	let orderedCommits = $derived(
+		layout.nodes.map((n) => commitsByOid.get(n.oid)).filter((c): c is CommitInfo => c !== undefined)
+	);
+
 	let visibleStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - BUFFER));
 	let visibleEnd = $derived(
-		Math.min(commits.length, Math.ceil((scrollTop + containerHeight) / rowHeight) + BUFFER)
+		Math.min(orderedCommits.length, Math.ceil((scrollTop + containerHeight) / rowHeight) + BUFFER)
 	);
-	let totalHeight = $derived(commits.length * rowHeight);
-	let visibleCommits = $derived(commits.slice(visibleStart, visibleEnd));
+	let totalHeight = $derived(orderedCommits.length * rowHeight);
+	let visibleCommits = $derived(orderedCommits.slice(visibleStart, visibleEnd));
 
 	function onScroll(e: Event) {
 		const el = e.target as HTMLDivElement;

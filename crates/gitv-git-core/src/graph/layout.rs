@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::models::*;
@@ -35,22 +34,22 @@ impl Default for GraphOptions {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodePosition {
-    pub commit_oid: Oid,
+    pub oid: Oid,
     pub row: usize,
     pub column: usize,
     pub is_merge: bool,
-    pub dimmed: bool,
-    pub highlighted: bool,
+    pub color: Color,
+    pub is_dimmed: bool,
+    pub is_highlighted: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StashMarker {
+    pub row: usize,
+    pub column: usize,
     pub stash_index: usize,
     pub stash_oid: Oid,
-    pub parent_commit_oid: Oid,
-    pub row: usize,
     pub message: String,
-    pub file_summary: Vec<StashFileSummary>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -60,6 +59,8 @@ pub struct Edge {
     pub to_row: usize,
     pub to_col: usize,
     pub edge_type: EdgeType,
+    pub color: Color,
+    pub is_dimmed: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,9 +75,7 @@ pub struct GraphLayout {
     pub nodes: Vec<NodePosition>,
     pub stash_markers: Vec<StashMarker>,
     pub edges: Vec<Edge>,
-    pub max_column: usize,
-    pub branch_colors: HashMap<String, Color>,
-    pub author_colors: HashMap<String, Color>,
+    pub total_columns: usize,
     pub orientation: GraphOrientation,
     pub total_rows: usize,
 }
@@ -87,5 +86,5 @@ pub struct GraphViewport {
     pub nodes: Vec<NodePosition>,
     pub stash_markers: Vec<StashMarker>,
     pub edges: Vec<Edge>,
-    pub max_column: usize,
+    pub total_columns: usize,
 }

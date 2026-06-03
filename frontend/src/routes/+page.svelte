@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { openRepository, getGraphLayout } from '$lib/bindings/commands';
-	import { repoInfo, graphLayout, selectedOid, isLoading, error } from '$lib/stores/repository';
+	import { openRepository, getCommits, getGraphLayout } from '$lib/bindings/commands';
+	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
+	import { repoInfo, selectedOid, isLoading, error } from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
 
 	let repoPath = $state('');
+	let commits = $state<CommitInfo[]>([]);
+	let graphLayout = $state<GraphLayout | null>(null);
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -19,11 +22,14 @@
 		isLoading.set(true);
 		error.set(null);
 		try {
-			const info = await openRepository(path);
+			const [info, loadedCommits, layout] = await Promise.all([
+				openRepository(path),
+				getCommits(path),
+				getGraphLayout(path)
+			]);
 			repoInfo.set(info);
-
-			const layout = await getGraphLayout(path);
-			graphLayout.set(layout);
+			commits = loadedCommits;
+			graphLayout = layout;
 		} catch (e: unknown) {
 			error.set(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -81,21 +87,10 @@
 			{/if}
 		</header>
 		<div class="flex-1 overflow-hidden">
-			{#if $graphLayout}
+			{#if graphLayout}
 				<CommitList
-					commits={$graphLayout.nodes.map((n) => ({
-						oid: n.oid,
-						short_oid: n.oid.substring(0, 7),
-						message: '',
-						summary: '',
-						author: { name: '', email: '' },
-						committer: { name: '', email: '' },
-						author_time: '',
-						commit_time: '',
-						parent_oids: [],
-						refs: []
-					}))}
-					layout={$graphLayout}
+					{commits}
+					layout={graphLayout}
 					selectedOid={$selectedOid}
 					onSelect={onSelectCommit}
 				/>

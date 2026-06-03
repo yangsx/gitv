@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { GraphLayout, RepositoryInfo, RecentRepository } from './types';
+import type { GraphLayout, RepositoryInfo, RecentRepository, CommitInfo } from './types';
 
 export async function openRepository(path: string): Promise<RepositoryInfo> {
 	return invoke<RepositoryInfo>('open_repository', { path });
@@ -7,6 +7,10 @@ export async function openRepository(path: string): Promise<RepositoryInfo> {
 
 export async function getRecentRepositories(): Promise<RecentRepository[]> {
 	return invoke<RecentRepository[]>('get_recent_repositories');
+}
+
+export async function getCommits(path: string): Promise<CommitInfo[]> {
+	return invoke<CommitInfo[]>('get_commits', { path, filter: null });
 }
 
 export async function getGraphLayout(

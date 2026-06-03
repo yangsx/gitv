@@ -1,7 +1,3 @@
-export interface Oid {
-	hex: string;
-}
-
 export interface Author {
 	name: string;
 	email: string;
@@ -20,12 +16,7 @@ export interface CommitInfo {
 	refs: Ref[];
 }
 
-export interface Ref {
-	Branch?: BranchRef;
-	Tag?: TagRef;
-	Remote?: RemoteRef;
-	Head?: boolean;
-}
+export type Ref = { Branch?: BranchRef; Tag?: TagRef; Remote?: RemoteRef };
 
 export interface BranchRef {
 	name: string;
@@ -60,12 +51,21 @@ export interface RepositoryInfo {
 	is_bare: boolean;
 }
 
+export interface Color {
+	r: number;
+	g: number;
+	b: number;
+	a: number;
+}
+
 export interface NodePosition {
+	oid: string;
 	row: number;
 	column: number;
-	oid: string;
-	color: string;
+	is_merge: boolean;
+	color: Color;
 	is_dimmed: boolean;
+	is_highlighted: boolean;
 }
 
 export type EdgeType = 'Straight' | 'Branch' | 'Merge';
@@ -76,7 +76,7 @@ export interface Edge {
 	to_row: number;
 	to_col: number;
 	edge_type: EdgeType;
-	color: string;
+	color: Color;
 	is_dimmed: boolean;
 }
 
@@ -84,22 +84,17 @@ export interface StashMarker {
 	row: number;
 	column: number;
 	stash_index: number;
+	stash_oid: string;
 	message: string;
 }
 
 export interface GraphLayout {
 	nodes: NodePosition[];
-	edges: Edge[];
 	stash_markers: StashMarker[];
-	total_rows: number;
+	edges: Edge[];
 	total_columns: number;
 	orientation: 'TopToBottom' | 'BottomToTop';
-}
-
-export interface GraphOptions {
-	hide_merges: boolean;
-	orientation: 'TopToBottom' | 'BottomToTop';
-	color_mode: 'ByBranch' | 'ByAuthor';
+	total_rows: number;
 }
 
 export interface CommitBatch {
@@ -109,6 +104,6 @@ export interface CommitBatch {
 
 export interface RecentRepository {
 	path: string;
+	name: string;
 	last_opened: string;
-	branch: string | null;
 }
