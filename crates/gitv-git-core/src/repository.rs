@@ -1,4 +1,5 @@
 use crate::error::GitError;
+use crate::gix_repo::GixRepository;
 use crate::models::*;
 use std::path::Path;
 
@@ -14,14 +15,6 @@ pub trait Repository {
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {
-    let git_dir = path.join(".git");
-    if !git_dir.exists() {
-        let bare_check = path.join("HEAD");
-        if !bare_check.exists() {
-            return Err(GitError::NotAGitRepository(path.display().to_string()));
-        }
-    }
-    Err(GitError::NotFound(
-        "repository backend not yet implemented".into(),
-    ))
+    let repo = GixRepository::open(path)?;
+    Ok(Box::new(repo))
 }

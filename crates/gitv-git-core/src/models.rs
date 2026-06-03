@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+use crate::error::OidError;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Oid([u8; 20]);
@@ -14,12 +17,35 @@ impl Oid {
         &self.0
     }
 
+    pub fn from_hex(s: &str) -> Result<Self, OidError> {
+        if s.len() != 40 {
+            return Err(OidError::InvalidLength(s.len()));
+        }
+        let s_bytes = s.as_bytes();
+        let mut bytes = [0u8; 20];
+        for (i, chunk) in s_bytes.chunks_exact(2).enumerate() {
+            let hi = hex_val(chunk[0], i * 2)?;
+            let lo = hex_val(chunk[1], i * 2 + 1)?;
+            bytes[i] = (hi << 4) | lo;
+        }
+        Ok(Self(bytes))
+    }
+
     pub fn to_hex(&self) -> String {
         self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
     pub fn short_hex(&self) -> String {
         self.to_hex()[..7].to_string()
+    }
+}
+
+fn hex_val(c: u8, pos: usize) -> Result<u8, OidError> {
+    match c {
+        b'0'..=b'9' => Ok(c - b'0'),
+        b'a'..=b'f' => Ok(c - b'a' + 10),
+        b'A'..=b'F' => Ok(c - b'A' + 10),
+        _ => Err(OidError::InvalidChar(pos)),
     }
 }
 
@@ -189,6 +215,61 @@ pub struct ReflogEntry {
     pub time: DateTime<Utc>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecentRepository {
+    pub path: PathBuf,
+    pub name: String,
+    pub last_opened: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommitBatch {
+    pub commits: Vec<CommitInfo>,
+    pub batch_index: usize,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct CommitFilter {
+    pub refs: Option<Vec<String>>,
+    pub date_range: Option<DateRange>,
+    pub author: Option<String>,
+    pub path: Option<PathBuf>,
+    pub hide_merges: bool,
+    pub first_parent_only: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DateRange {
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CachedRepoData {
+    pub ref_snapshot: HashMap<String, Oid>,
+    pub commit_summaries: Vec<CachedCommitSummary>,
+    pub version: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CachedCommitSummary {
+    pub oid: Oid,
+    pub summary: String,
+    pub author: Author,
+    pub author_time: DateTime<Utc>,
+    pub parent_oids: Vec<Oid>,
+    pub refs: Vec<Ref>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,5 +317,42 @@ mod tests {
     fn oid_display() {
         let oid = Oid::from_bytes([0u8; 20]);
         assert_eq!(format!("{oid}"), "0000000000000000000000000000000000000000");
+    }
+
+    #[test]
+    fn oid_from_hex_valid() {
+        let hex = "0123456789abcdeffedcba987654321000000001";
+        let oid = Oid::from_hex(hex).expect("valid hex");
+        assert_eq!(oid.to_hex(), hex);
+    }
+
+    #[test]
+    fn oid_from_hex_roundtrip() {
+        let bytes: [u8; 20] = [
+            0xde, 0xad, 0xbe, 0xef, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+        ];
+        let original = Oid::from_bytes(bytes);
+        let from_hex = Oid::from_hex(&original.to_hex()).expect("valid hex");
+        assert_eq!(original, from_hex);
+    }
+
+    #[test]
+    fn oid_from_hex_invalid_length() {
+        let err = Oid::from_hex("deadbeef").unwrap_err();
+        assert!(matches!(err, OidError::InvalidLength(8)));
+    }
+
+    #[test]
+    fn oid_from_hex_invalid_char() {
+        let err = Oid::from_hex("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ").unwrap_err();
+        assert!(matches!(err, OidError::InvalidChar(0)));
+    }
+
+    #[test]
+    fn oid_from_hex_uppercase() {
+        let hex = "DEADBEEF00112233445566778899AABBCCDDEEFF";
+        let oid = Oid::from_hex(hex).expect("valid uppercase hex");
+        assert_eq!(oid.to_hex(), "deadbeef00112233445566778899aabbccddeeff");
     }
 }
