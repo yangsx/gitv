@@ -1,6 +1,6 @@
 # Design Document: gitv
 
-> **Note**: This is the active design document. The original React-based spec is preserved in `.kiro/specs/gitv/design.md`.
+> **Note**: This is the active design document. The original React-based spec is preserved in `.kiro/specs/gitv/design.md`. New requirements (35-41) have been merged into the root `requirements.md`.
 
 ## Overview
 
@@ -8,11 +8,12 @@ gitv is a modern, cross-platform Git visualization tool built with Rust and Taur
 
 ### Design Goals
 
-1. **Performance First**: Handle repositories with 100,000+ commits smoothly with 60 FPS rendering
+1. **Performance First**: Handle repositories with 100,000+ commits smoothly with 60 FPS rendering; cold start under 500ms; indexed search under 100ms
 2. **Pure Rust**: Use Rust for all application code, preferring pure-Rust crates (especially gitoxide for Git operations)
 3. **Modern UX**: Provide a polished, responsive experience with smooth animations and intuitive navigation
 4. **Gitk Compatibility**: Maintain the dense, information-rich commit graph alignment that gitk users expect
 5. **Decoupled Architecture**: Separate Git logic from UI for maintainability and testability
+6. **Lightweight**: Binary under 15MB; zero network dependency; persistent cache for instant re-open
 
 ### Key Differentiators from gitk
 
@@ -22,6 +23,8 @@ gitv is a modern, cross-platform Git visualization tool built with Rust and Taur
 - Streaming data loading for large repositories
 - Command palette for quick navigation
 - Filesystem watching with auto-refresh
+- Persistent graph cache for instant re-open
+- Reflog visualization and stash browsing
 
 ---
 
@@ -50,6 +53,8 @@ graph TB
         SE[Search Engine]
         BL[Blame Logic]
         FS[File Watcher]
+        PC[Persistent Cache]
+        IX[Search Index]
     end
 
     subgraph "Platform Layer"
@@ -73,8 +78,10 @@ graph TB
 
     GR --> FS
     GR --> TP
+    GR --> PC
     GC --> GR
     SE --> GR
+    SE --> IX
     BL --> GR
 
     TP --> DL
@@ -85,9 +92,9 @@ graph TB
 
 | Layer | Responsibility | Technology |
 |-------|----------------|------------|
-| Frontend | UI rendering, user interaction, state management | SvelteKit + TypeScript |
+| Frontend | UI rendering, user interaction, state management | Svelte 5 + TypeScript |
 | Tauri Bridge | IPC communication, command routing, event broadcasting | Tauri 2.0 |
-| Backend (Git Core) | Git operations, graph calculation, search, file watching | Rust + gix (gitoxide) |
+| Backend (Git Core) | Git operations, graph calculation, search, file watching, caching | Rust + gix (gitoxide) |
 | Platform | Native dialogs, window management, filesystem access | Tauri + OS APIs |
 
 ### Architectural Decisions
@@ -170,7 +177,7 @@ graph TB
 - First-parent-only uses `gix::traverse::commit::ancestors()` with `parents::first()` mode
 - Single-branch mode uses reachability check from branch tip
 
-#### ADR-006: SvelteKit Frontend
+#### ADR-006: SvelteKit with Static Adapter
 
 **Decision**: Use SvelteKit with Svelte 5 as the frontend framework, with static adapter for Tauri.
 
@@ -187,6 +194,43 @@ graph TB
 - Component props use `let { ... } = $props()` rune
 - No virtual DOM diffing; Svelte updates DOM directly at compile time
 
+#### ADR-007: Binary IPC Serialization
+
+**Decision**: Use bincode (or equivalent compact binary serializer) for commit batch streaming over Tauri IPC.
+
+**Rationale**:
+- JSON serialization of 100k+ commits is the dominant IPC cost: each `CommitInfo` has multiple string fields, `Vec` fields, and `DateTime` strings
+- Binary serialization is 3-5x smaller and 5-10x faster to serialize/deserialize than JSON for structured data with many small fields
+- Tauri IPC supports raw byte transfer; bincode produces compact output with no schema overhead
+- Performance budget: batch of 100 commits serialized + deserialized in <1ms
+
+**Consequences**:
+- Frontend must deserialize binary buffers (using a generated TS decoder matching the Rust types)
+- Tauri IPC commands for streaming use `Vec<u8>` return type instead of typed structs
+- Non-streaming commands (single commit detail, repo info) can still use JSON for simplicity
+
+#### ADR-008: Persistent Graph Cache
+
+**Decision**: Cache computed graph layout and commit metadata to disk for instant repository re-open.
+
+**Rationale**:
+- Re-opening a previously visited repository should be near-instant, not require full re-traversal
+- Graph layout calculation is O(n log n) — wasteful to repeat for unchanged topology
+- Git's own `commit-graph` file (`objects/info/commit-graph`) provides generation numbers for faster traversal; we should leverage it when available
+- Cache invalidation is straightforward: compare stored ref tips to current ref tips; incremental update only if changed
+
+**Implementation**:
+- Cache stored at `$XDG_DATA_DIR/gitv/cache/<repo-hash>/` (platform-appropriate)
+- Stores: pre-computed `GraphLayout`, commit summaries, ref snapshot at cache time
+- On open: load cache, diff ref tips. If unchanged, use cache directly. If changed, traverse only new commits and append incrementally
+- Stale cache entries evicted by LRU (max 20 repos cached)
+
+**Consequences**:
+- First open of a repo still requires full traversal
+- Subsequent opens are near-instant (<100ms for cached data)
+- Cache directory may grow; needs eviction policy
+- Cache format must be versioned for forward compatibility
+
 ---
 
 ## Components and Interfaces
@@ -196,6 +240,18 @@ graph TB
 #### Git Repository Module (`gitv-git-core::repository`)
 
 ```rust
+/// Unique object identifier — 20-byte binary SHA-1, not a hex string.
+/// Display via `.to_hex()` for UI rendering; compare/index as raw bytes.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Oid([u8; 20]);
+
+impl Oid {
+    pub fn from_hex(s: &str) -> Result<Self, OidError>;
+    pub fn to_hex(&self) -> String;
+    pub fn short_hex(&self) -> String;
+    pub fn as_bytes(&self) -> &[u8; 20];
+}
+
 /// Core repository abstraction - the main entry point for Git operations
 pub struct Repository {
     inner: gix::Repository,
@@ -238,14 +294,51 @@ impl Repository {
     /// Get commit details
     pub fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError>;
 
-    /// Get diff between commits
-    pub fn diff(&self, from: Oid, to: Oid) -> Result<Diff, GitError>;
+    /// Get diff summary (file list + stats, no hunk content) — Req 61.1
+    pub fn diff_summary(&self, from: Oid, to: Oid) -> Result<DiffSummary, GitError>;
+
+    /// Get diff hunks for a single file — Req 61.2
+    /// Applies per-file line-count limit with truncation info
+    pub fn file_diff(&self, from: Oid, to: Oid, path: &Path) -> Result<FileDiff, GitError>;
 
     /// Get file history/blame
     pub fn blame(&self, path: &Path) -> Result<Blame, GitError>;
 
     /// Search commits
     pub fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, GitError>;
+
+    /// Get file history following renames (--follow semantics)
+    pub fn file_history_follow(
+        &self,
+        path: &Path,
+        max_count: Option<usize>,
+    ) -> Result<Vec<FileHistoryEntry>, GitError>;
+
+    /// Get reflog entries
+    pub fn reflog(&self, ref_name: Option<&str>) -> Result<Vec<ReflogEntry>, GitError>;
+
+    /// Get stash list — each entry includes parent_oid for graph marker placement
+    /// and file_summary for hover tooltip (Req 38.1, 38.8)
+    pub fn stash_list(&self) -> Result<Vec<StashEntry>, GitError>;
+
+    /// Get stash diff — returns combined diff (like `git stash show -p`)
+    /// Uses standard +/- markers, not gitk's double +/- display (Req 38.3)
+    pub fn stash_diff(&self, stash_index: usize) -> Result<Diff, GitError>;
+
+    /// Get stash split diff — returns staged and unstaged diffs separately
+    /// Used by the detail panel toggle (Req 38.4)
+    pub fn stash_split_diff(&self, stash_index: usize) -> Result<StashSplitDiff, GitError>;
+
+    /// Get diff of uncommitted changes — returns empty/none for bare repos (Req 65.2)
+    pub fn working_changes_diff(&self) -> Result<WorkingChangesDiff, GitError>;
+
+    /// Get file tree at a specific commit (or HEAD if None).
+    /// For bare repositories, always returns the HEAD tree — no working directory access (Req 65.5).
+    pub fn file_tree(&self, at_commit: Option<Oid>) -> Result<FileTreeNode, GitError>;
+
+    /// Get file contents at a specific commit
+    /// Get file contents at a specific commit — returns FileContents enum to handle binary (Req 60)
+    pub fn file_contents(&self, path: &Path, at_commit: Option<Oid>) -> Result<FileContents, GitError>;
 }
 ```
 
@@ -256,6 +349,24 @@ impl Repository {
 pub struct GraphCalculator {
     commits: Vec<CommitInfo>,
     refs: HashMap<Oid, Vec<Ref>>,
+    stashes: Vec<StashEntry>,
+    options: GraphOptions,
+}
+
+pub struct GraphOptions {
+    pub hide_merges: bool,
+    pub orientation: GraphOrientation,
+    pub color_mode: GraphColorMode,
+}
+
+pub enum GraphOrientation {
+    TopToBottom,
+    BottomToTop,
+}
+
+pub enum GraphColorMode {
+    ByBranch,
+    ByAuthor,
 }
 
 /// Node position in the graph (row = i-coordinate, column = j-coordinate)
@@ -263,6 +374,19 @@ pub struct NodePosition {
     pub commit_oid: Oid,
     pub row: usize,
     pub column: usize,
+    pub is_merge: bool,
+    pub dimmed: bool,
+    pub highlighted: bool,
+}
+
+/// Stash marker placed on a commit row in the graph
+pub struct StashMarker {
+    pub stash_index: usize,
+    pub stash_oid: Oid,
+    pub parent_commit_oid: Oid,
+    pub row: usize,
+    pub message: String,
+    pub file_summary: Vec<StashFileSummary>,
 }
 
 /// Edge between commits
@@ -274,30 +398,45 @@ pub struct Edge {
 }
 
 pub enum EdgeType {
-    /// Direct parent-child relationship
     ParentChild,
-    /// Merge edge (second parent)
     Merge,
 }
 
 /// Complete graph layout ready for rendering
 pub struct GraphLayout {
     pub nodes: Vec<NodePosition>,
+    pub stash_markers: Vec<StashMarker>,
     pub edges: Vec<Edge>,
     pub max_column: usize,
     pub branch_colors: HashMap<String, Color>,
+    pub author_colors: HashMap<String, Color>,
+    pub orientation: GraphOrientation,
 }
 
 impl GraphCalculator {
-    /// Create calculator from commit stream
-    pub fn new(commits: Vec<CommitInfo>, refs: HashMap<Oid, Vec<Ref>>) -> Self;
+    /// Create calculator from commit stream, stash entries, and options
+    pub fn new(
+        commits: Vec<CommitInfo>,
+        refs: HashMap<Oid, Vec<Ref>>,
+        stashes: Vec<StashEntry>,
+        options: GraphOptions,
+    ) -> Self;
 
     /// Calculate graph layout using temporal topological sort
     /// Based on algorithm from https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html
+    /// Stash markers are placed on their parent commit rows after layout calculation.
+    /// When hide_merges is true, merge commits are excluded and edges reconnect
+    /// through the hidden merge to its first parent (Req 53.3).
+    /// When orientation is BottomToTop, rows are reversed (Req 57.3).
+    /// When color_mode is ByAuthor, author_colors is populated instead of branch_colors (Req 52).
     pub fn calculate_layout(&self) -> GraphLayout;
 
     /// Get visible portion of the graph for virtualization
     pub fn visible_range(&self, start_row: usize, end_row: usize) -> GraphViewport;
+
+    /// Apply dimming to nodes not matching the filter criteria (Req 56)
+    pub fn apply_dimming(&mut self, selected_oid: Option<Oid>, matching_oids: Option<&HashSet<Oid>>);
+}
 }
 ```
 
@@ -339,6 +478,15 @@ pub struct Highlight {
     pub length: usize,
 }
 
+/// Commit message inverted index for sub-100ms search on large repos.
+/// Built lazily on first search, updated incrementally on repo changes.
+pub struct CommitMessageIndex {
+    /// term -> set of commit row indices
+    postings: HashMap<String, RoaringBitmap>,
+    /// Indexed up to which commit
+    indexed_up_to: Oid,
+}
+
 impl SearchEngine {
     /// Create search engine for a repository
     pub fn new(repo: &Repository) -> Self;
@@ -348,6 +496,9 @@ impl SearchEngine {
 
     /// Search within diffs/patches
     pub fn search_diffs(&self, pattern: &Regex) -> Result<Vec<DiffMatch>, SearchError>;
+
+    /// Ensure index covers all known commits (lazy build)
+    pub fn ensure_indexed(&mut self) -> Result<(), SearchError>;
 }
 ```
 
@@ -378,9 +529,7 @@ impl RepositoryWatcher {
 
 /// Configuration for debouncing
 pub struct WatchConfig {
-    /// Minimum time between events (default: 100ms)
     pub debounce_ms: u64,
-    /// Which events to watch
     pub watch_mask: WatchMask,
 }
 ```
@@ -400,6 +549,7 @@ pub struct CommitFilter {
     pub date_range: Option<DateRange>,
     pub author: Option<String>,
     pub path: Option<PathBuf>,
+    pub hide_merges: bool,
 }
 
 impl CommitStream {
@@ -414,6 +564,58 @@ impl CommitStream {
 
     /// Cancel the stream
     pub fn cancel(&mut self);
+}
+```
+
+#### Persistent Cache Module (`gitv-git-core::cache`)
+
+```rust
+/// On-disk cache for graph layout and commit metadata
+pub struct RepositoryCache {
+    cache_dir: PathBuf,
+    repo_hash: String,
+}
+
+/// Cached data for a repository
+pub struct CachedRepoData {
+    /// Ref tips at cache time (for invalidation)
+    pub ref_snapshot: HashMap<String, Oid>,
+    /// Pre-computed graph layout
+    pub graph_layout: GraphLayout,
+    /// Commit summaries (not full details — those are lazy-loaded)
+    pub commit_summaries: Vec<CachedCommitSummary>,
+    /// Cache format version for forward compatibility
+    pub version: u32,
+}
+
+pub struct CachedCommitSummary {
+    pub oid: Oid,
+    pub summary: String,
+    pub author: Author,
+    pub author_time: DateTime<Utc>,
+    pub parent_oids: Vec<Oid>,
+    pub refs: Vec<Ref>,
+}
+
+impl RepositoryCache {
+    /// Open or create cache for a repository
+    pub fn open(repo_path: &Path) -> Result<Self, CacheError>;
+
+    /// Load cached data; returns None if cache is missing or stale
+    pub fn load(&self) -> Result<Option<CachedRepoData>, CacheError>;
+
+    /// Write cache to disk
+    pub fn store(&self, data: &CachedRepoData) -> Result<(), CacheError>;
+
+    /// Compute incremental diff: new commits since cached ref_snapshot
+    pub fn diff_against_cache(
+        &self,
+        repo: &Repository,
+        cached: &CachedRepoData,
+    ) -> Result<CacheDiff, CacheError>;
+
+    /// Evict oldest caches when exceeding limit
+    pub fn evict_beyond(limit: usize) -> Result<(), CacheError>;
 }
 ```
 
@@ -435,6 +637,14 @@ async fn stream_commits(
     window: tauri::Window
 ) -> Result<(), String>;
 
+/// Returns binary-serialized commit batch (bincode) for performance
+#[tauri::command]
+async fn stream_commits_binary(
+    repo_path: String,
+    filter: CommitFilter,
+    batch_size: usize,
+) -> Result<Vec<u8>, String>;
+
 #[tauri::command]
 async fn get_commit(repo_path: String, oid: String) -> Result<CommitDetails, String>;
 
@@ -442,8 +652,37 @@ async fn get_commit(repo_path: String, oid: String) -> Result<CommitDetails, Str
 async fn get_diff(
     repo_path: String,
     from: Option<String>,
-    to: String
-) -> Result<Diff, String>;
+    to: String,
+    diff_mode: Option<DiffMode>,
+    whitespace_mode: Option<WhitespaceMode>,
+) -> Result<DiffSummary, String>;
+
+/// Load full hunks for a single file in the diff (Req 61.2)
+/// Applies per-file line-count limit (default: 10,000) with truncation info
+#[tauri::command]
+async fn get_file_diff(
+    repo_path: String,
+    from: Option<String>,
+    to: String,
+    file_path: String,
+    diff_mode: Option<DiffMode>,
+    whitespace_mode: Option<WhitespaceMode>,
+    max_lines: Option<usize>,
+) -> Result<FileDiff, String>;
+
+// Diff view options (Req 54)
+pub enum DiffMode {
+    Normal,
+    WordDiff,
+    StatOnly,
+}
+
+pub enum WhitespaceMode {
+    None,
+    IgnoreSpaceChange,
+    IgnoreAllSpace,
+    IgnoreBlankLines,
+}
 
 #[tauri::command]
 async fn search_commits(
@@ -460,19 +699,182 @@ async fn get_blame(
 #[tauri::command]
 async fn get_graph_layout(
     repo_path: String,
-    commit_range: Option<CommitRange>
+    commit_range: Option<CommitRange>,
+    options: Option<GraphOptionsPayload>,
 ) -> Result<GraphLayout, String>;
+
+/// IPC-safe graph options (Req 52, 53, 57)
+pub struct GraphOptionsPayload {
+    pub hide_merges: bool,
+    pub orientation: String,
+    pub color_mode: String,
+}
 
 #[tauri::command]
 async fn watch_repository(
     repo_path: String,
     app: tauri::AppHandle
 ) -> Result<(), String>;
+
+#[tauri::command]
+async fn get_file_history_follow(
+    repo_path: String,
+    file_path: String,
+    max_count: Option<usize>,
+) -> Result<Vec<FileHistoryEntry>, String>;
+
+#[tauri::command]
+async fn get_reflog(
+    repo_path: String,
+    ref_name: Option<String>,
+) -> Result<Vec<ReflogEntry>, String>;
+
+#[tauri::command]
+async fn get_stash_list(repo_path: String) -> Result<Vec<StashEntry>, String>;
+
+/// Returns combined diff (equivalent to `git stash show -p`) with standard +/- markers.
+/// Unlike gitk, this is a single unified diff, not gitk's double +/- display.
+#[tauri::command]
+async fn get_stash_diff(
+    repo_path: String,
+    stash_index: usize,
+) -> Result<Diff, String>;
+
+/// Returns staged and unstaged diffs separately for a stash.
+/// Used by the detail panel toggle (Req 38.4).
+#[tauri::command]
+async fn get_stash_split_diff(
+    repo_path: String,
+    stash_index: usize,
+) -> Result<StashSplitDiff, String>;
+
+#[tauri::command]
+async fn get_working_changes_diff(
+    repo_path: String,
+) -> Result<WorkingChangesDiff, String>;
+
+#[tauri::command]
+async fn get_file_tree(
+    repo_path: String,
+    at_commit: Option<String>,
+) -> Result<FileTreeNode, String>;
+
+#[tauri::command]
+async fn get_file_contents(
+    repo_path: String,
+    file_path: String,
+    at_commit: Option<String>,
+) -> Result<FileContentsPayload, String>;
+
+/// IPC-safe representation of file contents (Req 60)
+pub enum FileContentsPayload {
+    Text { content: String, encoding: String },
+    Binary { size: u64 },
+}
+
+// ===== Persistence Commands (Req 59, Req 41) =====
+
+#[tauri::command]
+async fn save_settings(settings: AppSettings) -> Result<(), String>;
+
+#[tauri::command]
+async fn load_settings() -> Result<AppSettings, String>;
+
+#[tauri::command]
+async fn save_layout(layout: PersistedLayout) -> Result<(), String>;
+
+#[tauri::command]
+async fn load_layout() -> Result<Option<PersistedLayout>, String>;
+
+/// Application settings persisted across sessions
+pub struct AppSettings {
+    pub theme: String,
+    pub font_size: u32,
+    pub graph_orientation: String,
+    pub graph_color_mode: String,
+    pub auto_refresh_enabled: bool,
+    pub auto_update_enabled: bool,
+    pub color_palette: String,
+    pub language: String,
+    pub keyboard_shortcuts: Option<HashMap<String, String>>,
+}
+
+// ===== Saved Searches (Req 41) =====
+
+#[tauri::command]
+async fn save_search(name: String, query: SearchQuery) -> Result<SavedSearch, String>;
+
+#[tauri::command]
+async fn list_saved_searches() -> Result<Vec<SavedSearch>, String>;
+
+#[tauri::command]
+async fn delete_saved_search(id: String) -> Result<(), String>;
+
+// ===== Debug Overlay Backend (Req 69) =====
+
+#[tauri::command]
+async fn get_debug_metrics() -> Result<DebugMetricsPayload, String>;
+
+pub struct DebugMetricsPayload {
+    pub memory_rss_bytes: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub cache_last_load_ms: u64,
+    pub gpu_draw_calls: u32,
+    pub gpu_vertex_count: u32,
+}
+
+// ===== Auto-Update (Req 51) =====
+
+#[tauri::command]
+async fn check_for_update() -> Result<Option<UpdateInfo>, String>;
+
+pub struct UpdateInfo {
+    pub latest_version: String,
+    pub release_url: String,
+    pub release_notes: String,
+}
 ```
 
-### Frontend Components (SvelteKit)
+### CLI Argument Parsing (Req 42, Req 55)
 
-#### Route & Component Hierarchy
+```rust
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(name = "gitv", about = "Modern Git visualization tool")]
+struct Cli {
+    /// Repository path to open
+    repo_path: Option<String>,
+
+    /// Revision range (e.g., HEAD~10..HEAD, v1.0..v2.0, main...feature)
+    revision_range: Option<String>,
+
+    /// Filter by branch name pattern
+    #[arg(long)]
+    branches: Option<String>,
+
+    /// Filter by author pattern
+    #[arg(long)]
+    author: Option<String>,
+
+    /// Filter by file path (use -- to separate)
+    #[arg(long = "")]
+    path: Option<String>,
+}
+
+// Resolution logic:
+// 1. If no args: show welcome screen (existing instance or new)
+// 2. If repo_path only: open that repo with full history
+// 3. If repo_path + revision_range: open repo with range filter pre-applied
+// 4. If additional flags (--branches, --author, --): apply as initial filters
+// 5. Invalid revision ranges: show error, fall back to full history
+// 6. Subsequent launches: send args to existing instance via single-instance IPC
+```
+
+### Frontend Components (Svelte)
+
+#### Component Hierarchy
 
 ```
 src/
@@ -480,65 +882,117 @@ src/
 ├── app.css                           # Global Tailwind styles
 ├── routes/
 │   ├── +layout.svelte                # Root layout (TabBar, global modals)
-│   ├── +page.svelte                  # Welcome screen / main repo view
-│   └── repository/
-│       └── [path]/
-│           └── +page.svelte          # Repository-specific page
+│   └── +page.svelte                  # Main page (Welcome / Repo view)
 ├── lib/
 │   ├── components/
 │   │   ├── TabBar.svelte             (Req 31: multiple repository tabs)
 │   │   ├── Tab.svelte
 │   │   ├── NewTabButton.svelte
 │   │   ├── WelcomeScreen.svelte      (shown when no repo is open)
-│   │   │   ├── RecentReposList.svelte
-│   │   │   └── OpenRepoButton.svelte
+│   │   │   ├── RecentReposList.svelte    (prominent when non-empty: name, path, timestamp)
+│   │   │   ├── OpenRepoButton.svelte
+│   │   │   ├── PreferencesButton.svelte  (opens settings from welcome screen)
+│   │   │   └── ShortcutHints.svelte      (3-5 common shortcuts, platform-aware)
 │   │   ├── MainLayout.svelte         (shown when repo is open)
 │   │   ├── Sidebar/
 │   │   │   ├── BranchList.svelte
 │   │   │   ├── TagList.svelte
-│   │   │   └── RemoteList.svelte
+│   │   │   ├── RemoteList.svelte
+│   │   │   ├── StashList.svelte          (stash browsing)
+│   │   │   └── ReflogPanel.svelte        (reflog visualization)
 │   │   ├── Toolbar/
 │   │   │   ├── SearchBar.svelte
 │   │   │   ├── FilterControls.svelte
 │   │   │   │   └── BranchViewToggle.svelte   (Req 32)
 │   │   │   │       └── FirstParentToggle.svelte (Req 32.4)
+│   │   │   │   └── HideMergesToggle.svelte   (Req 53)
 │   │   │   ├── ViewToggle.svelte
+│   │   │   │   └── GraphOrientationToggle.svelte  (Req 57)
+│   │   │   │   └── ColorModeToggle.svelte         (Req 52: by-branch / by-author)
+│   │   │   │   └── StashMarkersToggle.svelte       (Req 38.5: show/hide stash markers)
 │   │   │   └── FullscreenButton.svelte       (Req 33)
 │   │   ├── CommitView/
 │   │   │   ├── CommitGraph.svelte     (GPU-rendered via wgpu)
-│   │   │   ├── CommitList.svelte      (Virtualized)
-│   │   │   └── SynchronizedScroller.svelte
+│   │   │   ├── CommitList.svelte      (Virtualized, includes "Working Changes" virtual entry)
+│   │   │   └── SynchronizedScroller.svelte  (CSS grid layout, not JS recalculated)
 │   │   ├── DetailPanel/
-│   │   │   ├── CommitDetails.svelte
-│   │   │   ├── FileTree/
+│   │   │   ├── CommitDetails.svelte   (full message with markdown rendering)
+│   │   │   ├── FileTree/              (full repo tree at selected commit or HEAD)
 │   │   │   │   ├── FileTreeSearch.svelte  (Req 34)
 │   │   │   │   └── FileList.svelte
-│   │   │   └── DiffViewer.svelte
+│   │   │   ├── DiffViewer.svelte          (unified/side-by-side, Req 54: normal/word-diff/stat-only, whitespace modes)
+│   │   │   │   └── DiffModeSelector.svelte     (Req 54: diff mode dropdown)
+│   │   │   │   └── WhitespaceModeSelector.svelte (Req 54: whitespace modifier dropdown)
+│   │   │   └── WorkingChangesDiff.svelte  (staged/unstaged/combined diff tabs)
+│   │   ├── ComparisonPanel.svelte         (two-commit comparison)
+│   │   │   └── CommitSelector.svelte
+│   │   ├── ContextMenu.svelte             (right-click actions for commits, files, branches)
 │   │   ├── StatusBar/
-│   │   │   ├── BranchIndicator.svelte
+│   │   │   ├── BranchIndicator.svelte     (shows "(detached)" + short SHA when HEAD is detached)
+│   │   │   ├── CommitCount.svelte         ("142 of 10,847 commits" or "10,847 commits")
 │   │   │   ├── StatusIndicator.svelte
+│   │   │   ├── UpdateNotification.svelte  (non-intrusive, in status bar)
 │   │   │   └── LoadingIndicator.svelte
 │   │   ├── CommandPalette.svelte
 │   │   ├── FullscreenOverlay.svelte   (Req 33)
 │   │   │   ├── FullscreenHistoryView.svelte
 │   │   │   └── FullscreenDiffView.svelte
 │   │   └── Modals/
-│   │       ├── SettingsModal.svelte
 │   │       ├── KeyboardShortcutsModal.svelte
 │   │       └── ErrorModal.svelte
+│   │   ├── SettingsModal.svelte         (accessible from both welcome screen and main layout)
+│   │   └── Notifications/
+│   │       └── ToastContainer.svelte    (Req 66: transient toasts, bottom-right)
+│   │           └── Toast.svelte         (individual toast: info/warning/error)
+│   ├── DebugOverlay.svelte               (Req 69: FPS, memory, IPC timing, GPU stats, cache stats)
 │   ├── stores/
-│   │   ├── app.ts                     # Global app state (Svelte stores)
-│   │   ├── repository.ts             # Repository data store
-│   │   ├── tabs.ts                    # Tab session store (Req 31)
-│   │   └── ui.ts                     # UI preferences (theme, layout, fullscreen)
+│   │   ├── app.svelte.ts               # Global app state
+│   │   ├── repository.svelte.ts        # Repository data store
+│   │   ├── tabs.svelte.ts              # Tab session store (Req 31)
+│   │   ├── comparison.svelte.ts        # Two-commit comparison state
+│   │   └── ui.svelte.ts                # UI preferences (theme, layout, fullscreen)
+│   │   └── debug.svelte.ts              # Debug overlay state (Req 69)
 │   ├── actions/
-│   │   ├── keyboard.ts               # Svelte actions for keyboard shortcuts
-│   │   └── virtual-scroll.ts         # Svelte action for virtual scrolling
-│   └── bindings/                      # Auto-generated Tauri IPC bindings
+│   │   ├── keyboard.ts                 # Svelte actions for keyboard shortcuts
+│   │   └── virtual-scroll.ts          # Svelte action for virtual scrolling
+│   ├── bindings/                        # Auto-generated Tauri IPC bindings
+│   │   └── index.ts
+│   ├── binary-decoder.ts               # Decode bincode commit batches
+│   ├── locales/                         # i18n JSON files
+│   └── types/                           # Shared TypeScript types
 │       └── index.ts
 ```
 
 #### Key UI Components
+
+##### WelcomeScreen Component
+
+The welcome screen is the first thing users see. It adapts based on whether recent repos exist.
+
+```svelte
+<script lang="ts">
+  import type { RecentRepository } from "$lib/types";
+
+  let {
+    recentRepositories = [] as RecentRepository[],
+    onopenrepo,
+    onopenrecent,
+    onopensettings,
+  }: {
+    recentRepositories?: RecentRepository[];
+    onopenrepo?: () => void;
+    onopenrecent?: (path: string) => void;
+    onopensettings?: () => void;
+  } = $props();
+</script>
+
+<!-- When non-empty: prominent recent repos list with click-to-open -->
+<!-- Each entry shows: repo name, path, last-opened timestamp -->
+<!-- When empty: "Open Repository" button + invitation message -->
+<!-- Preferences button in corner -->
+<!-- Inline shortcut hints at bottom (Ctrl+O, Ctrl+P, etc.) -->
+<!-- Shortcut modifier adapts to platform (Ctrl vs Cmd) -->
+```
 
 ##### CommitGraph Component
 
@@ -546,29 +1000,42 @@ The commit graph is the most complex UI component, requiring GPU acceleration an
 
 ```svelte
 <script lang="ts">
-  import type { GraphLayout, Viewport } from "$lib/bindings";
-  import type { Oid } from "$lib/bindings";
+  import type { GraphLayout, Viewport } from "$lib/types";
+  import type { Oid } from "$lib/types";
 
   let {
     layout,
     viewport,
     selectedCommit = $bindable(null),
-    highlightedCommits = new Set<Oid>(),
+    highlightedCommits = new Set<string>(),
+    dimmedCommits = new Set<string>(),
+    colorMode = "branch" as "branch" | "author",
+    orientation = "top-to-bottom" as "top-to-bottom" | "bottom-to-top",
     oncommitselect,
     oncommithover,
+    onstashselect,
   }: {
     layout: GraphLayout;
     viewport: Viewport;
-    selectedCommit?: Oid | null;
-    highlightedCommits?: Set<Oid>;
-    oncommitselect?: (oid: Oid) => void;
-    oncommithover?: (oid: Oid | null) => void;
+    selectedCommit?: string | null;
+    highlightedCommits?: Set<string>;
+    dimmedCommits?: Set<string>;
+    colorMode?: "branch" | "author";
+    orientation?: "top-to-bottom" | "bottom-to-top";
+    oncommitselect?: (oid: string) => void;
+    oncommithover?: (oid: string | null) => void;
+    onstashselect?: (stashIndex: number) => void;
   } = $props();
 
+  let canvasElement: HTMLCanvasElement;
   // Uses wgpu for rendering via canvas element
   // - Virtualized: only draws visible nodes/edges
   // - Caches rendered elements
   // - 60 FPS during pan/zoom
+  // - Dimmed commits rendered at reduced opacity (Req 56)
+  // - Stash markers rendered with distinct icon on parent commit rows (Req 38)
+  // - Color mode: by-branch (default) or by-author (Req 52)
+  // - Orientation: top-to-bottom (default) or bottom-to-top (Req 57)
 </script>
 
 <canvas bind:this={canvasElement}></canvas>
@@ -580,7 +1047,7 @@ Virtualized list that stays synchronized with the graph.
 
 ```svelte
 <script lang="ts">
-  import type { CommitInfo } from "$lib/bindings";
+  import type { CommitInfo } from "$lib/types";
 
   let {
     commits,
@@ -598,6 +1065,31 @@ Virtualized list that stays synchronized with the graph.
 
   // Virtual scrolling for 100k+ commits
   // Row height matches graph node spacing for alignment
+  // Supports multi-select (Ctrl+Click, Shift+Click) for comparison
+</script>
+```
+
+##### ComparisonPanel Component
+
+Two-commit diff comparison for arbitrary commit pairs.
+
+```svelte
+<script lang="ts">
+  import type { Diff, CommitInfo } from "$lib/types";
+
+  let {
+    commitA,
+    commitB,
+    diff,
+  }: {
+    commitA: CommitInfo | null;
+    commitB: CommitInfo | null;
+    diff: Diff | null;
+  } = $props();
+
+  // Triggered by selecting two commits via Shift+Click in CommitList/CommitGraph
+  // Or right-click → "Compare with..." context menu
+  // Displays combined diff between the two commits
 </script>
 ```
 
@@ -605,23 +1097,30 @@ Virtualized list that stays synchronized with the graph.
 
 ```svelte
 <script lang="ts">
-  import type { Diff, DiffHighlight } from "$lib/bindings";
+  import type { Diff, DiffHighlight } from "$lib/types";
 
   let {
     diff,
     viewMode = "unified" as "unified" | "side-by-side",
+    diffMode = "normal" as "normal" | "word-diff" | "stat-only",
+    whitespaceMode = "none" as "none" | "ignore-space-change" | "ignore-all-space" | "ignore-blank-lines",
     highlights = [] as DiffHighlight[],
     searchPattern,
   }: {
     diff: Diff;
     viewMode?: "unified" | "side-by-side";
+    diffMode?: "normal" | "word-diff" | "stat-only";
+    whitespaceMode?: "none" | "ignore-space-change" | "ignore-all-space" | "ignore-blank-lines";
     highlights?: DiffHighlight[];
     searchPattern?: RegExp;
   } = $props();
 
-  // Syntax highlighting for diffs
-  // Line numbers for both old/new versions
-  // Search match highlighting
+  // diffMode controls what is rendered:
+  //   "normal"   — standard unified diff with +/- line markers (default)
+  //   "word-diff" — word-level changes highlighted inline (--word-diff=color)
+  //   "stat-only" — file list with +/- line counts only, no diff content
+  // whitespaceMode is a modifier applicable to "normal" and "word-diff" modes.
+  // These settings persist for the session but reset on restart (Req 54.4).
 </script>
 ```
 
@@ -629,7 +1128,7 @@ Virtualized list that stays synchronized with the graph.
 
 ```svelte
 <script lang="ts">
-  import type { RepositoryInfo } from "$lib/bindings";
+  import type { RepositoryInfo } from "$lib/types";
 
   interface Command {
     id: string;
@@ -650,10 +1149,67 @@ Virtualized list that stays synchronized with the graph.
     recentRepositories?: RepositoryInfo[];
     onclose?: () => void;
   } = $props();
+</script>
+```
 
-  // Fuzzy search across commands
-  // Navigate to commits by SHA/message
-  // Switch between repositories
+##### ReflogPanel Component
+
+```svelte
+<script lang="ts">
+  import type { ReflogEntry } from "$lib/types";
+
+  let {
+    entries = [] as ReflogEntry[],
+    onentryselect,
+  }: {
+    entries?: ReflogEntry[];
+    onentryselect?: (oid: string) => void;
+  } = $props();
+
+  // Clicking a reflog entry navigates to that commit in the graph
+  // Shows reflog for HEAD by default; dropdown for other refs
+</script>
+```
+
+##### StashList Component
+
+```svelte
+<script lang="ts">
+  import type { StashEntry } from "$lib/types";
+
+  let {
+    stashes = [] as StashEntry[],
+    onstashselect,
+  }: {
+    stashes?: StashEntry[];
+    onstashselect?: (index: number) => void;
+  } = $props();
+
+  // Secondary navigation: clicking a stash scrolls the graph to the
+  // corresponding stash marker on the parent commit's row.
+  // The primary stash display is the marker in the commit graph.
+</script>
+```
+
+##### SettingsModal Component
+
+```svelte
+<script lang="ts">
+  let {
+    onclose,
+  }: {
+    onclose?: () => void;
+  } = $props();
+
+  // Sections:
+  // Appearance: theme (dark/light), font size slider, color palette dropdown (Req 49.3)
+  // Graph: default orientation, default color mode (by-branch / by-author)
+  // Behavior: auto-refresh toggle (Req 22.3), auto-update check toggle (Req 51.4)
+  // Shortcuts: keyboard shortcut customization table (Req 13.5)
+  // Language: language selection dropdown (Req 21.3)
+  // Advanced: log file path display (Req 68.7), "Open Log Directory" button (Req 70.5),
+  //   debug overlay toggle for release builds (Req 69.7)
+  // Focus trap: Escape closes modal, Tab cycles within modal (Req 67.3)
 </script>
 ```
 
@@ -664,8 +1220,9 @@ Virtualized list that stays synchronized with the graph.
 ### Core Data Structures
 
 ```rust
-/// Unique object identifier (commit SHA)
-pub type Oid = String;
+/// Unique object identifier — 20-byte binary SHA-1
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Oid([u8; 20]);
 
 // ===== Tab State Models (Req 31) =====
 
@@ -677,7 +1234,7 @@ pub struct TabState {
     pub id: TabId,
     pub repository_path: PathBuf,
     pub repository_name: String,
-    pub display_name: String,  // Disambiguated name if duplicates exist
+    pub display_name: String,
     pub parent_dir: Option<String>,
     pub scroll_position: u64,
     pub selected_commit: Option<Oid>,
@@ -706,9 +1263,16 @@ pub enum BranchViewModeType {
     Selected,
 }
 
+// ===== Two-Commit Comparison =====
+
+/// Selection state for comparing two arbitrary commits
+pub struct ComparisonState {
+    pub commit_a: Option<Oid>,
+    pub commit_b: Option<Oid>,
+}
+
 // ===== Fullscreen State (Req 33) =====
 
-/// Fullscreen mode state
 pub enum FullscreenMode {
     None,
     History,
@@ -717,7 +1281,6 @@ pub enum FullscreenMode {
 
 // ===== File Tree Search State (Req 34) =====
 
-/// File tree search configuration
 pub struct FileTreeSearch {
     pub query: String,
     pub match_mode: FileTreeMatchMode,
@@ -728,6 +1291,93 @@ pub enum FileTreeMatchMode {
     Fuzzy,
 }
 
+// ===== Reflog =====
+
+/// A single reflog entry
+pub struct ReflogEntry {
+    pub oid: Oid,
+    pub old_oid: Option<Oid>,
+    pub ref_name: String,
+    pub message: String,
+    pub author: Author,
+    pub time: DateTime<Utc>,
+}
+
+// ===== Stash =====
+
+/// A stash entry — displayed as a single marker on the parent commit's row in the graph.
+/// Unlike gitk, we show one marker per stash (not two nodes) and a combined diff (not double +/-).
+pub struct StashEntry {
+    pub index: usize,
+    pub oid: Oid,
+    pub parent_oid: Oid,
+    pub message: String,
+    pub author: Author,
+    pub time: DateTime<Utc>,
+    pub file_summary: Vec<StashFileSummary>,
+}
+
+pub struct StashFileSummary {
+    pub path: PathBuf,
+    pub change_type: StashChangeType,
+}
+
+pub enum StashChangeType {
+    Added,
+    Modified,
+    Deleted,
+}
+
+// ===== File History (--follow) =====
+
+/// A file history entry with rename tracking
+pub struct FileHistoryEntry {
+    pub commit_oid: Oid,
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,  // Set when the file was renamed in this commit
+    pub summary: String,
+    pub author: Author,
+    pub time: DateTime<Utc>,
+}
+
+// ===== Working Changes =====
+
+/// Diff of uncommitted changes (staged, unstaged, or combined against HEAD)
+pub struct WorkingChangesDiff {
+    pub staged: Option<Diff>,
+    pub unstaged: Option<Diff>,
+    pub combined_vs_head: Option<Diff>,
+}
+
+/// Stash diff split into staged and unstaged portions
+/// Used by the detail panel toggle (Req 38.4)
+pub struct StashSplitDiff {
+    pub staged: Diff,
+    pub unstaged: Diff,
+}
+
+// ===== File Tree =====
+
+/// A node in the file tree (directory or file)
+pub struct FileTreeNode {
+    pub name: String,
+    pub path: PathBuf,
+    pub node_type: FileNodeType,
+    pub children: Vec<FileTreeNode>,  // Empty for files
+}
+
+pub enum FileNodeType {
+    File,
+    Directory,
+    Symlink,
+    Submodule,
+}
+
+pub enum FileContents {
+    Text(String),
+    Binary { size: u64 },
+}
+
 // ===== Core Git Models =====
 
 /// Commit summary for list display
@@ -735,7 +1385,7 @@ pub struct CommitInfo {
     pub oid: Oid,
     pub short_oid: String,
     pub message: String,
-    pub summary: String,  // First line of message
+    pub summary: String,
     pub author: Author,
     pub committer: Author,
     pub author_time: DateTime<Utc>,
@@ -796,10 +1446,11 @@ pub struct RemoteRef {
 /// File change in a commit
 pub struct FileChange {
     pub path: PathBuf,
-    pub old_path: Option<PathBuf>,  // For renames
+    pub old_path: Option<PathBuf>,
     pub change_type: ChangeType,
     pub additions: usize,
     pub deletions: usize,
+    pub is_binary: bool,
 }
 
 pub enum ChangeType {
@@ -808,6 +1459,25 @@ pub enum ChangeType {
     Modified,
     Renamed,
     Copied,
+    SubmoduleUpdated,
+}
+
+/// Diff representation — summary only, no hunk content (Req 61.1)
+/// Individual file diffs loaded on demand via get_file_diff
+pub struct DiffSummary {
+    pub files: Vec<FileDiffSummary>,
+    pub stats: DiffStats,
+}
+
+/// Per-file summary in a diff — stats only, no hunk content
+pub struct FileDiffSummary {
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,
+    pub change_type: ChangeType,
+    pub additions: usize,
+    pub deletions: usize,
+    pub is_binary: bool,
+    pub submodule_change: Option<SubmoduleChange>,
 }
 
 /// Diff representation
@@ -820,6 +1490,17 @@ pub struct FileDiff {
     pub path: PathBuf,
     pub old_path: Option<PathBuf>,
     pub hunks: Vec<Hunk>,
+    pub is_binary: bool,
+    pub old_size: Option<u64>,
+    pub new_size: Option<u64>,
+    /// For submodule changes: old pinned SHA → new pinned SHA
+    pub submodule_change: Option<SubmoduleChange>,
+    pub truncated_at: Option<usize>,
+}
+
+pub struct SubmoduleChange {
+    pub old_commit: Option<Oid>,
+    pub new_commit: Option<Oid>,
 }
 
 pub struct Hunk {
@@ -834,6 +1515,24 @@ pub enum DiffLine {
     Context { content: String },
     Addition { content: String, old_line: Option<usize>, new_line: usize },
     Deletion { content: String, old_line: usize, new_line: Option<usize> },
+    /// Word-level diff segment — used in "word-diff" mode (Req 54)
+    WordDiff {
+        content: String,
+        old_line: usize,
+        new_line: usize,
+        segments: Vec<WordDiffSegment>,
+    },
+}
+
+pub struct WordDiffSegment {
+    pub text: String,
+    pub kind: WordDiffKind,
+}
+
+pub enum WordDiffKind {
+    Unchanged,
+    Added,
+    Removed,
 }
 
 pub struct DiffStats {
@@ -876,74 +1575,172 @@ pub enum CombineMode {
     And,
     Or,
 }
+
+// ===== Missing IPC/API Types =====
+
+/// Revision range for CLI and graph filtering (Req 55)
+pub struct CommitRange {
+    pub from: Option<Oid>,
+    pub to: Oid,
+    pub range_type: RangeType,
+}
+
+pub enum RangeType {
+    Single,
+    DoubleDot,
+    TripleDot,
+}
+
+/// Recent repository entry for welcome screen (Req 1.5)
+pub struct RecentRepository {
+    pub path: PathBuf,
+    pub name: String,
+    pub last_opened: DateTime<Utc>,
+}
+
+/// Saved search query (Req 41)
+pub struct SavedSearch {
+    pub id: String,
+    pub name: String,
+    pub query: SearchQuery,
+    pub created_at: DateTime<Utc>,
+}
 ```
 
 ### Frontend State Model
 
-State is managed via Svelte stores in `src/lib/stores/`. Svelte 5 runes (`$state`, `$derived`, `$effect`) are used inside `.svelte.ts` store modules for fine-grained reactivity.
+State is managed via Svelte stores in `src/stores/`. Svelte 5 runes (`$state`, `$derived`, `$effect`) are used inside `.svelte.ts` store modules for fine-grained reactivity.
 
 ```typescript
-// src/lib/stores/app.svelte.ts
+// src/stores/app.svelte.ts
 
-// --- Global application state ---
-
-// Tab state (Req 31)
 let tabs = $state<TabState[]>([]);
 let activeTabId = $state<string | null>(null);
-
-// Repository state
 let repository = $state<RepositoryState | null>(null);
 let recentRepositories = $state<RecentRepository[]>([]);
 
-// View state
 let selectedCommit = $state<string | null>(null);
 let selectedFile = $state<string | null>(null);
 let viewMode = $state<"graph" | "list">("graph");
 let diffViewMode = $state<"unified" | "side-by-side">("unified");
+let diffMode = $state<"normal" | "word-diff" | "stat-only">("normal");
+let whitespaceMode = $state<"none" | "ignore-space-change" | "ignore-all-space" | "ignore-blank-lines">("none");
 
-// Filter state
 let searchQuery = $state<SearchQuery>(defaultSearchQuery);
 let activeFilters = $state<FilterState>(defaultFilters);
-let branchViewMode = $state<BranchViewMode>({ mode: "all", selectedBranch: null, firstParentOnly: false });
+let branchViewMode = $state<BranchViewMode>({
+  mode: "all",
+  selectedBranch: null,
+  firstParentOnly: false,
+});
 
-// Fullscreen state (Req 33)
+let graphColorMode = $state<"branch" | "author">("branch");
+let graphOrientation = $state<"top-to-bottom" | "bottom-to-top">("top-to-bottom");
+let showStashMarkers = $state<boolean>(true);
+let highlightedCommit = $state<string | null>(null);
+
 let fullscreenMode = $state<"none" | "history" | "diff">("none");
-
-// File tree search state (Req 34)
 let fileTreeSearch = $state<string>("");
 let fileTreeFilterActive = $derived(fileTreeSearch.length > 0);
 
-// UI state
 let theme = $state<"dark" | "light">("dark");
 let sidebarWidth = $state<number>(250);
 let detailPanelHeight = $state<number>(300);
 let fontSize = $state<number>(14);
 
-// Loading state
+// Layout bounds for clamped persistence (Req 59)
+// Prevents unusable layouts when restoring from tiling WM or unusual window states
+const LAYOUT_BOUNDS = {
+  sidebar: { minWidth: 150, maxFraction: 0.4 },
+  detailPanel: { minHeight: 200, maxFraction: 0.5 },
+  graphColumn: { minWidth: 100 },
+  listColumn: { minWidth: 100 },
+  defaultProportions: { sidebar: 0.2, graph: 0.5, list: 0.3 },
+} as const;
+
 let isLoading = $state<boolean>(false);
 let loadingProgress = $state<number>(0);
-
-// Error state
 let error = $state<ErrorInfo | null>(null);
 
-// --- Derived state ---
+// Per-tab operation state (Req 62)
+let operationState = $state<OperationState>("idle");
+let loadIncomplete = $state<boolean>(false);
+
+type OperationState = "idle" | "streaming" | "searching" | "applying-filter";
+// Auto-refresh is deferred when state != "idle" (Req 62.4).
+// "User interaction" that defers refresh = applying filter, comparison selection, drag operations.
+// Scroll, selection, and hover do NOT defer refresh — they are non-mutating (Req 22.5).
+
 let activeTab = $derived(tabs.find((t) => t.id === activeTabId) ?? null);
 
-// --- Exported store accessors ---
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function restoreLayout(saved: PersistedLayout, windowWidth: number, windowHeight: number) {
+  const b = LAYOUT_BOUNDS;
+  const totalMinWidth = b.sidebar.minWidth + b.graphColumn.minWidth + b.listColumn.minWidth;
+
+  if (windowWidth < totalMinWidth) {
+    // Window too small for all minimums — fall back to proportional defaults
+    sidebarWidth = Math.round(windowWidth * b.defaultProportions.sidebar);
+    detailPanelHeight = Math.round(windowHeight * b.defaultProportions.sidebar);
+  } else {
+    sidebarWidth = clamp(
+      saved.sidebarWidth,
+      b.sidebar.minWidth,
+      Math.floor(windowWidth * b.sidebar.maxFraction)
+    );
+    detailPanelHeight = clamp(
+      saved.detailPanelHeight,
+      b.detailPanel.minHeight,
+      Math.floor(windowHeight * b.detailPanel.maxFraction)
+    );
+  }
+}
+
 export function getAppState() {
   return {
     get tabs() { return tabs; },
     get activeTabId() { return activeTabId; },
     get repository() { return repository; },
-    // ... all state getters
   };
 }
 ```
 
 ```typescript
-// src/lib/stores/tabs.svelte.ts
+// src/stores/comparison.svelte.ts
 
-// Tab state for multi-repository support (Req 31)
+let commitA = $state<string | null>(null);
+let commitB = $state<string | null>(null);
+let comparisonDiff = $state<Diff | null>(null);
+
+let isComparisonActive = $derived(commitA !== null && commitB !== null);
+
+export function setComparisonCommit(oid: string) {
+  if (commitA === null) {
+    commitA = oid;
+  } else if (commitB === null) {
+    commitB = oid;
+    // Trigger diff fetch via Tauri command
+  } else {
+    // Reset: both slots filled, start new comparison
+    commitA = oid;
+    commitB = null;
+    comparisonDiff = null;
+  }
+}
+
+export function clearComparison() {
+  commitA = null;
+  commitB = null;
+  comparisonDiff = null;
+}
+```
+
+```typescript
+// src/stores/tabs.svelte.ts
+
 interface TabState {
   id: string;
   repositoryPath: string;
@@ -965,7 +1762,6 @@ let tabSession = $state<{ tabs: TabState[]; activeTabId: string | null }>({
   activeTabId: null,
 });
 
-// Persist to storage on change
 $effect(() => {
   persistTabSession(tabSession);
 });
@@ -976,13 +1772,334 @@ export function switchTab(tabId: string) { /* ... */ }
 ```
 
 ```typescript
-// Types shared across stores
+// src/lib/types/index.ts — Comprehensive TypeScript type definitions
+// Mirrors Rust data models from gitv-git-core for IPC boundary
 
-interface BranchViewMode {
-  mode: "all" | "selected";
-  selectedBranch: string | null;
-  firstParentOnly: boolean;
+// ===== Core Identifiers =====
+
+type Oid = string; // hex-encoded 40-char SHA-1
+
+// ===== Author =====
+
+interface Author {
+  name: string;
+  email: string;
 }
+
+// ===== Repository =====
+
+interface RepositoryInfo {
+  path: string;
+  headBranch: string | null;
+  headCommit: Oid | null;
+  isBare: boolean;
+  worktreeStatus: WorktreeStatus;
+}
+
+interface WorktreeStatus {
+  stagedCount: number;
+  unstagedCount: number;
+  ahead: number;
+  behind: number;
+}
+
+interface RecentRepository {
+  path: string;
+  name: string;
+  lastOpened: string;
+}
+
+// ===== Commits =====
+
+interface CommitInfo {
+  oid: Oid;
+  shortOid: string;
+  message: string;
+  summary: string;
+  author: Author;
+  committer: Author;
+  authorTime: string;
+  commitTime: string;
+  parentOids: Oid[];
+  refs: Ref[];
+}
+
+interface CommitDetails {
+  info: CommitInfo;
+  treeOid: Oid;
+  signature: string | null;
+  changedFiles: FileChange[];
+  body: string | null;
+}
+
+// ===== Refs =====
+
+interface Ref {
+  type: "branch" | "tag" | "remote" | "head" | "stash";
+  branch?: BranchRef;
+  tag?: TagRef;
+  remote?: RemoteRef;
+}
+
+interface BranchRef {
+  name: string;
+  isHead: boolean;
+  isRemote: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+}
+
+interface TagRef {
+  name: string;
+  oid: Oid;
+  annotation: TagAnnotation | null;
+}
+
+interface TagAnnotation {
+  tagger: Author;
+  message: string;
+  time: string;
+}
+
+interface RemoteRef {
+  name: string;
+  remote: string;
+}
+
+// ===== File Changes =====
+
+interface FileChange {
+  path: string;
+  oldPath: string | null;
+  changeType: ChangeType;
+  additions: number;
+  deletions: number;
+  isBinary: boolean;
+}
+
+type ChangeType = "added" | "deleted" | "modified" | "renamed" | "copied" | "submodule-updated";
+
+// ===== File Tree =====
+
+interface FileTreeNode {
+  name: string;
+  path: string;
+  nodeType: FileNodeType;
+  children: FileTreeNode[];
+  size: number | null;
+}
+
+type FileNodeType = "file" | "directory" | "symlink" | "submodule";
+
+// ===== File Contents (Req 60) =====
+
+interface FileContentsPayload {
+  type: "text" | "binary";
+  content?: string;
+  encoding?: string;
+  size?: number;
+}
+
+// ===== Diff =====
+
+interface DiffSummary {
+  files: FileDiffSummary[];
+  stats: DiffStats;
+}
+
+interface FileDiffSummary {
+  path: string;
+  oldPath: string | null;
+  changeType: ChangeType;
+  additions: number;
+  deletions: number;
+  isBinary: boolean;
+  submoduleChange: SubmoduleChange | null;
+}
+
+interface FileDiff {
+  path: string;
+  oldPath: string | null;
+  hunks: Hunk[];
+  isBinary: boolean;
+  oldSize: number | null;
+  newSize: number | null;
+  submoduleChange: SubmoduleChange | null;
+  truncatedAt: number | null;
+}
+
+interface SubmoduleChange {
+  oldCommit: Oid | null;
+  newCommit: Oid | null;
+}
+
+interface Hunk {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  lines: DiffLine[];
+}
+
+type DiffLine =
+  | { type: "context"; content: string }
+  | { type: "addition"; content: string; oldLine: number | null; newLine: number }
+  | { type: "deletion"; content: string; oldLine: number; newLine: number | null }
+  | { type: "word-diff"; content: string; oldLine: number; newLine: number; segments: WordDiffSegment[] };
+
+interface WordDiffSegment {
+  text: string;
+  kind: "unchanged" | "added" | "removed";
+}
+
+interface DiffStats {
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+}
+
+interface WorkingChangesDiff {
+  staged: DiffSummary | null;
+  unstaged: DiffSummary | null;
+  combinedVsHead: DiffSummary | null;
+}
+
+interface StashSplitDiff {
+  staged: FileDiff[];
+  unstaged: FileDiff[];
+}
+
+// ===== Diff View Options (Req 54) =====
+
+type DiffMode = "normal" | "word-diff" | "stat-only";
+type WhitespaceMode = "none" | "ignore-space-change" | "ignore-all-space" | "ignore-blank-lines";
+
+// ===== Graph =====
+
+interface GraphLayout {
+  nodes: NodePosition[];
+  stashMarkers: StashMarker[];
+  edges: Edge[];
+  maxColumn: number;
+  branchColors: Record<string, string>;
+  authorColors: Record<string, string>;
+  orientation: GraphOrientation;
+}
+
+type GraphOrientation = "top-to-bottom" | "bottom-to-top";
+type GraphColorMode = "branch" | "author";
+
+interface GraphOptionsPayload {
+  hideMerges: boolean;
+  orientation: GraphOrientation;
+  colorMode: GraphColorMode;
+}
+
+interface NodePosition {
+  commitOid: Oid;
+  row: number;
+  column: number;
+  isMerge: boolean;
+  dimmed: boolean;
+  highlighted: boolean;
+}
+
+interface StashMarker {
+  stashIndex: number;
+  stashOid: Oid;
+  parentCommitOid: Oid;
+  row: number;
+  message: string;
+  fileSummary: StashFileSummary[];
+}
+
+interface StashFileSummary {
+  path: string;
+  changeType: "added" | "modified" | "deleted";
+}
+
+interface Edge {
+  from: Oid;
+  to: Oid;
+  edgeType: "parent-child" | "merge";
+  column: number;
+}
+
+// ===== Stash =====
+
+interface StashEntry {
+  index: number;
+  oid: Oid;
+  parentOid: Oid;
+  message: string;
+  author: Author;
+  time: string;
+  fileSummary: StashFileSummary[];
+}
+
+// ===== Reflog =====
+
+interface ReflogEntry {
+  oid: Oid;
+  oldOid: Oid | null;
+  refName: string;
+  message: string;
+  author: Author;
+  time: string;
+}
+
+// ===== Blame =====
+
+interface Blame {
+  filePath: string;
+  lines: BlameLine[];
+}
+
+interface BlameLine {
+  lineNumber: number;
+  content: string;
+  commitOid: Oid;
+  author: Author;
+  time: string;
+}
+
+// ===== Search =====
+
+interface SearchQuery {
+  text: string | null;
+  shaPrefix: string | null;
+  author: string | null;
+  dateRange: DateRange | null;
+  filePath: string | null;
+  diffPattern: string | null;
+  combineMode: "and" | "or";
+}
+
+interface DateRange {
+  start: string;
+  end: string;
+}
+
+interface SavedSearch {
+  id: string;
+  name: string;
+  query: SearchQuery;
+  createdAt: string;
+}
+
+// ===== File History =====
+
+interface FileHistoryEntry {
+  commitOid: Oid;
+  path: string;
+  oldPath: string | null;
+  summary: string;
+  author: Author;
+  time: string;
+}
+
+// ===== App State =====
 
 interface RepositoryState {
   path: string;
@@ -991,6 +2108,8 @@ interface RepositoryState {
   refs: Ref[];
   graphLayout: GraphLayout;
   status: WorktreeStatus;
+  reflogEntries: ReflogEntry[];
+  stashes: StashEntry[];
 }
 
 interface FilterState {
@@ -998,6 +2117,59 @@ interface FilterState {
   authors: string[];
   dateRange: DateRange | null;
   files: string[];
+  hideMerges: boolean;
+}
+
+interface BranchViewMode {
+  mode: "all" | "selected";
+  selectedBranch: string | null;
+  firstParentOnly: boolean;
+}
+
+type OperationState = "idle" | "streaming" | "searching" | "applying-filter";
+
+interface PersistedLayout {
+  sidebarWidth: number;
+  detailPanelHeight: number;
+  windowX: number;
+  windowY: number;
+  windowWidth: number;
+  windowHeight: number;
+}
+
+// ===== Notifications (Req 66) =====
+
+type NotificationSeverity = "info" | "warning" | "error";
+
+interface Notification {
+  id: string;
+  severity: NotificationSeverity;
+  message: string;
+  autoDismissMs: number | null;
+}
+
+// ===== Debug Overlay (Req 69) =====
+
+interface DebugMetrics {
+  fps: number;
+  memoryRss: number;
+  loadedCommits: number;
+  operationState: OperationState;
+  ipcTimings: Array<{ command: string; durationMs: number }>;
+  gpuStats: GpuStats | null;
+  cacheStats: CacheStats | null;
+}
+
+interface GpuStats {
+  drawCalls: number;
+  vertices: number;
+  viewport: [number, number];
+}
+
+interface CacheStats {
+  hits: number;
+  misses: number;
+  lastLoadMs: number;
 }
 ```
 
@@ -1008,23 +2180,16 @@ interface FilterState {
 ### Error Categories
 
 ```rust
-/// Top-level error type for the application
 pub enum GitvError {
-    /// Repository-related errors
     Repository(RepositoryError),
-    /// Git operation errors
     Git(GitError),
-    /// Search errors
     Search(SearchError),
-    /// I/O errors
     Io(std::io::Error),
-    /// UI rendering errors
     Render(RenderError),
-    /// Configuration errors
     Config(ConfigError),
+    Cache(CacheError),
 }
 
-/// Repository-specific errors
 pub enum RepositoryError {
     NotFound(PathBuf),
     NotAGitRepository(PathBuf),
@@ -1033,7 +2198,6 @@ pub enum RepositoryError {
     LockAcquisitionFailed(String),
 }
 
-/// Git operation errors
 pub enum GitError {
     ObjectNotFound(Oid),
     InvalidObject(Oid),
@@ -1044,25 +2208,29 @@ pub enum GitError {
     GraphTraversalFailed(String),
 }
 
-/// Search-specific errors
 pub enum SearchError {
     InvalidRegex(String),
     IndexCorrupted,
     QueryTooComplex,
+}
+
+pub enum CacheError {
+    Corrupted(String),
+    VersionMismatch { expected: u32, found: u32 },
+    Io(std::io::Error),
 }
 ```
 
 ### Error Handling Strategy
 
 1. **User-Facing Errors**: Display a clear, actionable error message in the UI
-2. **Logging**: All errors are logged to a file for troubleshooting (Req 15.4)
-3. **Graceful Degradation**: Application continues functioning when possible
+2. **Structured Logging**: All events logged via `tracing` crate with structured spans (Req 68)
+3. **Graceful Degradation**: Application continues functioning when possible (e.g., cache read failure falls back to full traversal)
 4. **Recovery**: Provide retry options for transient failures (Req 15.3)
 
 ### Error Display Patterns
 
 ```rust
-/// User-facing error message
 pub struct UserError {
     pub title: String,
     pub message: String,
@@ -1075,6 +2243,81 @@ pub enum ErrorAction {
     OpenLogs,
     ReportIssue,
     Dismiss,
+}
+```
+
+### Structured Tracing Architecture (Req 68)
+
+```rust
+use tracing::{info, debug, error, instrument};
+use tracing_subscriber::EnvFilter;
+
+fn init_tracing(log_level: &str) {
+    let log_dir = tauri::api::path::app_log_dir(&config).unwrap();
+    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .max_log_files(3)
+        .max_file_size(10 * 1024 * 1024) // 10MB
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("gitv")
+        .build(log_dir)
+        .unwrap();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env().add_directive(log_level.parse().unwrap()))
+        .with_writer(file_appender)
+        .with_ansi(false)
+        .json()  // structured JSON logs
+        .init();
+}
+
+// Every Tauri command is instrumented automatically:
+#[tauri::command]
+#[instrument(skip(repo_path), fields(command = "get_diff"))]
+async fn get_diff(repo_path: String, from: Option<String>, to: String) -> Result<DiffSummary, String> {
+    // Span captures: command name, duration, result (ok/error)
+}
+```
+
+### Debug and Performance Overlay (Req 69)
+
+```svelte
+<script lang="ts">
+  let visible = $state<boolean>(false);
+  let fps = $state<number>(0);
+  let memoryRss = $state<number>(0);
+  let loadedCommits = $state<number>(0);
+  let operationState = $state<string>("idle");
+  let ipcTimings = $state<Array<{ command: string; duration_ms: number }>>([]);
+  let gpuStats = $state<{ drawCalls: number; vertices: number; viewport: [number, number] }>();
+  let cacheStats = $state<{ hits: number; misses: number; lastLoadMs: number }>();
+
+  // F12 or Ctrl+Shift+D toggles visibility
+  // Semi-transparent overlay in top-right corner
+  // Updates at 2Hz to avoid self-induced performance impact
+</script>
+```
+
+### Crash Diagnostics (Req 70)
+
+```rust
+use std::panic;
+
+fn install_panic_hook(app_version: &str) {
+    panic::set_hook(Box::new(|panic_info| {
+        let crash_log = format!(
+            "gitv crash report\n\
+             version: {}\n\
+             panic: {}\n\
+             location: {}\n\
+             backtrace:\n{}\n",
+            app_version,
+            panic_info.payload().unwrap_or("unknown"),
+            panic_info.location().map_or("unknown".into(), |l| format!("{}:{}", l.file(), l.line())),
+            std::backtrace::Backtrace::capture(),
+        );
+        // Write to crash log directory, retain max 5 files
+        // No repo content — only metadata (paths, SHAs, error messages)
+    }));
 }
 ```
 
@@ -1092,10 +2335,10 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 |----------|-------|-------|
 | Property-based | Graph algorithms, search, data transformations | proptest |
 | Unit Tests | Individual functions, edge cases | cargo test |
-| Integration Tests | Git backend, IPC commands | cargo test + temp repositories |
+| Integration Tests | Git backend, IPC commands, cache round-trips | cargo test + temp repositories |
 | GPU Tests | Rendering correctness | wgpu validation |
 | E2E Tests | Full user workflows | Tauri testing + Playwright |
-| Performance Benchmarks | Load times, FPS, memory | criterion |
+| Performance Benchmarks | Load times, FPS, memory, cache hit/miss | criterion |
 
 ### Unit Tests
 
@@ -1103,12 +2346,15 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Edge cases in graph calculation algorithms
 - Error handling paths
 - Data structure validation
+- Binary serialization round-trips (bincode)
+- Cache store/load/versioning
 
 **Focus Areas**:
 - Graph layout algorithm correctness
 - Search query parsing and execution
 - Diff generation and parsing
-- State management in frontend (Svelte store tests)
+- Oid hex conversion (20-byte ↔ hex string)
+- Cache incremental diff calculation
 
 ### Integration Tests
 
@@ -1116,6 +2362,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Tauri IPC command handlers
 - Filesystem watcher behavior
 - Cross-platform path handling
+- Persistent cache: write → close → reopen → verify
 
 **Test Repositories**:
 - Small repository (< 100 commits)
@@ -1124,19 +2371,25 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Repository with submodules
 - Bare repository
 - Corrupted repository (for error handling)
+- Repository with renamed files (for --follow testing)
 
 ### Property-Based Tests
 
 **Applicable for**:
 - Graph layout algorithm (topological sort maintains order)
 - Search results contain query terms
-- Serialization round-trips
+- Serialization round-trips (bincode, cache format)
 - Diff line counting
 - Tab state persistence (Req 31)
 - Single-branch filtering (Req 32)
 - First-parent traversal (Req 32)
 - File tree search filtering (Req 34)
-- Tab title disambiguation (Req 31)
+- Oid hex round-trip (bytes → hex → bytes)
+- Cache diff: new commits are exactly those reachable from new tips but not old tips
+- Comparison diff is symmetric (diff(A,B) == inverse of diff(B,A))
+- Hide-merges filter preserves first-parent connectivity (Req 53)
+- Graph orientation round-trip (top-to-bottom → bottom-to-top → same layout)
+- Color-by-author produces no duplicate colors in small author sets
 
 **Not applicable for**:
 - GPU rendering (visual output)
@@ -1152,17 +2405,43 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Search and filter workflows
 - Repository switching
 - Theme switching
+- Two-commit comparison workflow (select, compare, view diff)
+- Reflog navigation
+- Stash diff viewing (click stash marker → combined diff, toggle staged/unstaged split)
+- Stash sidebar navigation (click stash entry → scroll to marker in graph)
+- Stash show/hide toggle
+- Color-by-author toggle (switch graph coloring, verify legend)
+- Hide merges toggle (verify merges hidden, edges reconnected)
+- Diff view modes (normal, word-diff, stat-only) and whitespace modifiers
+- CLI revision range (gitv /repo HEAD~10..HEAD opens with range filter)
+- Commit dimming on selection and file-path filter
+- Graph orientation toggle (top-to-bottom ↔ bottom-to-top)
+- Author navigation (Alt+J/Alt+K jumps to next/prev by same author)
+- Panel resize drag performance (no CPU spike, no flicker, graph stays responsive during drag)
+- Binary file display (placeholder in diff viewer, no garbled output)
+- Large diff lazy loading (500-file commit loads file list first, individual file diffs on demand)
+- Concurrent filter during streaming (change filter mid-stream, verify no interleaved commits)
+- Mid-stream error recovery (simulate stream failure, verify partial data shown with retry)
+- Submodule display (file tree shows submodule icon + pinned SHA, diff shows SHA change)
+- Bare repository (opens normally, working changes disabled, status bar shows "bare repository")
+- Toast notifications (auto-refresh, copy confirmation, error toasts)
+- Reduced motion (verify instant transitions when OS setting is active)
+- Focus management (modal open/close, command palette, tab switch, programmatic navigation)
 
 ### Performance Benchmarks
 
-Based on Requirement 27, benchmarks must measure:
-
 | Metric | Target | Repository Size |
 |--------|--------|-----------------|
-| Initial load | < 5s | 100k commits |
+| Cold start to welcome screen | < 500ms | N/A |
+| First open (no cache) | < 5s | 100k commits |
+| Re-open (cached) | < 200ms | 100k commits |
 | Scroll FPS | 60 FPS | Any |
-| Search latency | < 500ms | 100k commits |
+| Search latency (indexed) | < 100ms | 100k commits |
+| Search latency (diff search) | < 500ms (streaming) | 100k commits |
 | Memory usage | < 500MB | 100k commits |
+| Binary size | < 15MB | N/A |
+| IPC batch serialize/deserialize | < 1ms per 100 commits | 100k commits |
+| Panel resize reflow | ≤ 1 reflow per frame, < 5ms | 100k commits |
 
 ---
 
@@ -1188,13 +2467,10 @@ Space Complexity: O(n + m)
 #### Virtualized Rendering
 
 ```rust
-/// Viewport for virtualized graph rendering
 pub struct GraphViewport {
-    /// Visible row range
     pub rows: Range<usize>,
-    /// All nodes in visible range
     pub nodes: Vec<NodePosition>,
-    /// All edges that intersect visible range
+    pub stash_markers: Vec<StashMarker>,
     pub edges: Vec<Edge>,
 }
 
@@ -1223,6 +2499,38 @@ graph LR
 
     H[Zoom Event] --> I[Update Scale]
     I --> C
+
+    J[Panel Resize Drag] --> K[requestAnimationFrame Gate]
+    K --> L[Update Projection Matrix Only]
+    L --> C
+```
+
+#### Panel Resize Performance (Req 59.8-10)
+
+Unlike gitk (which re-renders the entire commit list on every pixel of a column drag), gitv ensures resize operations never swamp the CPU:
+
+1. **CSS grid layout for alignment**: The `SynchronizedScroller` uses CSS grid to keep the graph and commit list aligned. Resizing columns changes grid column widths — no JavaScript row recalculation needed.
+2. **GPU viewport resize is cheap**: Changing panel width only updates the wgpu projection matrix (camera frustum), not the vertex buffer. No graph recalculation, no data re-upload.
+3. **requestAnimationFrame gating**: Resize events are throttled to at most one reflow per frame (16ms budget). Intermediate positions are discarded.
+4. **Deferred persistence**: Panel dimensions are written to disk only when the drag gesture ends (`mouseup`), not during intermediate `mousemove` events.
+
+```typescript
+// Resize handler pattern
+let rafId: number | null = null;
+
+function onPanelResize(newWidth: number) {
+  sidebarWidth = newWidth; // immediate CSS update (cheap)
+  if (rafId === null) {
+    rafId = requestAnimationFrame(() => {
+      updateGpuViewport(); // at most once per frame
+      rafId = null;
+    });
+  }
+}
+
+function onPanelResizeEnd() {
+  persistLayout({ sidebarWidth, detailPanelHeight, ... });
+}
 ```
 
 ### Streaming Git Data
@@ -1230,43 +2538,57 @@ graph LR
 To support repositories with 100,000+ commits without blocking the UI:
 
 ```rust
-/// Batch streaming configuration
 pub struct StreamConfig {
-    /// Commits per batch (default: 100)
     pub batch_size: usize,
-    /// Prefetch ahead of visible area
     pub prefetch_count: usize,
-    /// Background thread pool size
     pub thread_pool_size: usize,
 }
 ```
 
 **Implementation**:
 1. Use `gix::Repository::commit_iter()` for efficient traversal
-2. Spawn background thread for Git operations
-3. Send batches via Tauri events to frontend
-4. Frontend displays commits progressively
+2. Leverage git's `commit-graph` file when available for faster generation-number-aware traversal
+3. Spawn background thread for Git operations
+4. Serialize batches with bincode, send via Tauri events
+5. Frontend decodes binary, displays commits progressively
+
+### Search Indexing
+
+For sub-100ms search on large repositories:
+
+1. **Commit message index**: Inverted index built lazily on first search, mapping terms to commit row indices (using `RoaringBitmap` for compact storage)
+2. **SHA prefix index**: Simple prefix table for O(1) SHA lookup by prefix
+3. **Author index**: HashMap of author name/email to commit set. Used for author filtering (Req 6.4), color-by-author mode (Req 52), and author navigation (Req 58)
+4. **Diff search**: Not indexed — uses streaming regex match across diffs with progressive results. Trade-off: diff search is slower but diffs are too large to index cheaply
+5. **Incremental updates**: When new commits arrive via filesystem watcher, append to existing index
+
+### Persistent Cache
+
+```rust
+pub struct CommitCache {
+    capacity: usize,
+    cache: LruCache<Oid, CommitDetails>,
+}
+
+pub struct GraphCache {
+    layout: GraphLayout,
+    updates: Vec<GraphUpdate>,
+    last_row: usize,
+}
+```
+
+**Cache lifecycle**:
+1. **First open**: Full traversal, compute graph layout, build search index, write all to disk cache
+2. **Re-open**: Load cache, compare ref tips. If unchanged, skip traversal entirely. If changed, compute incremental diff (new commits only), append to cached layout and index
+3. **Background refresh**: Filesystem watcher detects change → incremental update to in-memory cache → async write to disk cache
 
 ### Memory Management
 
 ```rust
-/// Memory-bounded cache for commit data
-pub struct CommitCache {
-    /// Maximum entries
-    capacity: usize,
-    /// LRU cache of commit details
-    cache: LruCache<Oid, CommitDetails>,
-}
-
-/// Cached graph layout with incremental updates
-pub struct GraphCache {
-    /// Base layout
-    layout: GraphLayout,
-    /// Incremental updates
-    updates: Vec<GraphUpdate>,
-    /// Last calculated row
-    last_row: usize,
-}
+/// Oid is 20 bytes on the stack — no heap allocation.
+/// For 100k commits with avg 1.5 parents: ~5MB total OID data
+/// vs. ~32MB with String-based OIDs
+pub struct Oid([u8; 20]);
 ```
 
 ---
@@ -1275,10 +2597,7 @@ pub struct GraphCache {
 
 ### Localization Strategy
 
-gitv supports multiple languages through a localization framework:
-
 ```rust
-/// Supported languages
 pub enum Language {
     English,
     SimplifiedChinese,
@@ -1288,7 +2607,6 @@ pub enum Language {
     French,
 }
 
-/// Localization provider trait
 pub trait LocalizationProvider {
     fn translate(&self, key: &str, lang: Language) -> String;
     fn format_date(&self, date: DateTime<Utc>, lang: Language) -> String;
@@ -1299,7 +2617,7 @@ pub trait LocalizationProvider {
 ### Locale Files Structure
 
 ```
-src/lib/locales/
+src/locales/
 ├── en.json
 ├── zh-CN.json
 ├── ja.json
@@ -1341,6 +2659,26 @@ interface LayoutConfig {
 | Previous Tab | Ctrl+Shift+Tab | Ctrl+Shift+Tab |
 | Toggle Fullscreen | Ctrl+M | Cmd+M |
 | Exit Fullscreen | Escape | Escape |
+| Compare (select second commit) | Ctrl+Click | Cmd+Click |
+| Clear comparison | Escape | Escape |
+| Next commit by same author | Alt+J | Alt+J |
+| Previous commit by same author | Alt+K | Alt+K |
+| Toggle highlight on commit | H | H |
+| Toggle hide merges | Ctrl+Shift+M | Cmd+Shift+M |
+| Toggle graph orientation | Ctrl+Shift+G | Cmd+Shift+G |
+| Toggle color-by-author | Ctrl+Shift+A | Cmd+Shift+A |
+| Toggle stash markers | Ctrl+Shift+S | Cmd+Shift+S |
+| Copy (context-sensitive) | Ctrl+C | Cmd+C |
+| Copy short SHA | Ctrl+Shift+C | Cmd+Shift+C |
+| Navigate back (history) | Alt+Left | Alt+Left / Cmd+[ |
+| Navigate forward (history) | Alt+Right | Alt+Right / Cmd+] |
+| Toggle debug overlay | F12 / Ctrl+Shift+D | F12 / Cmd+Shift+D |
+
+// Copy behavior depends on focused element:
+//   Commit list → copy full SHA; with Shift → copy short SHA
+//   File tree → copy file path
+//   Branch list → copy branch name
+//   Diff viewer → copy selected diff lines
 
 ### Tab Navigation Shortcuts (Req 31)
 
@@ -1363,7 +2701,6 @@ interface LayoutConfig {
 ### Customizable Shortcuts
 
 ```rust
-/// User-configurable keyboard shortcuts
 pub struct KeyboardShortcuts {
     bindings: HashMap<Action, KeyBinding>,
 }
@@ -1385,6 +2722,8 @@ pub struct KeyBinding {
 - Commit list uses `aria-rowindex` and `aria-selected`
 - Graph nodes have accessible descriptions
 - Status bar announcements for state changes
+- `aria-live` region for dynamic content announcements (Req 67.5):
+  commit count updates, search results ("142 matches found"), auto-refresh events, loading errors
 
 ### Keyboard Navigation
 
@@ -1392,6 +2731,12 @@ pub struct KeyBinding {
 - Focus indicators on all interactive elements
 - Logical tab order through the interface
 - Escape key to close dialogs/modals
+- Focus management during programmatic navigation (Req 67.4):
+  clicking reflog entry → focus moves to target commit in list,
+  clicking stash entry → focus moves to stash marker
+- Modal focus trap: focus trapped inside open modals, returns to opener on close (Req 67.3)
+- Tab switch: focus moves to commit list in new tab (Req 67.6)
+- Command palette: focus moves to search input on open, returns on close (Req 67.7)
 
 ### Visual Accessibility
 
@@ -1399,6 +2744,8 @@ pub struct KeyBinding {
 - Customizable font sizes
 - Color is not the only indicator (icons, patterns)
 - Respects system accessibility settings
+- `prefers-reduced-motion`: disables graph transitions, scroll easing, panel slide animations (Req 67.1-2)
+  Toast notifications use instant appearance instead of slide-in (Req 66.6)
 
 ---
 
@@ -1413,8 +2760,11 @@ pub struct KeyBinding {
 | GPU Rendering | wgpu | Cross-platform, pure Rust, WebGPU compatible |
 | Filesystem Watching | notify + notify-debouncer-full | Pure Rust, cross-platform, debouncing support |
 | Date/Time | chrono | Comprehensive timezone support |
-| Serialization | serde | Rust standard for serialization |
+| Serialization | serde + bincode | serde for JSON IPC; bincode for batch streaming and cache |
+| Search Index | RoaringBitmap-based inverted index | Compact, fast union/intersection for combined queries |
 | Async Runtime | tokio | Required for Tauri, well-supported |
+| Structured Logging | tracing + tracing-subscriber + tracing-appender | Async-aware spans, JSON output, rolling file logs (Req 68) |
+| Crash Reporting | Custom panic hook + backtrace | Crash log capture, max 5 retained (Req 70) |
 
 ### Frontend Stack
 
@@ -1422,14 +2772,15 @@ pub struct KeyBinding {
 |-----------|------------|-----------|
 | UI Framework | Svelte 5 | Compile-time reactivity, no virtual DOM, minimal runtime |
 | App Framework | SvelteKit | File-based routing, static adapter for Tauri SPA |
-| State Management | Svelte stores (built-in) | No external deps; `$state`/`$derived` runes for fine-grained reactivity |
+| State Management | Svelte stores (built-in) | `$state`/`$derived` runes for fine-grained reactivity |
 | Virtual List | svelte-virtual-scroll-list | Handles 100k+ items, native Svelte integration |
 | Styling | Tailwind CSS | Rapid UI development, dark/light themes |
-| Build Tool | Vite | Fast HMR, SvelteKit default, Tauri integration |
+| Binary Decoder | Custom TS bincode decoder | Decode binary commit batches from IPC |
 
 **Alternatives Considered**:
 - **React**: Larger runtime, virtual DOM overhead unnecessary for desktop app. Kept as original spec in `.kiro/specs/gitv/design.md`.
 - **Leptos** (pure Rust frontend): Interesting for Rust-only stack, but weaker accessibility tooling and smaller component ecosystem than Svelte.
+- **Plain Svelte + Vite** (no SvelteKit): Simpler for a single-window app, but SvelteKit's static adapter is zero-cost at runtime and provides convenient file conventions.
 
 ### Development Tools
 
@@ -1457,7 +2808,11 @@ gitv/
 │   │   │   ├── commits.rs
 │   │   │   ├── diff.rs
 │   │   │   ├── search.rs
-│   │   │   └── watch.rs
+│   │   │   ├── watch.rs
+│   │   │   ├── reflog.rs
+│   │   │   ├── stash.rs
+│   │   │   ├── working_changes.rs
+│   │   │   └── file_tree.rs
 │   │   └── error.rs
 │   └── tauri.conf.json
 │
@@ -1482,12 +2837,20 @@ gitv/
 │           ├── watcher/
 │           │   ├── mod.rs
 │           │   └── debouncer.rs
+│           ├── cache/
+│           │   ├── mod.rs
+│           │   ├── persistent.rs
+│           │   └── incremental.rs
 │           ├── models/
 │           │   ├── mod.rs
 │           │   ├── commit.rs
 │           │   ├── diff.rs
 │           │   ├── blame.rs
-│           │   └── refs.rs
+│           │   ├── refs.rs
+│           │   ├── reflog.rs
+│           │   ├── stash.rs
+│           │   ├── working_changes.rs
+│           │   └── file_tree.rs
 │           └── error.rs
 │
 ├── src/                          # Frontend (SvelteKit)
@@ -1501,15 +2864,27 @@ gitv/
 │   │   │   ├── CommitGraph/
 │   │   │   ├── CommitList/
 │   │   │   ├── DiffViewer/
+│   │   │   ├── ComparisonPanel/
 │   │   │   ├── CommandPalette/
 │   │   │   ├── Sidebar/
+│   │   │   ├── ReflogPanel.svelte
+│   │   │   ├── StashList.svelte
 │   │   │   └── common/
-│   │   ├── stores/               # Svelte stores (app, repository, tabs, ui)
-│   │   ├── actions/              # Svelte actions (keyboard, virtual-scroll)
-│   │   ├── bindings/             # Auto-generated from Tauri
+│   │   ├── stores/               # Svelte stores
+│   │   │   ├── app.svelte.ts
+│   │   │   ├── repository.svelte.ts
+│   │   │   ├── tabs.svelte.ts
+│   │   │   ├── comparison.svelte.ts
+│   │   │   └── ui.svelte.ts
+│   │   ├── actions/              # Svelte actions
+│   │   │   ├── keyboard.ts
+│   │   │   └── virtual-scroll.ts
+│   │   ├── bindings/             # Auto-generated Tauri IPC bindings
+│   │   │   └── index.ts
+│   │   ├── binary-decoder.ts
 │   │   ├── locales/              # i18n JSON files
 │   │   └── types/                # Shared TypeScript types
-│   └── svelte.config.js          # SvelteKit config (static adapter)
+│   │       └── index.ts
 │
 ├── static/                       # Static assets
 │
@@ -1520,9 +2895,10 @@ gitv/
 ├── benches/                      # Performance benchmarks
 │   ├── graph_layout.rs
 │   ├── search.rs
-│   └── load_time.rs
+│   ├── load_time.rs
+│   └── cache_roundtrip.rs
 │
-├── svelte.config.js              # SvelteKit config
+├── svelte.config.js              # SvelteKit config (static adapter)
 ├── vite.config.ts                # Vite config
 ├── tailwind.config.ts            # Tailwind config
 ├── tsconfig.json
@@ -1537,33 +2913,64 @@ gitv/
 ### Phase 1: Core Infrastructure
 - Project setup with Tauri 2.0 + SvelteKit (static adapter)
 - gitv-git-core crate structure
+- `Oid` newtype and core models
 - Repository opening and basic info display
-- Commit streaming with gitoxide
+- Commit streaming with gitoxide (binary IPC)
+- Persistent cache skeleton
 
 ### Phase 2: Graph and Visualization
 - Graph layout algorithm implementation
 - wgpu rendering pipeline
 - Virtualized commit list (Svelte action)
 - Synchronized scrolling (Req 28)
+- Persistent graph cache (write + incremental update)
 
 ### Phase 3: Search and Navigation
-- Search engine implementation
+- Search engine with inverted index
 - Command palette
 - Keyboard navigation
 - Filter controls
 
-### Phase 4: Details and Diff
+### Phase 4: Details and Comparison
 - Commit detail panel
 - Diff viewer with unified/side-by-side modes
-- File history and blame
+- Diff view options: normal, word-diff, stat-only; whitespace modifiers (Req 54)
+- Two-commit comparison (select pair, view combined diff)
+- File history with rename following (--follow)
 
-### Phase 5: Polish and Performance
+### Phase 5: Reflog, Stash, and Extended Features
+- Reflog panel
+- Stash list and combined diff viewing (single marker per stash in graph, not gitk's two-node display)
+- Stash split diff toggle (staged/unstaged)
+- File history and blame
+- Saved searches / named filters
+
+### Phase 5.5: gitk Feature Parity
+- Color-by-author graph mode with legend (Req 52)
+- Merge commit filtering with edge reconnection (Req 53)
+- Commit highlighting and dimming (Req 56)
+- Graph orientation toggle (Req 57)
+- Author navigation shortcuts (Req 58)
+- CLI revision range support (Req 55)
+
+### Phase 6: Robustness and Edge Cases
+- Binary file detection and placeholder display (Req 60)
+- Large diff lazy loading with per-file on-demand fetch (Req 61)
+- Concurrent operation state machine (Req 62)
+- Mid-stream error recovery with partial data display (Req 63)
+- Submodule display in file tree and diff (Req 64)
+- Bare repository graceful degradation (Req 65)
+- Notification/toast system (Req 66)
+
+### Phase 7: Accessibility and Polish
+- Reduced-motion support and focus management (Req 67)
 - GPU optimization
-- Performance benchmarks
+- Performance benchmarks and regression testing
 - Accessibility audit
 - Localization
+- Binary size optimization
 
-### Phase 6: Cross-Platform and Release
+### Phase 8: Cross-Platform and Release
 - Platform-specific testing
 - CI/CD pipeline
 - Documentation
@@ -1779,19 +3186,99 @@ gitv/
 
 **Validates: Requirements 34.2, 34.3**
 
+### Property 35: OID Round-Trip
+
+*For any* valid 20-byte SHA-1, converting to hex and back shall produce the identical byte sequence. *For any* valid 40-character hex string, parsing to Oid and formatting back shall produce the identical string (lowercase).
+
+**Validates: OID internal consistency**
+
+### Property 36: Cache Incremental Correctness
+
+*For any* cached repository state and set of new ref tips, the incremental diff shall produce exactly the commits reachable from new tips but not from old tips, with no duplicates and no missing commits.
+
+**Validates: Persistent cache correctness**
+
+### Property 37: Binary IPC Round-Trip
+
+*For any* `Vec<CommitInfo>`, serializing with bincode and deserializing on the frontend shall produce structurally identical data (all fields preserved, no truncation, no type coercion errors).
+
+**Validates: Binary IPC correctness**
+
+### Property 38: Comparison Diff Correctness
+
+*For any* two commits A and B, `diff(A, B)` applied to the UI shall show exactly the changes needed to transform A's tree into B's tree, consistent with `git diff A B`.
+
+**Validates: Two-commit comparison**
+
+### Property 39: File History Follow Rename Detection
+
+*For any* file that was renamed at commit C from path P_old to P_new, `file_history_follow(P_new)` shall include commit C with `old_path = Some(P_old)`, and shall continue tracing history using P_old for earlier commits.
+
+**Validates: --follow correctness**
+
+### Property 40: Working Changes Diff Correctness
+
+*For any* repository with staged and/or unstaged changes, `working_changes_diff()` shall produce diffs consistent with `git diff --cached`, `git diff`, and `git diff HEAD` respectively.
+
+**Validates: Uncommitted changes diff**
+
+### Property 41: File Tree at Commit Correctness
+
+*For any* commit C and path P, if P exists in C's tree, `file_tree(Some(C))` shall include P. If P does not exist in C's tree, it shall not appear. `file_tree(None)` shall reflect the working tree state.
+
+**Validates: File tree browser**
+
+### Property 42: Single-Instance IPC Correctness
+
+*For any* subsequent launch with a valid repository path argument, the existing instance shall receive the path and open a new tab for that repository within 1 second.
+
+**Validates: Single-instance behavior**
+
+### Property 43: Layout Clamping Correctness
+
+*For any* persisted layout values and current window dimensions, `restoreLayout` shall produce panel sizes where each panel is ≥ its minimum and ≤ `window_dimension * max_fraction`. If the window is too small for all minimums, all panels shall be set to proportional defaults.
+
+**Validates: Req 59 — panel layout persistence with clamped restore**
+
+### Property 44: Binary File Detection
+
+*For any* file in a diff, if the file contains a null byte in the first 8KB, it shall be marked `is_binary` and no hunk content shall be generated. The diff viewer shall display a binary placeholder.
+
+**Validates: Req 60**
+
+### Property 45: Diff Summary Completeness
+
+*For any* pair of commits (A, B), `diff_summary(A, B).files` shall contain exactly the same set of file paths as the full diff. File stats (additions/deletions) shall match between summary and full diff.
+
+**Validates: Req 61**
+
+### Property 46: Concurrent Filter Cancellation
+
+*When* a new filter is applied while streaming is in progress, the previous stream shall be fully canceled (no further batches delivered) before the new stream begins. No interleaved or duplicate commits shall appear.
+
+**Validates: Req 62**
+
+### Property 47: Bare Repository Feature Degradation
+
+*For any* bare repository, `working_changes_diff()` shall return an empty result, and the file tree shall show only the HEAD commit tree. No working-directory operations shall be attempted.
+
+**Validates: Req 65**
+
 ### Property Reflection
 
 After reviewing all properties, the following consolidations were identified:
 
-1. **Properties 5, 6, 7** (Search) could be combined into a single comprehensive "Search Correctness" property, but they are kept separate because they test different search modes (basic, diff, combined).
+1. **Properties 5, 6, 7** (Search) test different search modes and remain separate.
 
 2. **Properties 16, 17** (Glob and Range) are distinct filtering operations and remain separate.
 
-3. **Properties 2, 3** (Graph Layout) test different aspects of the layout algorithm - completeness vs branch continuity - and are both needed.
+3. **Properties 2, 3** (Graph Layout) test different aspects of the layout algorithm and are both needed.
 
-4. **Properties 20, 21** (Conflict and Line Range) address different features and should remain separate.
+4. **Properties 20, 21** (Conflict and Line Range) address different features and remain separate.
 
-No redundant properties were found that would be subsumed by others. Each property provides unique validation value for the gitv feature set.
+5. **Properties 35-39** are new properties added for OID, cache, IPC, comparison, and rename-following correctness.
+
+No redundant properties were found. Each provides unique validation value.
 
 ---
 
@@ -1804,6 +3291,8 @@ No redundant properties were found that would be subsumed by others. Each proper
 3. [Git Commit-Graph Design](https://raw.githubusercontent.com/git/git/master/Documentation/technical/commit-graph.adoc) - Git's internal commit-graph format
 4. [wgpu - Cross-platform GPU API](https://wgpu.rs/) - GPU rendering in pure Rust
 5. [notify crate](https://lib.rs/crates/notify) - Cross-platform filesystem watching
+6. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
+7. [bincode](https://docs.rs/bincode) - Binary serialization for Rust
 
 ### Technology Documentation
 
@@ -1811,5 +3300,5 @@ No redundant properties were found that would be subsumed by others. Each proper
 - [gix crate documentation](https://docs.rs/gix/)
 - [wgpu documentation](https://docs.rs/wgpu/)
 - [chrono documentation](https://docs.rs/chrono/)
-- [Svelte 5 Documentation](https://svelte-5-preview.vercel.app/)
-- [SvelteKit Documentation](https://kit.svelte.dev/)
+- [Svelte 5 Runes](https://svelte-5-preview.vercel.app/)
+- [Vite Documentation](https://vitejs.dev/)
