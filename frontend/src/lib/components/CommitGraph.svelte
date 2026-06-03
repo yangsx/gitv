@@ -1,0 +1,127 @@
+<script lang="ts">
+	import type { GraphLayout, NodePosition, Edge, StashMarker } from '$lib/bindings/types';
+
+	interface Props {
+		layout: GraphLayout;
+		rowHeight?: number;
+		laneWidth?: number;
+		nodeRadius?: number;
+		visibleStart: number;
+		visibleEnd: number;
+	}
+
+	let {
+		layout,
+		rowHeight = 28,
+		laneWidth = 24,
+		nodeRadius = 4,
+		visibleStart,
+		visibleEnd
+	}: Props = $props();
+
+	let canvas: HTMLCanvasElement;
+
+	const PADDING_LEFT = 12;
+
+	$effect(() => {
+		if (!canvas || !layout) return;
+		drawGraph(layout);
+	});
+
+	function drawGraph(l: GraphLayout) {
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+
+		const height = (visibleEnd - visibleStart) * rowHeight;
+		const width = l.total_columns * laneWidth + PADDING_LEFT * 2;
+
+		canvas.width = width * devicePixelRatio;
+		canvas.height = height * devicePixelRatio;
+		canvas.style.width = `${width}px`;
+		canvas.style.height = `${height}px`;
+		ctx.scale(devicePixelRatio, devicePixelRatio);
+
+		ctx.clearRect(0, 0, width, height);
+
+		const startRow = visibleStart;
+		const endRow = visibleEnd;
+
+		for (const edge of l.edges) {
+			if (edge.from_row < startRow && edge.to_row < startRow) continue;
+			if (edge.from_row > endRow && edge.to_row > endRow) continue;
+			drawEdge(ctx, edge, startRow);
+		}
+
+		for (const node of l.nodes) {
+			if (node.row < startRow || node.row > endRow) continue;
+			drawNode(ctx, node, startRow);
+		}
+
+		for (const stash of l.stash_markers) {
+			if (stash.row < startRow || stash.row > endRow) continue;
+			drawStashMarker(ctx, stash, startRow);
+		}
+	}
+
+	function rowY(row: number, startRow: number): number {
+		return (row - startRow) * rowHeight + rowHeight / 2;
+	}
+
+	function colX(col: number): number {
+		return PADDING_LEFT + col * laneWidth + laneWidth / 2;
+	}
+
+	function drawNode(ctx: CanvasRenderingContext2D, node: NodePosition, startRow: number) {
+		const x = colX(node.column);
+		const y = rowY(node.row, startRow);
+
+		ctx.beginPath();
+		ctx.arc(x, y, nodeRadius, 0, Math.PI * 2);
+		ctx.fillStyle = node.color;
+		ctx.fill();
+
+		if (node.is_dimmed) {
+			ctx.globalAlpha = 0.35;
+			ctx.beginPath();
+			ctx.arc(x, y, nodeRadius, 0, Math.PI * 2);
+			ctx.fillStyle = '#888';
+			ctx.fill();
+			ctx.globalAlpha = 1.0;
+		}
+	}
+
+	function drawEdge(ctx: CanvasRenderingContext2D, edge: Edge, startRow: number) {
+		const x1 = colX(edge.from_col);
+		const y1 = rowY(edge.from_row, startRow);
+		const x2 = colX(edge.to_col);
+		const y2 = rowY(edge.to_row, startRow);
+
+		ctx.beginPath();
+		ctx.strokeStyle = edge.is_dimmed ? '#888' : edge.color;
+		ctx.globalAlpha = edge.is_dimmed ? 0.35 : 0.8;
+		ctx.lineWidth = 1.5;
+
+		if (edge.from_col === edge.to_col) {
+			ctx.moveTo(x1, y1);
+			ctx.lineTo(x2, y2);
+		} else {
+			const midY = (y1 + y2) / 2;
+			ctx.moveTo(x1, y1);
+			ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
+		}
+
+		ctx.stroke();
+		ctx.globalAlpha = 1.0;
+	}
+
+	function drawStashMarker(ctx: CanvasRenderingContext2D, stash: StashMarker, startRow: number) {
+		const x = colX(stash.column) + nodeRadius + 4;
+		const y = rowY(stash.row, startRow);
+
+		ctx.font = '10px monospace';
+		ctx.fillStyle = '#f59e0b';
+		ctx.fillText(`S${stash.stash_index}`, x, y + 3);
+	}
+</script>
+
+<canvas bind:this={canvas} class="block"></canvas>
