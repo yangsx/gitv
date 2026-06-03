@@ -1,0 +1,19 @@
+[package]
+name = "gitv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "gitv_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+gitv-git-core = { workspace = true }

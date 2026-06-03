@@ -877,10 +877,14 @@ struct Cli {
 #### Component Hierarchy
 
 ```
-src/
-├── app.html                          # HTML shell
-├── app.css                           # Global Tailwind styles
-├── routes/
+frontend/
+├── package.json
+├── svelte.config.js
+├── vite.config.ts
+├── src/
+│   ├── app.html                      # HTML shell
+│   ├── app.css                       # Global Tailwind styles
+│   ├── routes/
 │   ├── +layout.svelte                # Root layout (TabBar, global modals)
 │   └── +page.svelte                  # Main page (Welcome / Repo view)
 ├── lib/
@@ -2617,7 +2621,7 @@ pub trait LocalizationProvider {
 ### Locale Files Structure
 
 ```
-src/locales/
+frontend/src/locales/
 ├── en.json
 ├── zh-CN.json
 ├── ja.json

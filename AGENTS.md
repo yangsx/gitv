@@ -8,14 +8,14 @@
 - **Backend**: `src-tauri/` — Rust with `gix` (gitoxide) for Git ops, `wgpu` for GPU graph rendering
 - **Decoupled Git core**: `crates/gitv-git-core/` — pure Rust, no Tauri deps, independently testable
 - **Single-instance**: subsequent launches open repos as tabs in the existing window
-- **Frontend**: `src/` — SvelteKit + Svelte 5 + TypeScript + Tailwind + Vite
+- **Frontend**: `frontend/` — SvelteKit + Svelte 5 + TypeScript + Tailwind + Vite
 - **Pure Rust preferred**: use pure-Rust crates over C bindings; shell out to `git` CLI only as documented fallback
 
 ## Planned Project Layout
 ```
 src-tauri/            # Rust backend (Tauri commands in src/commands/)
 crates/gitv-git-core/ # Git logic crate (repository, graph, search, stream, watcher, cache, models)
-src/                  # SvelteKit frontend (routes/, lib/components/, lib/stores/, lib/actions/, lib/bindings/)
+frontend/             # SvelteKit frontend (src/routes/, src/lib/components/, src/lib/stores/, src/lib/actions/, src/lib/bindings/)
 tests/                # Integration tests + fixtures
 benches/              # criterion benchmarks
 ```
