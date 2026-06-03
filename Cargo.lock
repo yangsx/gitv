@@ -1413,6 +1413,7 @@ name = "gitv"
 version = "0.1.0"
 dependencies = [
  "gitv-git-core",
+ "postcard",
  "serde",
  "serde_json",
  "tauri",

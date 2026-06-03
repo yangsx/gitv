@@ -1,4 +1,2 @@
-#[tauri::command]
-pub fn greet(name: &str) -> String {
-    format!("Hello, {name}! Welcome to gitv.")
-}
+pub mod commits;
+pub mod repository;

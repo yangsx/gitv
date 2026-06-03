@@ -24,7 +24,7 @@ benches/              # criterion benchmarks
 - Git backend is a separate crate (`gitv-git-core`) with trait-based interfaces for mocking
 - `Oid` is a 20-byte binary newtype (`[u8; 20]`), not a String — 3x less memory, faster hashing
 - Commit graph uses GPU-accelerated rendering via wgpu with virtualized viewport
-- Commits are streamed in batches with binary serialization (bincode) to avoid JSON IPC overhead
+- Commits are streamed in batches with binary serialization (postcard) to avoid JSON IPC overhead
 - Persistent disk cache for graph layout + metadata — re-open cached repos in <200ms
 - Each tab holds isolated repository state (own connection, filters, scroll position)
 - Branch filtering happens at Git traversal layer, not UI layer
@@ -49,7 +49,7 @@ benches/              # criterion benchmarks
 | Virtual list | svelte-virtual-scroll-list |
 | Styling | Tailwind CSS |
 | Build (frontend) | Vite |
-| Batch serialization | bincode |
+| Batch serialization | postcard |
 | Search index | RoaringBitmap inverted index |
 | Logging | tracing + tracing-subscriber + tracing-appender |
 | Test runner (Rust) | cargo-nextest |

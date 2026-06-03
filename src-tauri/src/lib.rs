@@ -4,7 +4,11 @@ mod commands;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::greet])
+        .invoke_handler(tauri::generate_handler![
+            commands::repository::open_repository,
+            commands::repository::get_recent_repositories,
+            commands::commits::stream_commits,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

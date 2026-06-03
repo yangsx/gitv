@@ -196,12 +196,12 @@ graph TB
 
 #### ADR-007: Binary IPC Serialization
 
-**Decision**: Use bincode (or equivalent compact binary serializer) for commit batch streaming over Tauri IPC.
+**Decision**: Use postcard (or equivalent compact binary serializer) for commit batch streaming over Tauri IPC.
 
 **Rationale**:
 - JSON serialization of 100k+ commits is the dominant IPC cost: each `CommitInfo` has multiple string fields, `Vec` fields, and `DateTime` strings
 - Binary serialization is 3-5x smaller and 5-10x faster to serialize/deserialize than JSON for structured data with many small fields
-- Tauri IPC supports raw byte transfer; bincode produces compact output with no schema overhead
+- Tauri IPC supports raw byte transfer; postcard produces compact output with no schema overhead
 - Performance budget: batch of 100 commits serialized + deserialized in <1ms
 
 **Consequences**:
@@ -637,7 +637,7 @@ async fn stream_commits(
     window: tauri::Window
 ) -> Result<(), String>;
 
-/// Returns binary-serialized commit batch (bincode) for performance
+/// Returns binary-serialized commit batch (postcard) for performance
 #[tauri::command]
 async fn stream_commits_binary(
     repo_path: String,
@@ -961,7 +961,7 @@ frontend/
 │   │   └── virtual-scroll.ts          # Svelte action for virtual scrolling
 │   ├── bindings/                        # Auto-generated Tauri IPC bindings
 │   │   └── index.ts
-│   ├── binary-decoder.ts               # Decode bincode commit batches
+│   ├── binary-decoder.ts               # Decode postcard commit batches
 │   ├── locales/                         # i18n JSON files
 │   └── types/                           # Shared TypeScript types
 │       └── index.ts
@@ -2350,7 +2350,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Edge cases in graph calculation algorithms
 - Error handling paths
 - Data structure validation
-- Binary serialization round-trips (bincode)
+- Binary serialization round-trips (postcard)
 - Cache store/load/versioning
 
 **Focus Areas**:
@@ -2382,7 +2382,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 **Applicable for**:
 - Graph layout algorithm (topological sort maintains order)
 - Search results contain query terms
-- Serialization round-trips (bincode, cache format)
+- Serialization round-trips (postcard, cache format)
 - Diff line counting
 - Tab state persistence (Req 31)
 - Single-branch filtering (Req 32)
@@ -2553,7 +2553,7 @@ pub struct StreamConfig {
 1. Use `gix::Repository::commit_iter()` for efficient traversal
 2. Leverage git's `commit-graph` file when available for faster generation-number-aware traversal
 3. Spawn background thread for Git operations
-4. Serialize batches with bincode, send via Tauri events
+4. Serialize batches with postcard, send via Tauri events
 5. Frontend decodes binary, displays commits progressively
 
 ### Search Indexing
@@ -2764,7 +2764,7 @@ pub struct KeyBinding {
 | GPU Rendering | wgpu | Cross-platform, pure Rust, WebGPU compatible |
 | Filesystem Watching | notify + notify-debouncer-full | Pure Rust, cross-platform, debouncing support |
 | Date/Time | chrono | Comprehensive timezone support |
-| Serialization | serde + bincode | serde for JSON IPC; bincode for batch streaming and cache |
+| Serialization | serde + postcard | serde for JSON IPC; postcard for batch streaming and cache |
 | Search Index | RoaringBitmap-based inverted index | Compact, fast union/intersection for combined queries |
 | Async Runtime | tokio | Required for Tauri, well-supported |
 | Structured Logging | tracing + tracing-subscriber + tracing-appender | Async-aware spans, JSON output, rolling file logs (Req 68) |
@@ -2779,7 +2779,7 @@ pub struct KeyBinding {
 | State Management | Svelte stores (built-in) | `$state`/`$derived` runes for fine-grained reactivity |
 | Virtual List | svelte-virtual-scroll-list | Handles 100k+ items, native Svelte integration |
 | Styling | Tailwind CSS | Rapid UI development, dark/light themes |
-| Binary Decoder | Custom TS bincode decoder | Decode binary commit batches from IPC |
+| Binary Decoder | Custom TS postcard decoder | Decode binary commit batches from IPC |
 
 **Alternatives Considered**:
 - **React**: Larger runtime, virtual DOM overhead unnecessary for desktop app. Kept as original spec in `.kiro/specs/gitv/design.md`.
@@ -3204,7 +3204,7 @@ gitv/
 
 ### Property 37: Binary IPC Round-Trip
 
-*For any* `Vec<CommitInfo>`, serializing with bincode and deserializing on the frontend shall produce structurally identical data (all fields preserved, no truncation, no type coercion errors).
+*For any* `Vec<CommitInfo>`, serializing with postcard and deserializing on the frontend shall produce structurally identical data (all fields preserved, no truncation, no type coercion errors).
 
 **Validates: Binary IPC correctness**
 
@@ -3296,7 +3296,7 @@ No redundant properties were found. Each provides unique validation value.
 4. [wgpu - Cross-platform GPU API](https://wgpu.rs/) - GPU rendering in pure Rust
 5. [notify crate](https://lib.rs/crates/notify) - Cross-platform filesystem watching
 6. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
-7. [bincode](https://docs.rs/bincode) - Binary serialization for Rust
+7. [postcard](https://docs.rs/postcard) - Binary serialization for Rust
 
 ### Technology Documentation
 
