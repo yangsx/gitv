@@ -46,10 +46,18 @@
 	<button
 		class="flex w-full items-center gap-1.5 border-b border-gray-800/50 px-3 py-1 text-left text-xs hover:bg-gray-800/70"
 		style="padding-left: {12 + depth * 16}px;"
+		aria-label="{node.name}{node.children.length > 0 ? (expanded ? ', collapse' : ', expand') : ''}"
+		aria-expanded={node.children.length > 0 ? expanded : undefined}
 		onclick={toggle}
 		oncontextmenu={handleContextmenu}
+		onkeydown={(e: KeyboardEvent) => {
+			if (e.key === 'h' && node.node_type === 'File' && onhistoryfile) {
+				e.preventDefault();
+				onhistoryfile(node.path);
+			}
+		}}
 	>
-		<span class="shrink-0 text-sm">{nodeIcon(node)}</span>
+		<span class="shrink-0 text-sm" aria-hidden="true">{nodeIcon(node)}</span>
 		<span class="flex-1 truncate font-mono text-gray-300">{node.name}</span>
 		{#if node.size !== null && node.node_type === 'File'}
 			<span class="shrink-0 text-[10px] text-gray-500"

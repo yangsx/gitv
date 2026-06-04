@@ -23,6 +23,26 @@
 
 	let dragging = $state(false);
 
+	function onKeyDown(e: KeyboardEvent) {
+		if (isVertical()) {
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight + 20));
+			} else if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
+			}
+		} else {
+			if (e.key === 'ArrowRight') {
+				e.preventDefault();
+				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth - 20));
+			} else if (e.key === 'ArrowLeft') {
+				e.preventDefault();
+				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth + 20));
+			}
+		}
+	}
+
 	function isVertical(): boolean {
 		return direction === 'vertical';
 	}
@@ -42,7 +62,7 @@
 				const delta = startY - e.clientY;
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
 			} else {
-				const delta = e.clientX - startX;
+				const delta = startX - e.clientX;
 				panelWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
 			}
 		}
@@ -59,7 +79,7 @@
 	}
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
 <div
 	class="flex {isVertical()
 		? 'h-1 cursor-row-resize border-y'
@@ -69,8 +89,9 @@
 	role="separator"
 	aria-orientation={isVertical() ? 'horizontal' : 'vertical'}
 	aria-label={isVertical() ? 'Resize detail panel' : 'Resize file list'}
-	tabindex="-1"
+	tabindex="0"
 	onmousedown={onMouseDown}
+	onkeydown={onKeyDown}
 >
 	<div class="rounded bg-gray-500 {isVertical() ? 'h-0.5 w-8' : 'w-0.5 h-8'}"></div>
 </div>

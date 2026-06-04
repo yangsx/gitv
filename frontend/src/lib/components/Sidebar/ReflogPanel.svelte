@@ -59,6 +59,7 @@
 	<div class="flex gap-1">
 		<select
 			class="rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-xs text-gray-300"
+			aria-label="Select ref for reflog"
 			bind:value={selectedRef}
 		>
 			<option value="HEAD">HEAD</option>
@@ -67,6 +68,7 @@
 			type="text"
 			class="flex-1 rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-xs text-gray-300 placeholder-gray-500"
 			placeholder="Filter operations..."
+			aria-label="Filter reflog operations"
 			bind:value={filterOp}
 		/>
 	</div>
@@ -80,6 +82,7 @@
 			{#each filteredEntries.slice(0, 100) as entry, i (entry.oid + '-' + i)}
 				<button
 					class="w-full rounded px-1.5 py-1 text-left hover:bg-gray-800"
+					aria-label="{entry.message.slice(0, 50)}, {entry.oid.slice(0, 7)}, {entry.author.name}"
 					onclick={() => onentryselect?.(entry.oid)}
 				>
 					<div class="flex items-center gap-1">

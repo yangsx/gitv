@@ -43,13 +43,18 @@
 </script>
 
 {#if collapsed}
-	<div class="flex flex-col items-center gap-2 border-r border-gray-800 bg-gray-900 py-2 px-1">
+	<div
+		class="flex flex-col items-center gap-2 border-r border-gray-800 bg-gray-900 py-2 px-1"
+		role="navigation"
+		aria-label="Sidebar"
+	>
 		<button
 			class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
 			onclick={() => (collapsed = false)}
 			title="Expand sidebar"
+			aria-label="Expand sidebar"
 		>
-			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 			</svg>
 		</button>
@@ -58,11 +63,16 @@
 	<div
 		class="flex flex-col border-r border-gray-800 bg-gray-900"
 		style="width: 220px; min-width: 180px;"
+		role="navigation"
+		aria-label="Sidebar"
 	>
 		<div class="flex items-center justify-between border-b border-gray-800 px-2 py-1">
-			<div class="flex gap-1">
+			<div class="flex gap-1" role="tablist" aria-label="Sidebar tabs">
 				{#each tabs as tab (tab.id)}
 					<button
+						role="tab"
+						aria-selected={activeTab === tab.id}
+						aria-controls="sidebar-panel-{tab.id}"
 						class="rounded px-2 py-0.5 text-xs {activeTab === tab.id
 							? 'bg-gray-700 text-white'
 							: 'text-gray-400 hover:text-white'}"
@@ -76,8 +86,15 @@
 				class="rounded p-0.5 text-gray-400 hover:bg-gray-800 hover:text-white"
 				onclick={() => (collapsed = true)}
 				title="Collapse sidebar"
+				aria-label="Collapse sidebar"
 			>
-				<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<svg
+					class="h-3.5 w-3.5"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					aria-hidden="true"
+				>
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -91,7 +108,9 @@
 		<div class="flex-1 overflow-y-auto p-2 text-xs">
 			{#each tabs as tab (tab.id)}
 				{#if activeTab === tab.id}
-					{@render tab.snippet()}
+					<div id="sidebar-panel-{tab.id}" role="tabpanel" aria-label="{tab.label} panel">
+						{@render tab.snippet()}
+					</div>
 				{/if}
 			{/each}
 		</div>

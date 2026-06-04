@@ -91,9 +91,14 @@
 </script>
 
 {#if viewMode === 'side-by-side'}
-	<div class="font-mono text-xs leading-5">
+	<div class="font-mono text-xs leading-5" role="region" aria-label="Side by side diff">
 		{#each hunks as hunk (hunk.old_start)}
-			<div class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400">
+			<div
+				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
+				role="presentation"
+				aria-label="Hunk header: lines {hunk.old_start} to {hunk.old_start +
+					hunk.old_count}, {hunk.new_start} to {hunk.new_start + hunk.new_count}"
+			>
 				@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count}
 			</div>
 			{@const split = splitHunkLines(hunk.lines)}
@@ -144,9 +149,14 @@
 		{/each}
 	</div>
 {:else}
-	<div class="font-mono text-xs leading-5">
+	<div class="font-mono text-xs leading-5" role="region" aria-label="Unified diff">
 		{#each hunks as hunk (hunk.old_start)}
-			<div class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400">
+			<div
+				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
+				role="presentation"
+				aria-label="Hunk header: lines {hunk.old_start} to {hunk.old_start +
+					hunk.old_count}, {hunk.new_start} to {hunk.new_start + hunk.new_count}"
+			>
 				@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count}
 			</div>
 			{#each hunk.lines as line, li (li)}

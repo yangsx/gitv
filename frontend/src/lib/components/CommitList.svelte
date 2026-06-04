@@ -59,10 +59,41 @@
 		if (containerEl) observer.observe(containerEl);
 		return () => observer.disconnect();
 	});
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (!orderedCommits.length) return;
+		const currentIdx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+
+		if (e.key === 'ArrowDown' || e.key === 'j') {
+			e.preventDefault();
+			const next = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, orderedCommits.length - 1);
+			onSelect(orderedCommits[next].oid, false);
+			scrollToIndex(next);
+		} else if (e.key === 'ArrowUp' || e.key === 'k') {
+			e.preventDefault();
+			const prev = currentIdx < 0 ? 0 : Math.max(currentIdx - 1, 0);
+			onSelect(orderedCommits[prev].oid, false);
+			scrollToIndex(prev);
+		}
+	}
+
+	function scrollToIndex(idx: number) {
+		const targetTop = idx * rowHeight;
+		const targetBottom = targetTop + rowHeight;
+		if (targetTop < scrollTop) {
+			containerEl.scrollTop = targetTop;
+		} else if (targetBottom > scrollTop + containerHeight) {
+			containerEl.scrollTop = targetBottom - containerHeight;
+		}
+	}
 </script>
 
-<div class="flex h-full">
-	<div class="shrink-0 overflow-hidden" style="width: {graphWidth}px; height: 100%;">
+<div class="flex h-full" role="listbox" aria-label="Commit list">
+	<div
+		class="shrink-0 overflow-hidden"
+		style="width: {graphWidth}px; height: 100%;"
+		aria-hidden="true"
+	>
 		<div style="height: {totalHeight}px; position: relative;">
 			<div style="transform: translateY({visibleStart * rowHeight}px);">
 				<CommitGraph {layout} {rowHeight} {visibleStart} {visibleEnd} />
@@ -70,11 +101,21 @@
 		</div>
 	</div>
 
-	<div bind:this={containerEl} class="flex-1 overflow-y-auto" onscroll={onScroll}>
+	<div
+		bind:this={containerEl}
+		class="flex-1 overflow-y-auto"
+		onscroll={onScroll}
+		onkeydown={handleKeydown}
+		tabindex="0"
+		role="listbox"
+		aria-label="Commits"
+		aria-activedescendant={selectedOid ? `commit-${selectedOid}` : undefined}
+	>
 		<div style="height: {totalHeight}px; position: relative;">
 			<div style="transform: translateY({visibleStart * rowHeight}px);">
 				{#each visibleCommits as commit (commit.oid)}
 					<CommitRow
+						id="commit-{commit.oid}"
 						{commit}
 						isSelected={commit.oid === selectedOid}
 						isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}

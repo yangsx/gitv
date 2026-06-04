@@ -78,7 +78,11 @@
 			<span class="text-xs font-medium text-gray-300">Blame:</span>
 			<span class="font-mono text-xs text-gray-400">{filePath}</span>
 		</div>
-		<button class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white" onclick={onclose} aria-label="Close">
+		<button
+			class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+			onclick={onclose}
+			aria-label="Close"
+		>
 			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path
 					stroke-linecap="round"
@@ -96,7 +100,14 @@
 		<div class="p-4 text-sm text-red-400">{error}</div>
 	{:else if blame}
 		<div class="flex-1 overflow-auto">
-			<table class="w-full border-collapse text-xs">
+			<table class="w-full border-collapse text-xs" aria-label="Blame for {filePath}">
+				<thead class="sr-only">
+					<tr>
+						<th scope="col">Line number</th>
+						<th scope="col">Author and date</th>
+						<th scope="col">Content</th>
+					</tr>
+				</thead>
 				<tbody>
 					{#each groupByCommit() as group (group.oid)}
 						{#each group.lines as line, i (line.num)}
@@ -110,8 +121,17 @@
 								>
 								<td
 									class="w-48 cursor-pointer border-r border-gray-800 px-2 py-0.5"
+									role="button"
+									tabindex="0"
+									aria-label="Toggle highlight for commit {group.oid.slice(0, 7)} by {group.author}"
 									onclick={() => {
 										currentCommit = currentCommit === group.oid ? null : group.oid;
+									}}
+									onkeydown={(e: KeyboardEvent) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											currentCommit = currentCommit === group.oid ? null : group.oid;
+										}
 									}}
 									ondblclick={() => oncommitclick?.(group.oid)}
 								>

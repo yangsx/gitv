@@ -6,13 +6,16 @@
 		isSelected: boolean;
 		isDimmed?: boolean;
 		onclick: (_oid: string, _ctrlKey: boolean) => void;
+		id?: string;
 	}
 
-	let { commit, isSelected, isDimmed = false, onclick }: Props = $props();
+	let { commit, isSelected, isDimmed = false, onclick, id }: Props = $props();
 
 	const STAGED_OID = '__staged__';
 	const UNSTAGED_OID = '__unstaged__';
+	// svelte-ignore state_referenced_locally
 	const isVirtual = commit.oid === STAGED_OID || commit.oid === UNSTAGED_OID;
+	// svelte-ignore state_referenced_locally
 	const isStaged = commit.oid === STAGED_OID;
 
 	function formatTime(iso: string): string {
@@ -37,14 +40,21 @@
 
 {#if isVirtual}
 	<button
+		{id}
+		role="option"
+		aria-selected={isSelected}
 		class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
 			? 'bg-blue-900/40 text-blue-200'
 			: 'text-gray-300'}"
+		aria-label="{commit.summary}, {isStaged ? 'staged' : 'unstaged'} changes"
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
 			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 	>
 		<span class="w-[80px] shrink-0 flex items-center gap-1">
-			<span class="inline-block h-2 w-2 rounded-full {isStaged ? 'bg-green-400' : 'bg-orange-400'}"></span>
+			<span
+				class="inline-block h-2 w-2 rounded-full {isStaged ? 'bg-green-400' : 'bg-orange-400'}"
+				aria-hidden="true"
+			></span>
 		</span>
 		<span class="min-w-0 truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
 			{commit.summary}
@@ -52,35 +62,42 @@
 	</button>
 {:else}
 	<button
+		{id}
+		role="option"
+		aria-selected={isSelected}
 		class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
 			? 'bg-blue-900/40 text-blue-200'
 			: isDimmed
 				? 'text-gray-600'
 				: 'text-gray-300'}"
+		aria-label="{commit.summary} by {commit.author.name}, {formatTime(commit.commit_time)}{commit
+			.refs.length > 0
+			? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ')
+			: ''}"
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
 			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 	>
-	<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
-		{commit.short_oid}
-	</span>
-	<span class="flex shrink-0 gap-1 overflow-hidden">
-		{#each commit.refs as ref (ref.Branch?.name ?? ref.Tag?.name ?? ref.Remote?.name ?? '')}
-			{@const label = refLabel(ref)}
-			{#if label}
-				<span
-					class="inline-block rounded px-1 text-xs {ref.Branch?.is_head
-						? 'bg-green-700/50 text-green-300'
-						: ref.Tag
-							? 'bg-yellow-700/50 text-yellow-300'
-							: 'bg-gray-600/50 text-gray-400'}"
-				>
-					{label}
-				</span>
-			{/if}
-		{/each}
-	</span>
-	<span class="min-w-0 truncate">{commit.summary}</span>
-	<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
-	<span class="shrink-0 text-xs text-gray-600">{formatTime(commit.commit_time)}</span>
-</button>
+		<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
+			{commit.short_oid}
+		</span>
+		<span class="flex shrink-0 gap-1 overflow-hidden">
+			{#each commit.refs as ref (ref.Branch?.name ?? ref.Tag?.name ?? ref.Remote?.name ?? '')}
+				{@const label = refLabel(ref)}
+				{#if label}
+					<span
+						class="inline-block rounded px-1 text-xs {ref.Branch?.is_head
+							? 'bg-green-700/50 text-green-300'
+							: ref.Tag
+								? 'bg-yellow-700/50 text-yellow-300'
+								: 'bg-gray-600/50 text-gray-400'}"
+					>
+						{label}
+					</span>
+				{/if}
+			{/each}
+		</span>
+		<span class="min-w-0 truncate">{commit.summary}</span>
+		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
+		<span class="shrink-0 text-xs text-gray-600">{formatTime(commit.commit_time)}</span>
+	</button>
 {/if}

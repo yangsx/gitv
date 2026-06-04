@@ -8,7 +8,14 @@
 		getRefs,
 		getWorkingChanges
 	} from '$lib/bindings/commands';
-	import type { CommitInfo, GraphLayout, CommitDetails, Ref, WorkingChangesDiff, FileChange } from '$lib/bindings/types';
+	import type {
+		CommitInfo,
+		GraphLayout,
+		CommitDetails,
+		Ref,
+		WorkingChangesDiff,
+		FileChange
+	} from '$lib/bindings/types';
 	import {
 		repoInfo,
 		selectedOid,
@@ -40,7 +47,9 @@
 	let graphLayout = $state<GraphLayout | null>(null);
 	let commitDetails = $state<CommitDetails | null>(null);
 	let detailsLoading = $state(false);
-	let detailPanelHeight = $state(typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.7) : 400);
+	let detailPanelHeight = $state(
+		typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.7) : 400
+	);
 	let viewportHeight = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
 	let allRefs = $state<Ref[]>([]);
 	let historyFilePath = $state<string | null>(null);
@@ -175,8 +184,14 @@
 		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
 		if (!hasStaged && !hasUnstaged) return commits;
 		const virtuals: CommitInfo[] = [];
-		if (hasUnstaged) virtuals.push(makeVirtualCommit(UNSTAGED_OID, 'Unstaged changes', workingChangesDiff.unstaged.length));
-		if (hasStaged) virtuals.push(makeVirtualCommit(STAGED_OID, 'Staged changes', workingChangesDiff.staged.length));
+		if (hasUnstaged)
+			virtuals.push(
+				makeVirtualCommit(UNSTAGED_OID, 'Unstaged changes', workingChangesDiff.unstaged.length)
+			);
+		if (hasStaged)
+			virtuals.push(
+				makeVirtualCommit(STAGED_OID, 'Staged changes', workingChangesDiff.staged.length)
+			);
 		return [...virtuals, ...commits];
 	});
 
@@ -190,28 +205,38 @@
 		const virtualNodes: import('$lib/bindings/types').NodePosition[] = [];
 		if (hasUnstaged) {
 			virtualNodes.push({
-				oid: UNSTAGED_OID, row: 0, column: 0, is_merge: false,
+				oid: UNSTAGED_OID,
+				row: 0,
+				column: 0,
+				is_merge: false,
 				color: { r: 255, g: 255, b: 255, a: 255 },
-				is_dimmed: false, is_highlighted: false
+				is_dimmed: false,
+				is_highlighted: false
 			});
 		}
 		if (hasStaged) {
 			virtualNodes.push({
-				oid: STAGED_OID, row: hasUnstaged ? 1 : 0, column: 0, is_merge: false,
+				oid: STAGED_OID,
+				row: hasUnstaged ? 1 : 0,
+				column: 0,
+				is_merge: false,
 				color: { r: 255, g: 255, b: 255, a: 255 },
-				is_dimmed: false, is_highlighted: false
+				is_dimmed: false,
+				is_highlighted: false
 			});
 		}
 		return {
 			...graphLayout,
 			nodes: [
 				...virtualNodes,
-				...graphLayout.nodes.map(n => ({ ...n, row: n.row + virtualCount }))
+				...graphLayout.nodes.map((n) => ({ ...n, row: n.row + virtualCount }))
 			],
-			edges: graphLayout.edges.map(e => ({
-				...e, from_row: e.from_row + virtualCount, to_row: e.to_row + virtualCount
+			edges: graphLayout.edges.map((e) => ({
+				...e,
+				from_row: e.from_row + virtualCount,
+				to_row: e.to_row + virtualCount
 			})),
-			stash_markers: graphLayout.stash_markers.map(s => ({ ...s, row: s.row + virtualCount })),
+			stash_markers: graphLayout.stash_markers.map((s) => ({ ...s, row: s.row + virtualCount })),
 			total_rows: graphLayout.total_rows + virtualCount
 		};
 	});
@@ -235,9 +260,10 @@
 		operationState.set('LoadingDetails');
 
 		if (VIRTUAL_OIDS.has(oid)) {
-			const files: FileChange[] = oid === STAGED_OID
-				? (workingChangesDiff?.staged ?? [])
-				: (workingChangesDiff?.unstaged ?? []);
+			const files: FileChange[] =
+				oid === STAGED_OID
+					? (workingChangesDiff?.staged ?? [])
+					: (workingChangesDiff?.unstaged ?? []);
 			const label = oid === STAGED_OID ? 'Staged changes' : 'Unstaged changes';
 			commitDetails = {
 				info: {
@@ -309,7 +335,7 @@
 
 <div class="flex h-screen flex-col bg-gray-900 text-gray-100">
 	{#if !$repoInfo}
-		<div class="flex flex-1 items-center justify-center">
+		<div class="flex flex-1 items-center justify-center" role="main">
 			<div class="w-full max-w-md space-y-4 p-8">
 				<h1 class="text-2xl font-bold">gitv</h1>
 				<p class="text-gray-400">Modern Git repository visualizer</p>
@@ -318,18 +344,20 @@
 						type="text"
 						class="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
 						placeholder="/path/to/repository"
+						aria-label="Repository path"
 						bind:value={repoPath}
 						onkeydown={(e) => e.key === 'Enter' && handleOpen()}
 					/>
 					<button
 						class="rounded bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700"
 						onclick={handleOpen}
+						aria-label="Open repository"
 					>
 						Open
 					</button>
 				</div>
 				{#if $error}
-					<p class="text-sm text-red-400">{$error}</p>
+					<p class="text-sm text-red-400" role="alert">{$error}</p>
 				{/if}
 			</div>
 		</div>
@@ -364,19 +392,26 @@
 					<button
 						class="rounded bg-amber-700/50 px-2 py-0.5 text-xs hover:bg-amber-700"
 						onclick={() => loadRepo(repoPath)}
+						aria-label="Retry loading repository"
 					>
 						Retry
 					</button>
 				</span>
 			{/if}
 			{#if $operationState === 'LoadingRepo'}
-				<span class="text-xs text-gray-500">Loading repository...</span>
+				<span class="text-xs text-gray-500" role="status" aria-live="polite"
+					>Loading repository...</span
+				>
 			{:else if $operationState === 'LoadingDetails'}
-				<span class="text-xs text-gray-500">Loading details...</span>
+				<span class="text-xs text-gray-500" role="status" aria-live="polite"
+					>Loading details...</span
+				>
 			{:else if $operationState === 'Searching'}
-				<span class="text-xs text-gray-500">Searching...</span>
+				<span class="text-xs text-gray-500" role="status" aria-live="polite">Searching...</span>
 			{:else if $operationState === 'ApplyingFilter'}
-				<span class="text-xs text-gray-500">Applying filter...</span>
+				<span class="text-xs text-gray-500" role="status" aria-live="polite"
+					>Applying filter...</span
+				>
 			{/if}
 		</header>
 		<div class="flex flex-1 overflow-hidden">
@@ -403,7 +438,7 @@
 					{/if}
 				{/snippet}
 			</Sidebar>
-			<div class="flex-1 overflow-hidden flex flex-col">
+			<div class="flex-1 overflow-hidden flex flex-col" role="main" aria-label="Commit history">
 				<div class="flex-1 overflow-hidden">
 					{#if displayLayout}
 						<CommitList
@@ -424,25 +459,34 @@
 					<div
 						class="overflow-hidden bg-gray-900 border-t border-gray-700"
 						style="height: {detailPanelHeight}px;"
+						role="region"
+						aria-label="Commit details"
 					>
 						{#if $comparisonOid}
 							<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
 						{:else if detailsLoading}
-							<div class="flex items-center justify-center h-full text-sm text-gray-500">
+							<div
+								class="flex items-center justify-center h-full text-sm text-gray-500"
+								role="status"
+								aria-live="polite"
+							>
 								Loading details...
 							</div>
 						{:else if commitDetails}
 							<CommitDetailPanel
-									details={commitDetails}
-									{repoPath}
-									onhistoryfile={(p: string) => {
-										historyFilePath = p;
-										historyRevision++;
-										sidebarGotoTab = 'history';
-									}}
-								/>
+								details={commitDetails}
+								{repoPath}
+								onhistoryfile={(p: string) => {
+									historyFilePath = p;
+									historyRevision++;
+									sidebarGotoTab = 'history';
+								}}
+							/>
 						{:else}
-							<div class="flex items-center justify-center h-full text-sm text-gray-500">
+							<div
+								class="flex items-center justify-center h-full text-sm text-gray-500"
+								role="alert"
+							>
 								Failed to load commit details
 							</div>
 						{/if}
@@ -452,4 +496,5 @@
 		</div>
 	{/if}
 	<ToastContainer />
+	<div class="sr-only" aria-live="polite" role="status" id="a11y-announcer"></div>
 </div>

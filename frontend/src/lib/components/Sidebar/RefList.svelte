@@ -41,16 +41,18 @@
 				{#each branches as branch (branch.name)}
 					<button
 						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800"
+						aria-label="Branch {branch.name}{branch.is_head ? ' (current)' : ''}"
 						onclick={() => onbranchselect?.(branch.name)}
 					>
 						{#if branch.is_head}
-							<span class="text-green-400">*</span>
+							<span class="text-green-400" aria-hidden="true">*</span>
 						{:else}
 							<svg
 								class="h-3 w-3 text-gray-500"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"
+								aria-hidden="true"
 							>
 								<path
 									stroke-linecap="round"

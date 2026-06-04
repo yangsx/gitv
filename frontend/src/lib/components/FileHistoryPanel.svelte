@@ -70,6 +70,7 @@
 			{#each entries as entry (entry.commit_oid)}
 				<button
 					class="w-full border-b border-gray-800 px-3 py-1.5 text-left hover:bg-gray-800/50"
+					aria-label="{entry.summary} by {entry.author.name}, {entry.commit_oid.slice(0, 8)}"
 					onclick={() => onenterselect?.(entry.commit_oid)}
 				>
 					<div class="flex items-center gap-2">

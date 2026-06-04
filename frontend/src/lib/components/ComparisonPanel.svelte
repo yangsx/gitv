@@ -89,11 +89,19 @@
 
 <div class="flex h-full">
 	{#if loading}
-		<div class="flex items-center justify-center w-full text-sm text-gray-500">
+		<div
+			class="flex items-center justify-center w-full text-sm text-gray-500"
+			role="status"
+			aria-live="polite"
+		>
 			Loading comparison...
 		</div>
 	{:else if summary}
-		<div class="w-64 shrink-0 overflow-y-auto border-r border-gray-700 bg-gray-900/50">
+		<div
+			class="w-64 shrink-0 overflow-y-auto border-r border-gray-700 bg-gray-900/50"
+			role="list"
+			aria-label="Changed files"
+		>
 			<div class="border-b border-gray-700 px-3 py-2">
 				<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
 					{summary.stats.files_changed} files changed
@@ -107,6 +115,8 @@
 					file.path
 						? 'bg-gray-800'
 						: ''}"
+					aria-label="{file.path}, {file.change_type}"
+					aria-pressed={selectedFile === file.path}
 					onclick={() => loadFileDiff(file.path)}
 				>
 					<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
@@ -170,13 +180,13 @@
 					{/if}
 				{/if}
 			{:else}
-				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
+				<div class="flex items-center justify-center py-8 text-sm text-gray-500" role="status">
 					Select a file to view diff
 				</div>
 			{/if}
 		</div>
 	{:else}
-		<div class="flex items-center justify-center w-full text-sm text-gray-500">
+		<div class="flex items-center justify-center w-full text-sm text-gray-500" role="alert">
 			Failed to load comparison
 		</div>
 	{/if}

@@ -48,11 +48,12 @@
 		{#each stashes as stash (stash.index)}
 			<button
 				class="w-full rounded px-2 py-1.5 text-left hover:bg-gray-800"
+				aria-label="stash@{stash.index}: {stash.message}"
 				onclick={() => onstashselect?.(stash.index)}
 			>
 				<div class="flex items-center gap-1">
-					<span class="text-yellow-400">
-						<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+					<span class="text-yellow-400" aria-hidden="true">
+						<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
 							<path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
 						</svg>
 					</span>

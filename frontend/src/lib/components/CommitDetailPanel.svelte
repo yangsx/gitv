@@ -1,6 +1,11 @@
 <script lang="ts">
 	import type { CommitDetails, FileDiff, FileTreeNode } from '$lib/bindings/types';
-	import { getFileDiff, getFileTree, getBlobContent, getWorkingChangesDiffs } from '$lib/bindings/commands';
+	import {
+		getFileDiff,
+		getFileTree,
+		getBlobContent,
+		getWorkingChangesDiffs
+	} from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
 	import BlamePanel from './BlamePanel.svelte';
@@ -168,16 +173,26 @@
 </script>
 
 <div class="flex h-full">
-	<div class="flex-1 flex flex-col overflow-hidden bg-gray-900">
-		<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-1.5 shrink-0">
+	<div
+		class="flex-1 flex flex-col overflow-hidden bg-gray-900"
+		role="region"
+		aria-label="Diff viewer"
+	>
+		<div
+			class="flex items-center gap-2 border-b border-gray-700 px-4 py-1.5 shrink-0"
+			role="toolbar"
+			aria-label="Diff controls"
+		>
 			<button
 				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
 				onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
+				aria-label="Toggle diff view mode: {viewMode === 'unified' ? 'unified' : 'side by side'}"
 			>
 				{viewMode === 'unified' ? 'Unified' : 'Side by Side'}
 			</button>
 			<select
 				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+				aria-label="Diff mode"
 				bind:value={diffMode}
 				onchange={loadAllDiffs}
 			>
@@ -188,6 +203,7 @@
 			{#if diffMode !== 'stat-only'}
 				<select
 					class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+					aria-label="Whitespace mode"
 					bind:value={whitespaceMode}
 					onchange={loadAllDiffs}
 				>
@@ -198,7 +214,7 @@
 				</select>
 			{/if}
 			{#if activeTab === 'patch'}
-				<span class="ml-auto text-xs text-gray-500">
+				<span class="ml-auto text-xs text-gray-500" role="status">
 					{details.changed_files.length} file{details.changed_files.length !== 1 ? 's' : ''} changed
 				</span>
 			{/if}
@@ -209,6 +225,7 @@
 				<h3 class="font-mono text-sm text-gray-300">{blobPath}</h3>
 				<button
 					class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+					aria-label="Open blame view for {blobPath}"
 					onclick={() => openBlame(blobPath!)}
 				>
 					Blame
@@ -231,8 +248,16 @@
 				{#if details.info.oid === '__staged__' || details.info.oid === '__unstaged__'}
 					<div class="px-4 py-3 border-b border-gray-800">
 						<div class="flex items-center gap-2 text-sm">
-							<span class="inline-block h-2 w-2 rounded-full {details.info.oid === '__staged__' ? 'bg-green-400' : 'bg-orange-400'}"></span>
-							<span class="font-medium {details.info.oid === '__staged__' ? 'text-green-300' : 'text-orange-300'}">
+							<span
+								class="inline-block h-2 w-2 rounded-full {details.info.oid === '__staged__'
+									? 'bg-green-400'
+									: 'bg-orange-400'}"
+							></span>
+							<span
+								class="font-medium {details.info.oid === '__staged__'
+									? 'text-green-300'
+									: 'text-orange-300'}"
+							>
 								{details.info.summary}
 							</span>
 							<span class="text-xs text-gray-500">
@@ -241,51 +266,51 @@
 						</div>
 					</div>
 				{:else}
-				<div class="px-4 py-3 border-b border-gray-800">
-					<div class="flex items-baseline gap-3 text-sm">
-						<span class="font-mono text-gray-500">commit {details.info.oid.substring(0, 7)}</span>
-					{#each details.info.refs as r}
-						{#if r.Branch?.is_head}
-							<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
-								{r.Branch.name}
-							</span>
-						{/if}
-						{#if r.Tag}
-							<span class="rounded bg-yellow-700/50 px-1.5 py-0.5 text-xs text-yellow-300">
-								{r.Tag.name}
-							</span>
-						{/if}
-					{/each}
-					</div>
-					<div class="mt-1 text-xs text-gray-400">
-						Author: {details.info.author.name}
-						<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
-					</div>
-					<div class="text-xs text-gray-400">
-						Date: {formatTime(details.info.author_time)}
-					</div>
-					{#if details.info.committer.name !== details.info.author.name}
-						<div class="text-xs text-gray-400">
-							Committer: {details.info.committer.name}
-							<span class="text-gray-600">&lt;{details.info.committer.email}&gt;</span>
-						</div>
-					{/if}
-					{#if details.info.parent_oids.length > 0}
-						<div class="text-xs text-gray-500">
-							Parent{details.info.parent_oids.length > 1 ? 's' : ''}:
-							{#each details.info.parent_oids as p, i}
-								<span class="font-mono">{formatParent(p)}</span>{i <
-								details.info.parent_oids.length - 1
-									? ', '
-									: ''}
+					<div class="px-4 py-3 border-b border-gray-800">
+						<div class="flex items-baseline gap-3 text-sm">
+							<span class="font-mono text-gray-500">commit {details.info.oid.substring(0, 7)}</span>
+							{#each details.info.refs as r}
+								{#if r.Branch?.is_head}
+									<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
+										{r.Branch.name}
+									</span>
+								{/if}
+								{#if r.Tag}
+									<span class="rounded bg-yellow-700/50 px-1.5 py-0.5 text-xs text-yellow-300">
+										{r.Tag.name}
+									</span>
+								{/if}
 							{/each}
 						</div>
-					{/if}
-					<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{details.info.summary}</div>
-					{#if details.body}
-						<pre class="mt-1 text-sm text-gray-400 whitespace-pre-wrap">{details.body}</pre>
-					{/if}
-				</div>
+						<div class="mt-1 text-xs text-gray-400">
+							Author: {details.info.author.name}
+							<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
+						</div>
+						<div class="text-xs text-gray-400">
+							Date: {formatTime(details.info.author_time)}
+						</div>
+						{#if details.info.committer.name !== details.info.author.name}
+							<div class="text-xs text-gray-400">
+								Committer: {details.info.committer.name}
+								<span class="text-gray-600">&lt;{details.info.committer.email}&gt;</span>
+							</div>
+						{/if}
+						{#if details.info.parent_oids.length > 0}
+							<div class="text-xs text-gray-500">
+								Parent{details.info.parent_oids.length > 1 ? 's' : ''}:
+								{#each details.info.parent_oids as p, i}
+									<span class="font-mono">{formatParent(p)}</span>{i <
+									details.info.parent_oids.length - 1
+										? ', '
+										: ''}
+								{/each}
+							</div>
+						{/if}
+						<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{details.info.summary}</div>
+						{#if details.body}
+							<pre class="mt-1 text-sm text-gray-400 whitespace-pre-wrap">{details.body}</pre>
+						{/if}
+					</div>
 				{/if}
 
 				{#if diffsLoading}
@@ -321,6 +346,7 @@
 								{/if}
 								<button
 									class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+									aria-label="Open blame view for {file.path}"
 									onclick={() => openBlame(file.path)}
 								>
 									Blame
@@ -383,9 +409,13 @@
 	<div
 		class="shrink-0 flex flex-col border-l border-gray-700 bg-gray-900/50 overflow-hidden"
 		style="width: {rightPanelWidth}px;"
+		role="region"
+		aria-label="File list"
 	>
-		<div class="flex border-b border-gray-700 shrink-0">
+		<div class="flex border-b border-gray-700 shrink-0" role="tablist" aria-label="File list tabs">
 			<button
+				role="tab"
+				aria-selected={activeTab === 'patch'}
 				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
 				'patch'
 					? 'text-gray-200 border-b-2 border-blue-500'
@@ -395,6 +425,8 @@
 				Patch
 			</button>
 			<button
+				role="tab"
+				aria-selected={activeTab === 'tree'}
 				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
 				'tree'
 					? 'text-gray-200 border-b-2 border-blue-500'
@@ -409,6 +441,7 @@
 			{#if activeTab === 'patch'}
 				<button
 					class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
+					aria-label="Scroll to commit comments"
 					onclick={scrollToComments}
 				>
 					<span class="flex-1 text-gray-400">Comments</span>
@@ -416,6 +449,8 @@
 				{#each details.changed_files as file, i (file.path)}
 					<button
 						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
+						aria-label="{file.path}, {CHANGE_LETTERS[file.change_type] ??
+							'?'}, {file.additions} additions, {file.deletions} deletions"
 						onclick={() => scrollToId(fileHeaderId(i))}
 					>
 						<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">

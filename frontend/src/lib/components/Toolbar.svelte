@@ -14,15 +14,23 @@
 	}
 </script>
 
-<div class="flex items-center gap-1">
+<div class="flex items-center gap-1" role="toolbar" aria-label="Graph controls">
 	<button
 		class="rounded px-2 py-1 text-xs transition-colors {$graphColorMode === 'by-author'
 			? 'bg-blue-700/50 text-blue-300'
 			: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
 		onclick={toggleColorMode}
 		title="Toggle color by author"
+		aria-label="Toggle color by author"
+		aria-pressed={$graphColorMode === 'by-author'}
 	>
-		<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+		<svg
+			class="h-3.5 w-3.5"
+			fill="none"
+			viewBox="0 0 24 24"
+			stroke="currentColor"
+			aria-hidden="true"
+		>
 			<path
 				stroke-linecap="round"
 				stroke-linejoin="round"
@@ -38,8 +46,16 @@
 			: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
 		onclick={toggleHideMerges}
 		title="Toggle hide merge commits"
+		aria-label="Toggle hide merge commits"
+		aria-pressed={$graphHideMerges}
 	>
-		<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+		<svg
+			class="h-3.5 w-3.5"
+			fill="none"
+			viewBox="0 0 24 24"
+			stroke="currentColor"
+			aria-hidden="true"
+		>
 			<path
 				stroke-linecap="round"
 				stroke-linejoin="round"
@@ -55,8 +71,16 @@
 			: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
 		onclick={toggleOrientation}
 		title="Toggle graph orientation"
+		aria-label="Toggle graph orientation"
+		aria-pressed={$graphOrientation === 'bottom-to-top'}
 	>
-		<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+		<svg
+			class="h-3.5 w-3.5"
+			fill="none"
+			viewBox="0 0 24 24"
+			stroke="currentColor"
+			aria-hidden="true"
+		>
 			<path
 				stroke-linecap="round"
 				stroke-linejoin="round"

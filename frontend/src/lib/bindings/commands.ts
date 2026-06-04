@@ -105,7 +105,11 @@ export async function getFileHistory(
 	});
 }
 
-export async function getBlobContent(path: string, atCommit: string, filePath: string): Promise<string> {
+export async function getBlobContent(
+	path: string,
+	atCommit: string,
+	filePath: string
+): Promise<string> {
 	return invoke<string>('get_blob_content', { path, atCommit, filePath });
 }
 
