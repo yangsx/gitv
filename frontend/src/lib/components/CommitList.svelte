@@ -63,10 +63,12 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (!orderedCommits.length) return;
 		const currentIdx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+		const lastIdx = orderedCommits.length - 1;
+		const pageSize = Math.max(1, Math.floor(containerHeight / rowHeight));
 
 		if (e.key === 'ArrowDown' || e.key === 'j') {
 			e.preventDefault();
-			const next = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, orderedCommits.length - 1);
+			const next = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, lastIdx);
 			onSelect(orderedCommits[next].oid, false);
 			scrollToIndex(next);
 		} else if (e.key === 'ArrowUp' || e.key === 'k') {
@@ -74,6 +76,24 @@
 			const prev = currentIdx < 0 ? 0 : Math.max(currentIdx - 1, 0);
 			onSelect(orderedCommits[prev].oid, false);
 			scrollToIndex(prev);
+		} else if (e.key === 'PageDown') {
+			e.preventDefault();
+			const next = currentIdx < 0 ? pageSize : Math.min(currentIdx + pageSize, lastIdx);
+			onSelect(orderedCommits[next].oid, false);
+			scrollToIndex(next);
+		} else if (e.key === 'PageUp') {
+			e.preventDefault();
+			const prev = currentIdx < 0 ? 0 : Math.max(currentIdx - pageSize, 0);
+			onSelect(orderedCommits[prev].oid, false);
+			scrollToIndex(prev);
+		} else if (e.key === 'Home') {
+			e.preventDefault();
+			onSelect(orderedCommits[0].oid, false);
+			scrollToIndex(0);
+		} else if (e.key === 'End') {
+			e.preventDefault();
+			onSelect(orderedCommits[lastIdx].oid, false);
+			scrollToIndex(lastIdx);
 		}
 	}
 

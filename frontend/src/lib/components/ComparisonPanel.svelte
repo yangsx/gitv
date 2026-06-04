@@ -110,28 +110,30 @@
 				</h3>
 			</div>
 			{#each summary.files as file (file.path)}
-				<button
-					class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70 {selectedFile ===
-					file.path
-						? 'bg-gray-800'
-						: ''}"
-					aria-label="{file.path}, {file.change_type}"
-					aria-pressed={selectedFile === file.path}
-					onclick={() => loadFileDiff(file.path)}
-				>
-					<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
-						{file.change_type[0]}
-					</span>
-					<span class="flex-1 truncate font-mono text-gray-300">{file.path}</span>
-					{#if !file.is_binary}
-						<span class="shrink-0 font-mono text-[10px]">
-							<span class="text-green-500">{file.additions > 0 ? '+' + file.additions : ''}</span>
-							<span class="text-red-500">{file.deletions > 0 ? '-' + file.deletions : ''}</span>
+				<div role="listitem">
+					<button
+						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70 {selectedFile ===
+						file.path
+							? 'bg-gray-800'
+							: ''}"
+						aria-label="{file.path}, {file.change_type}"
+						aria-pressed={selectedFile === file.path}
+						onclick={() => loadFileDiff(file.path)}
+					>
+						<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
+							{file.change_type[0]}
 						</span>
-					{:else}
-						<span class="text-[10px] text-gray-500">binary</span>
-					{/if}
-				</button>
+						<span class="flex-1 truncate font-mono text-gray-300">{file.path}</span>
+						{#if !file.is_binary}
+							<span class="shrink-0 font-mono text-[10px]">
+								<span class="text-green-500">{file.additions > 0 ? '+' + file.additions : ''}</span>
+								<span class="text-red-500">{file.deletions > 0 ? '-' + file.deletions : ''}</span>
+							</span>
+						{:else}
+							<span class="text-[10px] text-gray-500">binary</span>
+						{/if}
+					</button>
+				</div>
 			{/each}
 		</div>
 

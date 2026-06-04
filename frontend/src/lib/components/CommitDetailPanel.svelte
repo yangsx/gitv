@@ -416,6 +416,7 @@
 			<button
 				role="tab"
 				aria-selected={activeTab === 'patch'}
+				aria-controls="file-list-panel"
 				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
 				'patch'
 					? 'text-gray-200 border-b-2 border-blue-500'
@@ -427,6 +428,7 @@
 			<button
 				role="tab"
 				aria-selected={activeTab === 'tree'}
+				aria-controls="file-list-panel"
 				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
 				'tree'
 					? 'text-gray-200 border-b-2 border-blue-500'
@@ -437,7 +439,7 @@
 			</button>
 		</div>
 
-		<div class="flex-1 overflow-y-auto">
+		<div id="file-list-panel" role="tabpanel" class="flex-1 overflow-y-auto">
 			{#if activeTab === 'patch'}
 				<button
 					class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
