@@ -77,7 +77,7 @@
 		<div class="text-gray-500 italic">No reflog entries</div>
 	{:else}
 		<div class="space-y-0.5">
-			{#each filteredEntries.slice(0, 100) as entry (entry.oid + entry.message)}
+			{#each filteredEntries.slice(0, 100) as entry, i (entry.oid + '-' + i)}
 				<button
 					class="w-full rounded px-1.5 py-1 text-left hover:bg-gray-800"
 					onclick={() => onentryselect?.(entry.oid)}

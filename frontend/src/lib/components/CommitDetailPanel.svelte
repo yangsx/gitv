@@ -34,6 +34,7 @@
 		fileTree = null;
 		activeTab = 'changes';
 		historyFilePath = null;
+		blameFilePath = null;
 	});
 
 	const CHANGE_COLORS: Record<string, string> = {
