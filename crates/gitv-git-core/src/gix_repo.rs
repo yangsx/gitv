@@ -200,7 +200,8 @@ impl Repository for GixRepository {
         to: Oid,
         whitespace: WhitespaceMode,
     ) -> Result<DiffSummary, DiffError> {
-        let _ = &whitespace;
+        // TODO: whitespace filtering on line counts requires re-counting per file
+        let _ = whitespace;
         let repo = self.thread_local();
         let to_tree = tree_for_oid(&repo, to)?;
         let from_tree = from.map(|oid| tree_for_oid(&repo, oid)).transpose()?;
@@ -897,93 +898,87 @@ fn filter_whitespace_hunks<F>(hunks: Vec<Hunk>, is_same: F) -> Vec<Hunk>
 where
     F: Fn(&str, &str) -> bool,
 {
+    fn flush_pending(
+        kept: &mut Vec<DiffLine>,
+        additions: &mut Vec<DiffLine>,
+        deletions: &mut Vec<DiffLine>,
+        is_same: &dyn Fn(&str, &str) -> bool,
+    ) {
+        if additions.is_empty() && deletions.is_empty() {
+            return;
+        }
+        if !additions.is_empty() && !deletions.is_empty() {
+            let del_content: String = deletions
+                .iter()
+                .filter_map(|l| match l {
+                    DiffLine::Deletion { content, .. } => Some(content.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let add_content: String = additions
+                .iter()
+                .filter_map(|l| match l {
+                    DiffLine::Addition { content, .. } => Some(content.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            if is_same(&del_content, &add_content) {
+                additions.clear();
+                deletions.clear();
+                return;
+            }
+        }
+        kept.append(deletions);
+        kept.append(additions);
+    }
+
     let mut result = Vec::new();
     for hunk in hunks {
         let mut kept = Vec::new();
-        let mut additions = Vec::new();
-        let mut deletions = Vec::new();
+        let mut additions: Vec<DiffLine> = Vec::new();
+        let mut deletions: Vec<DiffLine> = Vec::new();
 
         for line in hunk.lines {
             match &line {
-                DiffLine::Addition { content, new_line } => {
-                    additions.push(line.clone());
-                    let _ = (content, new_line);
+                DiffLine::Addition { .. } => {
+                    additions.push(line);
                 }
-                DiffLine::Deletion { content, old_line } => {
-                    deletions.push(line.clone());
-                    let _ = (content, old_line);
+                DiffLine::Deletion { .. } => {
+                    deletions.push(line);
                 }
                 DiffLine::Context { .. } | DiffLine::WordDiff { .. } => {
-                    if !additions.is_empty() && !deletions.is_empty() {
-                        let del_content: Vec<&str> = deletions
-                            .iter()
-                            .map(|l| match l {
-                                DiffLine::Deletion { content, .. } => content.as_str(),
-                                _ => "",
-                            })
-                            .collect();
-                        let add_content: Vec<&str> = additions
-                            .iter()
-                            .map(|l| match l {
-                                DiffLine::Addition { content, .. } => content.as_str(),
-                                _ => "",
-                            })
-                            .collect();
-                        if !is_same(&del_content.join("\n"), &add_content.join("\n")) {
-                            kept.extend(deletions.clone());
-                            kept.extend(additions.clone());
-                        }
-                    } else {
-                        kept.extend(additions.clone());
-                        kept.extend(deletions.clone());
-                    }
-                    additions.clear();
-                    deletions.clear();
+                    flush_pending(&mut kept, &mut additions, &mut deletions, &is_same);
                     kept.push(line);
                 }
             }
         }
-        if !additions.is_empty() && !deletions.is_empty() {
-            let del_content: Vec<&str> = deletions
-                .iter()
-                .map(|l| match l {
-                    DiffLine::Deletion { content, .. } => content.as_str(),
-                    _ => "",
-                })
-                .collect();
-            let add_content: Vec<&str> = additions
-                .iter()
-                .map(|l| match l {
-                    DiffLine::Addition { content, .. } => content.as_str(),
-                    _ => "",
-                })
-                .collect();
-            if !is_same(&del_content.join("\n"), &add_content.join("\n")) {
-                kept.extend(deletions);
-                kept.extend(additions);
-            }
-        } else {
-            kept.extend(additions);
-            kept.extend(deletions);
-        }
+        flush_pending(&mut kept, &mut additions, &mut deletions, &is_same);
 
         if !kept.is_empty() {
-            result.push(Hunk {
-                old_start: hunk.old_start,
-                old_count: kept
-                    .iter()
-                    .filter(|l| matches!(l, DiffLine::Deletion { .. }))
-                    .count(),
-                new_start: hunk.new_start,
-                new_count: kept
-                    .iter()
-                    .filter(|l| matches!(l, DiffLine::Addition { .. }))
-                    .count(),
-                lines: kept,
-            });
+            result.push(rebuild_hunk(hunk.old_start, hunk.new_start, kept));
         }
     }
     result
+}
+
+fn rebuild_hunk(old_start: usize, new_start: usize, lines: Vec<DiffLine>) -> Hunk {
+    let old_count = lines
+        .iter()
+        .filter(|l| matches!(l, DiffLine::Deletion { .. } | DiffLine::Context { .. }))
+        .count();
+    let new_count = lines
+        .iter()
+        .filter(|l| matches!(l, DiffLine::Addition { .. } | DiffLine::Context { .. }))
+        .count();
+    Hunk {
+        old_start,
+        old_count,
+        new_start,
+        new_count,
+        lines,
+    }
 }
 
 fn filter_blank_line_hunks(hunks: Vec<Hunk>) -> Vec<Hunk> {
@@ -999,19 +994,7 @@ fn filter_blank_line_hunks(hunks: Vec<Hunk>) -> Vec<Hunk> {
             })
             .collect();
         if !kept.is_empty() {
-            result.push(Hunk {
-                old_start: hunk.old_start,
-                old_count: kept
-                    .iter()
-                    .filter(|l| matches!(l, DiffLine::Deletion { .. }))
-                    .count(),
-                new_start: hunk.new_start,
-                new_count: kept
-                    .iter()
-                    .filter(|l| matches!(l, DiffLine::Addition { .. }))
-                    .count(),
-                lines: kept,
-            });
+            result.push(rebuild_hunk(hunk.old_start, hunk.new_start, kept));
         }
     }
     result
@@ -1199,7 +1182,11 @@ fn compute_word_segments(old: &str, new: &str) -> Vec<WordDiffSegment> {
     merge_adjacent_segments(segments)
 }
 
-fn find_in_range(words: &[String], mut range: std::ops::Range<usize>, target: &str) -> Option<usize> {
+fn find_in_range(
+    words: &[String],
+    mut range: std::ops::Range<usize>,
+    target: &str,
+) -> Option<usize> {
     range.find(|&i| i < words.len() && words[i] == target)
 }
 
@@ -1276,30 +1263,13 @@ fn build_file_tree(
                 let child = build_file_tree(repo, &sub_tree, path.clone())?;
                 children.push(child);
             }
-            gix_object::tree::EntryKind::Blob => {
-                let size = repo
-                    .find_object(entry.oid())
-                    .ok()
-                    .map(|obj| obj.data.as_slice().len() as u64);
+            gix_object::tree::EntryKind::Blob | gix_object::tree::EntryKind::BlobExecutable => {
                 children.push(FileTreeNode {
                     name,
                     path,
                     node_type: FileNodeType::File,
                     children: Vec::new(),
-                    size,
-                });
-            }
-            gix_object::tree::EntryKind::BlobExecutable => {
-                let size = repo
-                    .find_object(entry.oid())
-                    .ok()
-                    .map(|obj| obj.data.as_slice().len() as u64);
-                children.push(FileTreeNode {
-                    name,
-                    path,
-                    node_type: FileNodeType::File,
-                    children: Vec::new(),
-                    size,
+                    size: None,
                 });
             }
             gix_object::tree::EntryKind::Link => {
