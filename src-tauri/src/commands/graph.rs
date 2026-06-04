@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[tauri::command]
-pub async fn get_graph_layout(
+pub fn get_graph_layout(
     path: String,
     hide_merges: Option<bool>,
     orientation: Option<String>,

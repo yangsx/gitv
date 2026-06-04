@@ -5,7 +5,10 @@ use std::path::PathBuf;
 use tauri::Emitter;
 
 #[tauri::command]
-pub async fn get_commits(path: String, filter: Option<CommitFilter>) -> Result<Vec<gitv_git_core::models::CommitInfo>, String> {
+pub fn get_commits(
+    path: String,
+    filter: Option<CommitFilter>,
+) -> Result<Vec<gitv_git_core::models::CommitInfo>, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
     let commit_filter = filter.unwrap_or_default();
@@ -25,7 +28,7 @@ pub async fn get_commits(path: String, filter: Option<CommitFilter>) -> Result<V
 }
 
 #[tauri::command]
-pub async fn stream_commits(
+pub fn stream_commits(
     path: String,
     filter: Option<CommitFilter>,
     window: tauri::Window,
@@ -45,9 +48,8 @@ pub async fn stream_commits(
                     batch_index,
                     has_more: stream.has_more(),
                 };
-                let encoded = postcard::to_allocvec(&payload).map_err(|e| e.to_string())?;
                 window
-                    .emit("commit-batch", encoded)
+                    .emit("commit-batch", payload)
                     .map_err(|e| e.to_string())?;
                 batch_index += 1;
             }
