@@ -2,8 +2,10 @@ use gitv_git_core::gix_repo::GixRepository;
 use gitv_git_core::models::Oid;
 use gitv_git_core::repository::Repository;
 use std::path::PathBuf;
+use tracing::instrument;
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_reflog"))]
 pub fn get_reflog(
     path: String,
     ref_name: Option<String>,
@@ -14,6 +16,7 @@ pub fn get_reflog(
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_stash_list"))]
 pub fn get_stash_list(path: String) -> Result<Vec<gitv_git_core::models::StashEntry>, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
@@ -21,6 +24,7 @@ pub fn get_stash_list(path: String) -> Result<Vec<gitv_git_core::models::StashEn
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_stash_diff"))]
 pub fn get_stash_diff(
     path: String,
     stash_index: usize,
@@ -31,6 +35,7 @@ pub fn get_stash_diff(
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_stash_split_diff"))]
 pub fn get_stash_split_diff(
     path: String,
     stash_index: usize,
@@ -42,6 +47,7 @@ pub fn get_stash_split_diff(
 }
 
 #[tauri::command]
+#[instrument(skip(path, file_path), fields(command = "get_blame"))]
 pub fn get_blame(
     path: String,
     file_path: String,

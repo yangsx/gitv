@@ -1,4 +1,5 @@
 pub mod commits;
+pub mod diagnostics;
 pub mod diff;
 pub mod graph;
 pub mod reflog_stash;

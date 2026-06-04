@@ -41,6 +41,8 @@
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import { showToast } from '$lib/stores/toast';
+	import { toggleDebug, tickFps, updateDebugGraphStats, updateDebugCommitCounts } from '$lib/stores/debug';
+	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -75,9 +77,18 @@
 		}
 		window.addEventListener('resize', onResize);
 		window.addEventListener('keydown', handleKeydown);
+
+		let fpsRafId = 0;
+		function fpsLoop() {
+			tickFps();
+			fpsRafId = requestAnimationFrame(fpsLoop);
+		}
+		fpsRafId = requestAnimationFrame(fpsLoop);
+
 		return () => {
 			window.removeEventListener('resize', onResize);
 			window.removeEventListener('keydown', handleKeydown);
+			cancelAnimationFrame(fpsRafId);
 		};
 	});
 
@@ -248,6 +259,17 @@
 		if ($repoInfo && layoutLoaded) reloadLayout();
 	});
 
+	$effect(() => {
+		if (graphLayout) {
+			updateDebugGraphStats(
+				graphLayout.nodes.length,
+				graphLayout.edges.length,
+				graphLayout.stash_markers.length,
+				graphLayout.total_columns
+			);
+		}
+	});
+
 	async function onSelectCommit(oid: string, ctrlKey = false) {
 		if (ctrlKey && $selectedOid && $selectedOid !== oid) {
 			comparisonOid.set(oid);
@@ -299,6 +321,11 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'F12' || (e.key === 'D' && e.ctrlKey && e.shiftKey)) {
+			e.preventDefault();
+			toggleDebug();
+			return;
+		}
 		if (e.key === 'Escape') {
 			comparisonOid.set(null);
 			return;
@@ -496,5 +523,6 @@
 		</div>
 	{/if}
 	<ToastContainer />
+	<DebugOverlay />
 	<div class="sr-only" aria-live="polite" role="status" id="a11y-announcer"></div>
 </div>

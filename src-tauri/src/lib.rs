@@ -1,8 +1,53 @@
 mod commands;
 mod state;
 
+use std::path::PathBuf;
+
+fn init_tracing() {
+    let log_dir = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("gitv")
+        .join("logs");
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .max_log_files(3)
+        .filename_prefix("gitv")
+        .filename_suffix("log")
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .build(log_dir)
+        .expect("failed to create log file appender");
+
+    let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    Box::leak(Box::new(guard));
+
+    let default_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "info"
+    };
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_env_var("GITV_LOG")
+        .from_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
+
+    use tracing_subscriber::util::SubscriberInitExt;
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(file_writer)
+        .with_ansi(false)
+        .json()
+        .finish();
+    if subscriber.try_init().is_err() {
+        eprintln!("gitv: tracing subscriber already initialized");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_tracing();
+    commands::diagnostics::install_panic_hook(env!("CARGO_PKG_VERSION"));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(state::AppState::new())
@@ -30,6 +75,8 @@ pub fn run() {
             commands::saved_searches::save_search,
             commands::saved_searches::list_saved_searches,
             commands::saved_searches::delete_saved_search,
+            commands::diagnostics::log_frontend_error,
+            commands::diagnostics::log_frontend_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

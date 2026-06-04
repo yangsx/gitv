@@ -3,8 +3,10 @@ use gitv_git_core::models::RepositoryInfo;
 use gitv_git_core::repository;
 use gitv_git_core::repository::Repository;
 use std::path::PathBuf;
+use tracing::instrument;
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "open_repository"))]
 pub fn open_repository(path: String) -> Result<RepositoryInfo, String> {
     let repo_path = PathBuf::from(&path);
     let repo = repository::open(&repo_path).map_err(|e| e.to_string())?;
@@ -12,6 +14,7 @@ pub fn open_repository(path: String) -> Result<RepositoryInfo, String> {
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_refs"))]
 pub fn get_refs(path: String) -> Result<Vec<gitv_git_core::models::Ref>, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
@@ -19,6 +22,7 @@ pub fn get_refs(path: String) -> Result<Vec<gitv_git_core::models::Ref>, String>
 }
 
 #[tauri::command]
+#[instrument(fields(command = "get_recent_repositories"))]
 pub fn get_recent_repositories() -> Result<Vec<gitv_git_core::models::RecentRepository>, String> {
     Ok(Vec::new())
 }

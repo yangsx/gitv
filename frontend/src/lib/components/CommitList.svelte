@@ -26,6 +26,8 @@
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
 	let containerHeight = $state(800);
+	let rafId = 0;
+	let pendingScrollTop = 0;
 
 	const BUFFER = 10;
 
@@ -44,7 +46,13 @@
 
 	function onScroll(e: Event) {
 		const el = e.target as HTMLDivElement;
-		scrollTop = el.scrollTop;
+		pendingScrollTop = el.scrollTop;
+		if (!rafId) {
+			rafId = requestAnimationFrame(() => {
+				scrollTop = pendingScrollTop;
+				rafId = 0;
+			});
+		}
 	}
 
 	function handleResize() {

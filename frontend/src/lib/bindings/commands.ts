@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { recordIpcTiming } from '$lib/stores/debug';
 import type {
 	GraphLayout,
 	RepositoryInfo,
@@ -20,20 +21,30 @@ import type {
 	WorkingChangesDiff
 } from './types';
 
+async function timedInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+	const start = performance.now();
+	try {
+		const result = await timedInvoke<T>(command, args);
+		return result;
+	} finally {
+		recordIpcTiming(command, performance.now() - start);
+	}
+}
+
 export async function openRepository(path: string): Promise<RepositoryInfo> {
-	return invoke<RepositoryInfo>('open_repository', { path });
+	return timedInvoke<RepositoryInfo>('open_repository', { path });
 }
 
 export async function getRefs(path: string): Promise<Ref[]> {
-	return invoke<Ref[]>('get_refs', { path });
+	return timedInvoke<Ref[]>('get_refs', { path });
 }
 
 export async function getRecentRepositories(): Promise<RecentRepository[]> {
-	return invoke<RecentRepository[]>('get_recent_repositories');
+	return timedInvoke<RecentRepository[]>('get_recent_repositories');
 }
 
 export async function getCommits(path: string): Promise<CommitInfo[]> {
-	return invoke<CommitInfo[]>('get_commits', { path, filter: null });
+	return timedInvoke<CommitInfo[]>('get_commits', { path, filter: null });
 }
 
 export async function getGraphLayout(
@@ -44,7 +55,7 @@ export async function getGraphLayout(
 		color_mode?: string;
 	}
 ): Promise<GraphLayout> {
-	return invoke<GraphLayout>('get_graph_layout', {
+	return timedInvoke<GraphLayout>('get_graph_layout', {
 		path,
 		hide_merges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
@@ -53,11 +64,11 @@ export async function getGraphLayout(
 }
 
 export async function searchCommits(path: string, query: SearchQuery): Promise<SearchResult[]> {
-	return invoke<SearchResult[]>('search_commits', { path, query });
+	return timedInvoke<SearchResult[]>('search_commits', { path, query });
 }
 
 export async function getCommitDetails(path: string, oid: string): Promise<CommitDetails> {
-	return invoke<CommitDetails>('get_commit_details', { path, oid });
+	return timedInvoke<CommitDetails>('get_commit_details', { path, oid });
 }
 
 export async function getDiff(
@@ -66,7 +77,7 @@ export async function getDiff(
 	to: string,
 	whitespace?: string
 ): Promise<DiffSummary> {
-	return invoke<DiffSummary>('get_diff', { path, from, to, whitespace: whitespace ?? null });
+	return timedInvoke<DiffSummary>('get_diff', { path, from, to, whitespace: whitespace ?? null });
 }
 
 export async function getFileDiff(
@@ -78,7 +89,7 @@ export async function getFileDiff(
 	whitespace?: string,
 	full?: boolean
 ): Promise<FileDiff> {
-	return invoke<FileDiff>('get_file_diff', {
+	return timedInvoke<FileDiff>('get_file_diff', {
 		path,
 		from,
 		to,
@@ -90,7 +101,7 @@ export async function getFileDiff(
 }
 
 export async function getFileTree(path: string, atCommit?: string | null): Promise<FileTreeNode> {
-	return invoke<FileTreeNode>('get_file_tree', { path, atCommit: atCommit ?? null });
+	return timedInvoke<FileTreeNode>('get_file_tree', { path, atCommit: atCommit ?? null });
 }
 
 export async function getFileHistory(
@@ -98,7 +109,7 @@ export async function getFileHistory(
 	filePath: string,
 	maxCount?: number
 ): Promise<FileHistoryEntry[]> {
-	return invoke<FileHistoryEntry[]>('get_file_history', {
+	return timedInvoke<FileHistoryEntry[]>('get_file_history', {
 		path,
 		filePath,
 		maxCount: maxCount ?? null
@@ -110,43 +121,43 @@ export async function getBlobContent(
 	atCommit: string,
 	filePath: string
 ): Promise<string> {
-	return invoke<string>('get_blob_content', { path, atCommit, filePath });
+	return timedInvoke<string>('get_blob_content', { path, atCommit, filePath });
 }
 
 export async function getReflog(path: string, refName?: string): Promise<ReflogEntry[]> {
-	return invoke<ReflogEntry[]>('get_reflog', { path, refName: refName ?? null });
+	return timedInvoke<ReflogEntry[]>('get_reflog', { path, refName: refName ?? null });
 }
 
 export async function getStashList(path: string): Promise<StashEntry[]> {
-	return invoke<StashEntry[]>('get_stash_list', { path });
+	return timedInvoke<StashEntry[]>('get_stash_list', { path });
 }
 
 export async function getStashDiff(path: string, stashIndex: number): Promise<FileDiff> {
-	return invoke<FileDiff>('get_stash_diff', { path, stashIndex });
+	return timedInvoke<FileDiff>('get_stash_diff', { path, stashIndex });
 }
 
 export async function getStashSplitDiff(path: string, stashIndex: number): Promise<StashSplitDiff> {
-	return invoke<StashSplitDiff>('get_stash_split_diff', { path, stashIndex });
+	return timedInvoke<StashSplitDiff>('get_stash_split_diff', { path, stashIndex });
 }
 
 export async function getBlame(path: string, filePath: string, atCommit?: string): Promise<Blame> {
-	return invoke<Blame>('get_blame', { path, filePath, atCommit: atCommit ?? null });
+	return timedInvoke<Blame>('get_blame', { path, filePath, atCommit: atCommit ?? null });
 }
 
 export async function saveSearch(path: string, name: string, query: string): Promise<SavedSearch> {
-	return invoke<SavedSearch>('save_search', { repoPath: path, name, query });
+	return timedInvoke<SavedSearch>('save_search', { repoPath: path, name, query });
 }
 
 export async function listSavedSearches(path: string): Promise<SavedSearch[]> {
-	return invoke<SavedSearch[]>('list_saved_searches', { repoPath: path });
+	return timedInvoke<SavedSearch[]>('list_saved_searches', { repoPath: path });
 }
 
 export async function deleteSavedSearch(path: string, id: string): Promise<void> {
-	return invoke<void>('delete_saved_search', { repoPath: path, id });
+	return timedInvoke<void>('delete_saved_search', { repoPath: path, id });
 }
 
 export async function getWorkingChanges(path: string): Promise<WorkingChangesDiff> {
-	return invoke<WorkingChangesDiff>('get_working_changes', { path });
+	return timedInvoke<WorkingChangesDiff>('get_working_changes', { path });
 }
 
 export async function getWorkingChangesDiffs(
@@ -155,7 +166,7 @@ export async function getWorkingChangesDiffs(
 	diffMode?: string,
 	whitespace?: string
 ): Promise<FileDiff[]> {
-	return invoke<FileDiff[]>('get_working_changes_diffs', {
+	return timedInvoke<FileDiff[]>('get_working_changes_diffs', {
 		path,
 		staged,
 		diffMode: diffMode ?? null,

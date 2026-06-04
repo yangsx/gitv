@@ -3,8 +3,10 @@ use gitv_git_core::models::{CommitBatch, CommitFilter};
 use gitv_git_core::stream::CommitStream;
 use std::path::PathBuf;
 use tauri::Emitter;
+use tracing::instrument;
 
 #[tauri::command]
+#[instrument(skip(path, filter), fields(command = "get_commits"))]
 pub fn get_commits(
     path: String,
     filter: Option<CommitFilter>,
@@ -28,6 +30,7 @@ pub fn get_commits(
 }
 
 #[tauri::command]
+#[instrument(skip(path, filter, window), fields(command = "stream_commits"))]
 pub fn stream_commits(
     path: String,
     filter: Option<CommitFilter>,

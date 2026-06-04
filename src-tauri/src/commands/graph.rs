@@ -3,8 +3,10 @@ use gitv_git_core::graph::{GraphCalculator, GraphColorMode, GraphOptions, GraphO
 use gitv_git_core::repository::Repository;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tracing::instrument;
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_graph_layout"))]
 pub fn get_graph_layout(
     path: String,
     hide_merges: Option<bool>,

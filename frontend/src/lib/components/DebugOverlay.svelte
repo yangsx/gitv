@@ -1,0 +1,67 @@
+<script lang="ts">
+	import { debug, avgIpcTime, recentIpcTimings } from '$lib/stores/debug';
+	import { operationState } from '$lib/stores/repository';
+
+	let formatMs = (ms: number) => ms.toFixed(1);
+
+	let fpsClass = $derived(
+		$debug.fps < 50 ? 'text-red-400' : $debug.fps < 55 ? 'text-yellow-400' : 'text-green-400'
+	);
+	let ipcColorClass = $derived(
+		$avgIpcTime > 100 ? 'text-red-400' : $avgIpcTime > 50 ? 'text-yellow-400' : ''
+	);
+	let stateClass = $derived($operationState !== 'Idle' ? 'text-yellow-400' : '');
+</script>
+
+{#if $debug.visible}
+	<div
+		class="fixed bottom-4 right-4 z-50 rounded-lg border border-gray-700 bg-gray-950/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
+		role="dialog"
+		aria-label="Debug overlay"
+	>
+		<div class="mb-2 flex items-center justify-between">
+			<span class="text-yellow-400 font-bold">DEBUG</span>
+			<span class="text-gray-500">F12 to close</span>
+		</div>
+
+		<div class="grid grid-cols-2 gap-x-4 gap-y-1">
+			<span class="text-gray-500">FPS</span>
+			<span class={fpsClass}>
+				{$debug.fps}
+			</span>
+
+			<span class="text-gray-500">Commits</span>
+			<span>{$debug.totalCommits} ({$debug.visibleCommits} visible)</span>
+
+			<span class="text-gray-500">Graph</span>
+			<span>{$debug.graphNodes} nodes, {$debug.graphEdges} edges, {$debug.graphColumns} cols</span>
+
+			<span class="text-gray-500">Stashes</span>
+			<span>{$debug.graphStashMarkers}</span>
+
+			<span class="text-gray-500">State</span>
+			<span class={stateClass}>{$operationState}</span>
+
+			<span class="text-gray-500">Avg IPC</span>
+			<span class={ipcColorClass}>
+				{formatMs($avgIpcTime)}ms
+			</span>
+		</div>
+
+		{#if $recentIpcTimings.length > 0}
+			<div class="mt-2 border-t border-gray-800 pt-2">
+				<div class="text-gray-500 mb-1">Recent IPC</div>
+				<div class="max-h-32 overflow-y-auto">
+					{#each $recentIpcTimings as t}
+						<div class="flex justify-between">
+							<span class="truncate max-w-[180px]">{t.command}</span>
+							<span class={t.durationMs > 100 ? 'text-red-400' : t.durationMs > 50 ? 'text-yellow-400' : ''}>
+								{formatMs(t.durationMs)}ms
+							</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	</div>
+{/if}

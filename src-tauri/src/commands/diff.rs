@@ -2,8 +2,10 @@ use gitv_git_core::gix_repo::GixRepository;
 use gitv_git_core::models::{DiffMode, Oid, WhitespaceMode};
 use gitv_git_core::repository::Repository;
 use std::path::PathBuf;
+use tracing::instrument;
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_commit_details"))]
 pub fn get_commit_details(
     path: String,
     oid: String,
@@ -15,6 +17,7 @@ pub fn get_commit_details(
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_diff"))]
 pub fn get_diff(
     path: String,
     from: Option<String>,
@@ -34,6 +37,7 @@ pub fn get_diff(
 }
 
 #[tauri::command]
+#[instrument(skip(path, file_path), fields(command = "get_file_diff"))]
 pub fn get_file_diff(
     path: String,
     from: Option<String>,
@@ -69,6 +73,7 @@ pub fn get_file_diff(
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_file_tree"))]
 pub fn get_file_tree(
     path: String,
     at_commit: Option<String>,
@@ -91,6 +96,7 @@ fn parse_diff_mode(s: Option<&str>) -> DiffMode {
 }
 
 #[tauri::command]
+#[instrument(skip(path, file_path), fields(command = "get_file_history"))]
 pub fn get_file_history(
     path: String,
     file_path: String,
@@ -103,6 +109,7 @@ pub fn get_file_history(
 }
 
 #[tauri::command]
+#[instrument(skip(path, file_path), fields(command = "get_blob_content"))]
 pub fn get_blob_content(
     path: String,
     at_commit: String,
@@ -125,6 +132,7 @@ fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_working_changes"))]
 pub fn get_working_changes(
     path: String,
 ) -> Result<gitv_git_core::models::WorkingChangesDiff, String> {
@@ -134,6 +142,7 @@ pub fn get_working_changes(
 }
 
 #[tauri::command]
+#[instrument(skip(path), fields(command = "get_working_changes_diffs"))]
 pub fn get_working_changes_diffs(
     path: String,
     staged: bool,

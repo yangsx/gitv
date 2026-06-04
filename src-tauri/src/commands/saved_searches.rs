@@ -4,6 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use tracing::instrument;
 
 fn resolve_git_dir(repo_path: &str) -> Result<PathBuf, String> {
     let p = Path::new(repo_path);
@@ -51,6 +52,7 @@ fn generate_id(name: &str) -> String {
 }
 
 #[tauri::command]
+#[instrument(skip(repo_path, name, query), fields(command = "save_search"))]
 pub fn save_search(repo_path: String, name: String, query: String) -> Result<SavedSearch, String> {
     let path = saved_searches_path(&repo_path)?;
     let mut searches = load_searches(&path)?;
@@ -67,12 +69,14 @@ pub fn save_search(repo_path: String, name: String, query: String) -> Result<Sav
 }
 
 #[tauri::command]
+#[instrument(skip(repo_path), fields(command = "list_saved_searches"))]
 pub fn list_saved_searches(repo_path: String) -> Result<Vec<SavedSearch>, String> {
     let path = saved_searches_path(&repo_path)?;
     load_searches(&path)
 }
 
 #[tauri::command]
+#[instrument(skip(repo_path, id), fields(command = "delete_saved_search"))]
 pub fn delete_saved_search(repo_path: String, id: String) -> Result<(), String> {
     let path = saved_searches_path(&repo_path)?;
     let mut searches = load_searches(&path)?;

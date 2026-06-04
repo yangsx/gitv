@@ -20,6 +20,8 @@
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
+	let offscreen: HTMLCanvasElement | null = null;
+	let cachedLayoutKey = '';
 
 	const PADDING_LEFT = 12;
 
@@ -27,12 +29,50 @@
 		return `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(2)})`;
 	}
 
+	function layoutKey(l: GraphLayout): string {
+		return `${l.total_rows}:${l.total_columns}:${l.nodes.length}:${l.edges.length}:${l.stash_markers.length}`;
+	}
+
+	function renderToOffscreen(l: GraphLayout) {
+		const height = l.total_rows * rowHeight;
+		const width = l.total_columns * laneWidth + PADDING_LEFT * 2;
+		if (height <= 0 || width <= 0) return;
+
+		const oc = document.createElement('canvas');
+		oc.width = width * devicePixelRatio;
+		oc.height = height * devicePixelRatio;
+		const ctx = oc.getContext('2d');
+		if (!ctx) return;
+
+		ctx.scale(devicePixelRatio, devicePixelRatio);
+		oc.style.width = `${width}px`;
+		oc.style.height = `${height}px`;
+
+		for (const edge of l.edges) {
+			drawEdge(ctx, edge, 0);
+		}
+		for (const node of l.nodes) {
+			drawNode(ctx, node, 0);
+		}
+		for (const stash of l.stash_markers) {
+			drawStashMarker(ctx, stash, 0);
+		}
+
+		offscreen = oc;
+	}
+
 	$effect(() => {
 		if (!canvas || !layout) return;
-		drawGraph(layout);
+		const key = layoutKey(layout);
+		if (key !== cachedLayoutKey) {
+			cachedLayoutKey = key;
+			renderToOffscreen(layout);
+		}
+		blitVisible(layout);
 	});
 
-	function drawGraph(l: GraphLayout) {
+	function blitVisible(l: GraphLayout) {
+		if (!canvas) return;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
 
@@ -44,9 +84,22 @@
 		canvas.style.width = `${width}px`;
 		canvas.style.height = `${height}px`;
 		ctx.scale(devicePixelRatio, devicePixelRatio);
-
 		ctx.clearRect(0, 0, width, height);
 
+		if (!offscreen) {
+			drawGraph(ctx, l);
+			return;
+		}
+
+		const sy = visibleStart * rowHeight * devicePixelRatio;
+		const sh = height * devicePixelRatio;
+		ctx.save();
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.drawImage(offscreen, 0, sy, offscreen.width, sh, 0, 0, offscreen.width, sh);
+		ctx.restore();
+	}
+
+	function drawGraph(ctx: CanvasRenderingContext2D, l: GraphLayout) {
 		const startRow = visibleStart;
 		const endRow = visibleEnd;
 
@@ -55,12 +108,10 @@
 			if (edge.from_row > endRow && edge.to_row > endRow) continue;
 			drawEdge(ctx, edge, startRow);
 		}
-
 		for (const node of l.nodes) {
 			if (node.row < startRow || node.row > endRow) continue;
 			drawNode(ctx, node, startRow);
 		}
-
 		for (const stash of l.stash_markers) {
 			if (stash.row < startRow || stash.row > endRow) continue;
 			drawStashMarker(ctx, stash, startRow);
