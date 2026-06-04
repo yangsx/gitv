@@ -9,6 +9,8 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 gix = { workspace = true }
 postcard = { workspace = true }
+regex = { workspace = true }
+roaring = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 

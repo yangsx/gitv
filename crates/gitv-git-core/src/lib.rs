@@ -4,4 +4,5 @@ pub mod gix_repo;
 pub mod graph;
 pub mod models;
 pub mod repository;
+pub mod search;
 pub mod stream;

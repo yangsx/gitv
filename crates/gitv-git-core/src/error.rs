@@ -28,6 +28,8 @@ pub enum SearchError {
     InvalidQuery(String),
     #[error("index not built")]
     IndexNotBuilt,
+    #[error("invalid regex: {0}")]
+    InvalidRegex(#[from] regex::Error),
 }
 
 #[derive(Error, Debug)]
