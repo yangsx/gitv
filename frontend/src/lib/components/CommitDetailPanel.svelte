@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CommitDetails, FileDiff, FileTreeNode } from '$lib/bindings/types';
-	import { getFileDiff, getFileTree, getBlobContent } from '$lib/bindings/commands';
+	import { getFileDiff, getFileTree, getBlobContent, getWorkingChangesDiffs } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
 	import BlamePanel from './BlamePanel.svelte';
@@ -64,6 +64,27 @@
 	async function loadAllDiffs() {
 		if (details.changed_files.length === 0) return;
 		diffsLoading = true;
+
+		if (details.info.oid === '__staged__' || details.info.oid === '__unstaged__') {
+			try {
+				const diffs = await getWorkingChangesDiffs(
+					repoPath,
+					details.info.oid === '__staged__',
+					diffMode,
+					whitespaceMode
+				);
+				const map = new Map<string, FileDiff>();
+				for (const diff of diffs) {
+					map.set(diff.path, diff);
+				}
+				fileDiffs = map;
+			} catch {
+				fileDiffs = new Map();
+			}
+			diffsLoading = false;
+			return;
+		}
+
 		const parentOid = details.info.parent_oids[0] ?? null;
 		const promises = details.changed_files.map(async (file) => {
 			try {
@@ -207,6 +228,19 @@
 					Binary file (not displayed)
 				</div>
 			{:else}
+				{#if details.info.oid === '__staged__' || details.info.oid === '__unstaged__'}
+					<div class="px-4 py-3 border-b border-gray-800">
+						<div class="flex items-center gap-2 text-sm">
+							<span class="inline-block h-2 w-2 rounded-full {details.info.oid === '__staged__' ? 'bg-green-400' : 'bg-orange-400'}"></span>
+							<span class="font-medium {details.info.oid === '__staged__' ? 'text-green-300' : 'text-orange-300'}">
+								{details.info.summary}
+							</span>
+							<span class="text-xs text-gray-500">
+								{details.changed_files.length} file{details.changed_files.length !== 1 ? 's' : ''} changed
+							</span>
+						</div>
+					</div>
+				{:else}
 				<div class="px-4 py-3 border-b border-gray-800">
 					<div class="flex items-baseline gap-3 text-sm">
 						<span class="font-mono text-gray-500">commit {details.info.oid.substring(0, 7)}</span>
@@ -252,6 +286,7 @@
 						<pre class="mt-1 text-sm text-gray-400 whitespace-pre-wrap">{details.body}</pre>
 					{/if}
 				</div>
+				{/if}
 
 				{#if diffsLoading}
 					<div class="flex items-center justify-center py-4 text-sm text-gray-500">

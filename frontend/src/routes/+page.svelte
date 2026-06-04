@@ -5,9 +5,10 @@
 		getCommits,
 		getGraphLayout,
 		getCommitDetails,
-		getRefs
+		getRefs,
+		getWorkingChanges
 	} from '$lib/bindings/commands';
-	import type { CommitInfo, GraphLayout, CommitDetails, Ref } from '$lib/bindings/types';
+	import type { CommitInfo, GraphLayout, CommitDetails, Ref, WorkingChangesDiff, FileChange } from '$lib/bindings/types';
 	import {
 		repoInfo,
 		selectedOid,
@@ -45,6 +46,11 @@
 	let historyFilePath = $state<string | null>(null);
 	let historyRevision = $state(0);
 	let sidebarGotoTab = $state<'refs' | 'stash' | 'reflog' | 'history'>('refs');
+	let workingChangesDiff = $state<WorkingChangesDiff | null>(null);
+
+	const STAGED_OID = '__staged__';
+	const UNSTAGED_OID = '__unstaged__';
+	const VIRTUAL_OIDS = new Set([STAGED_OID, UNSTAGED_OID]);
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -112,6 +118,12 @@
 			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
 		}
 
+		try {
+			workingChangesDiff = await getWorkingChanges(path);
+		} catch {
+			workingChangesDiff = null;
+		}
+
 		if (!loadError) {
 			showToast(`${commitCount} commits loaded`, 'info');
 		}
@@ -142,6 +154,68 @@
 
 	let layoutLoaded = $state(false);
 
+	function makeVirtualCommit(oid: string, summary: string, fileCount: number): CommitInfo {
+		return {
+			oid,
+			short_oid: '',
+			message: summary,
+			summary,
+			author: { name: '', email: '' },
+			committer: { name: '', email: '' },
+			author_time: '',
+			commit_time: '',
+			parent_oids: [],
+			refs: []
+		};
+	}
+
+	let displayCommits = $derived.by(() => {
+		if (!workingChangesDiff) return commits;
+		const hasStaged = workingChangesDiff.staged.length > 0;
+		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
+		if (!hasStaged && !hasUnstaged) return commits;
+		const virtuals: CommitInfo[] = [];
+		if (hasUnstaged) virtuals.push(makeVirtualCommit(UNSTAGED_OID, 'Unstaged changes', workingChangesDiff.unstaged.length));
+		if (hasStaged) virtuals.push(makeVirtualCommit(STAGED_OID, 'Staged changes', workingChangesDiff.staged.length));
+		return [...virtuals, ...commits];
+	});
+
+	let displayLayout = $derived.by(() => {
+		if (!graphLayout) return null;
+		if (!workingChangesDiff) return graphLayout;
+		const hasStaged = workingChangesDiff.staged.length > 0;
+		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
+		if (!hasStaged && !hasUnstaged) return graphLayout;
+		const virtualCount = (hasStaged ? 1 : 0) + (hasUnstaged ? 1 : 0);
+		const virtualNodes: import('$lib/bindings/types').NodePosition[] = [];
+		if (hasUnstaged) {
+			virtualNodes.push({
+				oid: UNSTAGED_OID, row: 0, column: 0, is_merge: false,
+				color: { r: 255, g: 255, b: 255, a: 255 },
+				is_dimmed: false, is_highlighted: false
+			});
+		}
+		if (hasStaged) {
+			virtualNodes.push({
+				oid: STAGED_OID, row: hasUnstaged ? 1 : 0, column: 0, is_merge: false,
+				color: { r: 255, g: 255, b: 255, a: 255 },
+				is_dimmed: false, is_highlighted: false
+			});
+		}
+		return {
+			...graphLayout,
+			nodes: [
+				...virtualNodes,
+				...graphLayout.nodes.map(n => ({ ...n, row: n.row + virtualCount }))
+			],
+			edges: graphLayout.edges.map(e => ({
+				...e, from_row: e.from_row + virtualCount, to_row: e.to_row + virtualCount
+			})),
+			stash_markers: graphLayout.stash_markers.map(s => ({ ...s, row: s.row + virtualCount })),
+			total_rows: graphLayout.total_rows + virtualCount
+		};
+	});
+
 	$effect(() => {
 		void $graphColorMode;
 		void $graphHideMerges;
@@ -159,6 +233,35 @@
 		commitDetails = null;
 		detailsLoading = true;
 		operationState.set('LoadingDetails');
+
+		if (VIRTUAL_OIDS.has(oid)) {
+			const files: FileChange[] = oid === STAGED_OID
+				? (workingChangesDiff?.staged ?? [])
+				: (workingChangesDiff?.unstaged ?? []);
+			const label = oid === STAGED_OID ? 'Staged changes' : 'Unstaged changes';
+			commitDetails = {
+				info: {
+					oid,
+					short_oid: '',
+					message: label,
+					summary: label,
+					author: { name: '', email: '' },
+					committer: { name: '', email: '' },
+					author_time: '',
+					commit_time: '',
+					parent_oids: [],
+					refs: []
+				},
+				tree_oid: '',
+				signature: null,
+				changed_files: files,
+				body: null
+			};
+			detailsLoading = false;
+			if ($operationState === 'LoadingDetails') operationState.set('Idle');
+			return;
+		}
+
 		try {
 			commitDetails = await getCommitDetails(repoPath, oid);
 		} catch {
@@ -302,10 +405,10 @@
 			</Sidebar>
 			<div class="flex-1 overflow-hidden flex flex-col">
 				<div class="flex-1 overflow-hidden">
-					{#if graphLayout}
+					{#if displayLayout}
 						<CommitList
-							{commits}
-							layout={graphLayout}
+							commits={displayCommits}
+							layout={displayLayout}
 							selectedOid={$selectedOid}
 							matchingOids={$matchingOids}
 							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}

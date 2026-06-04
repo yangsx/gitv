@@ -16,7 +16,8 @@ import type {
 	StashEntry,
 	StashSplitDiff,
 	Blame,
-	SavedSearch
+	SavedSearch,
+	WorkingChangesDiff
 } from './types';
 
 export async function openRepository(path: string): Promise<RepositoryInfo> {
@@ -138,4 +139,22 @@ export async function listSavedSearches(path: string): Promise<SavedSearch[]> {
 
 export async function deleteSavedSearch(path: string, id: string): Promise<void> {
 	return invoke<void>('delete_saved_search', { repoPath: path, id });
+}
+
+export async function getWorkingChanges(path: string): Promise<WorkingChangesDiff> {
+	return invoke<WorkingChangesDiff>('get_working_changes', { path });
+}
+
+export async function getWorkingChangesDiffs(
+	path: string,
+	staged: boolean,
+	diffMode?: string,
+	whitespace?: string
+): Promise<FileDiff[]> {
+	return invoke<FileDiff[]>('get_working_changes_diffs', {
+		path,
+		staged,
+		diffMode: diffMode ?? null,
+		whitespace: whitespace ?? null
+	});
 }

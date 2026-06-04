@@ -10,6 +10,11 @@
 
 	let { commit, isSelected, isDimmed = false, onclick }: Props = $props();
 
+	const STAGED_OID = '__staged__';
+	const UNSTAGED_OID = '__unstaged__';
+	const isVirtual = commit.oid === STAGED_OID || commit.oid === UNSTAGED_OID;
+	const isStaged = commit.oid === STAGED_OID;
+
 	function formatTime(iso: string): string {
 		try {
 			return new Date(iso).toLocaleDateString(undefined, {
@@ -30,15 +35,31 @@
 	}
 </script>
 
-<button
-	class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
-		? 'bg-blue-900/40 text-blue-200'
-		: isDimmed
-			? 'text-gray-600'
+{#if isVirtual}
+	<button
+		class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
+			? 'bg-blue-900/40 text-blue-200'
 			: 'text-gray-300'}"
-	onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
-		onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
->
+		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
+			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
+	>
+		<span class="w-[80px] shrink-0 flex items-center gap-1">
+			<span class="inline-block h-2 w-2 rounded-full {isStaged ? 'bg-green-400' : 'bg-orange-400'}"></span>
+		</span>
+		<span class="min-w-0 truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
+			{commit.summary}
+		</span>
+	</button>
+{:else}
+	<button
+		class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
+			? 'bg-blue-900/40 text-blue-200'
+			: isDimmed
+				? 'text-gray-600'
+				: 'text-gray-300'}"
+		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
+			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
+	>
 	<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
 		{commit.short_oid}
 	</span>
@@ -62,3 +83,4 @@
 	<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
 	<span class="shrink-0 text-xs text-gray-600">{formatTime(commit.commit_time)}</span>
 </button>
+{/if}

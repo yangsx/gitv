@@ -287,3 +287,8 @@ export interface SavedSearch {
 	query: string;
 	created_at: string;
 }
+
+export interface WorkingChangesDiff {
+	staged: FileChange[];
+	unstaged: FileChange[];
+}

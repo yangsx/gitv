@@ -120,6 +120,12 @@ pub struct WorktreeStatus {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkingChangesDiff {
+    pub staged: Vec<FileChange>,
+    pub unstaged: Vec<FileChange>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Ref {
     Branch(BranchRef),
     Tag(TagRef),

@@ -47,6 +47,13 @@ pub trait Repository {
         max_count: Option<usize>,
     ) -> Result<Vec<FileHistoryEntry>, GitError>;
     fn blob_content(&self, oid: Oid, path: &Path) -> Result<String, GitError>;
+    fn working_changes_diff(&self) -> Result<WorkingChangesDiff, GitError>;
+    fn working_changes_file_diffs(
+        &self,
+        staged: bool,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+    ) -> Result<Vec<FileDiff>, DiffError>;
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {

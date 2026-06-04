@@ -552,6 +552,91 @@ impl Repository for GixRepository {
         Err(GitError::ObjectNotFound(path.display().to_string()))
     }
 
+    fn working_changes_diff(&self) -> Result<WorkingChangesDiff, GitError> {
+        if self.is_bare() {
+            return Ok(WorkingChangesDiff {
+                staged: Vec::new(),
+                unstaged: Vec::new(),
+            });
+        }
+
+        let repo = self.thread_local();
+        let platform = repo
+            .status(gix::progress::Discard)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let iter = platform
+            .into_iter(Vec::<gix::bstr::BString>::new())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let mut staged = Vec::new();
+        let mut unstaged = Vec::new();
+
+        for item in iter {
+            let item = item.map_err(|e| GitError::Gix(e.to_string()))?;
+            match item {
+                gix::status::Item::TreeIndex(change) => {
+                    if let Some(fc) = tree_index_change_to_file_change(&change) {
+                        staged.push(fc);
+                    }
+                }
+                gix::status::Item::IndexWorktree(iw_item) => {
+                    if let Some(fc) = index_worktree_item_to_file_change(&iw_item) {
+                        unstaged.push(fc);
+                    }
+                }
+            }
+        }
+
+        Ok(WorkingChangesDiff { staged, unstaged })
+    }
+
+    fn working_changes_file_diffs(
+        &self,
+        staged: bool,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+    ) -> Result<Vec<FileDiff>, DiffError> {
+        if self.is_bare() {
+            return Ok(Vec::new());
+        }
+
+        let repo = self.thread_local();
+        let platform = repo
+            .status(gix::progress::Discard)
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let iter = platform
+            .into_iter(Vec::<gix::bstr::BString>::new())
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let mut diffs = Vec::new();
+
+        for item in iter {
+            let item = item.map_err(|e| DiffError::Gix(e.to_string()))?;
+            match item {
+                gix::status::Item::TreeIndex(change) => {
+                    if !staged {
+                        continue;
+                    }
+                    if let Some(fd) = staged_change_to_file_diff(&repo, &change, &mode, &whitespace)? {
+                        diffs.push(fd);
+                    }
+                }
+                gix::status::Item::IndexWorktree(iw_item) => {
+                    if staged {
+                        continue;
+                    }
+                    if let Some(fd) = unstaged_item_to_file_diff(&repo, &self.path, &iw_item, &mode, &whitespace)? {
+                        diffs.push(fd);
+                    }
+                }
+            }
+        }
+
+        Ok(diffs)
+    }
+
     fn diff_summary(
         &self,
         from: Option<Oid>,
@@ -1100,6 +1185,509 @@ fn is_entry_mode_submodule(mode: gix_object::tree::EntryMode) -> bool {
     matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
 }
 
+fn tree_index_change_to_file_change(
+    change: &gix_diff::index::Change,
+) -> Option<FileChange> {
+    let is_dir = |mode: gix_index::entry::Mode| mode.contains(gix_index::entry::Mode::DIR);
+    let is_sub = |mode: gix_index::entry::Mode| mode.contains(gix_index::entry::Mode::COMMIT);
+
+    match change {
+        gix_diff::index::ChangeRef::Addition {
+            entry_mode,
+            location,
+            ..
+        } => {
+            if is_dir(*entry_mode) {
+                return None;
+            }
+            Some(FileChange {
+                path: PathBuf::from(location.to_string()),
+                old_path: None,
+                change_type: if is_sub(*entry_mode) {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Added
+                },
+                additions: 0,
+                deletions: 0,
+                is_binary: false,
+                is_submodule: is_sub(*entry_mode),
+            })
+        }
+        gix_diff::index::ChangeRef::Deletion {
+            entry_mode,
+            location,
+            ..
+        } => {
+            if is_dir(*entry_mode) {
+                return None;
+            }
+            Some(FileChange {
+                path: PathBuf::from(location.to_string()),
+                old_path: None,
+                change_type: if is_sub(*entry_mode) {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Deleted
+                },
+                additions: 0,
+                deletions: 0,
+                is_binary: false,
+                is_submodule: is_sub(*entry_mode),
+            })
+        }
+        gix_diff::index::ChangeRef::Modification {
+            previous_entry_mode,
+            entry_mode,
+            location,
+            ..
+        } => {
+            if is_dir(*previous_entry_mode) || is_dir(*entry_mode) {
+                return None;
+            }
+            let sub = is_sub(*previous_entry_mode) || is_sub(*entry_mode);
+            Some(FileChange {
+                path: PathBuf::from(location.to_string()),
+                old_path: None,
+                change_type: if sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Modified
+                },
+                additions: 0,
+                deletions: 0,
+                is_binary: false,
+                is_submodule: sub,
+            })
+        }
+        gix_diff::index::ChangeRef::Rewrite {
+            source_location,
+            location,
+            copy,
+            source_entry_mode,
+            entry_mode,
+            ..
+        } => {
+            if is_dir(*source_entry_mode) || is_dir(*entry_mode) {
+                return None;
+            }
+            let sub = is_sub(*source_entry_mode) || is_sub(*entry_mode);
+            Some(FileChange {
+                path: PathBuf::from(location.to_string()),
+                old_path: Some(PathBuf::from(source_location.to_string())),
+                change_type: if *copy {
+                    ChangeType::Copied
+                } else {
+                    ChangeType::Renamed
+                },
+                additions: 0,
+                deletions: 0,
+                is_binary: false,
+                is_submodule: sub,
+            })
+        }
+    }
+}
+
+fn index_worktree_item_to_file_change(
+    item: &gix::status::index_worktree::Item,
+) -> Option<FileChange> {
+    match item {
+        gix::status::index_worktree::Item::Modification {
+            rela_path,
+            entry,
+            ..
+        } => Some(FileChange {
+            path: PathBuf::from(rela_path.to_string()),
+            old_path: None,
+            change_type: ChangeType::Modified,
+            additions: 0,
+            deletions: 0,
+            is_binary: false,
+            is_submodule: entry.mode.contains(gix_index::entry::Mode::COMMIT),
+        }),
+        gix::status::index_worktree::Item::Rewrite {
+            dirwalk_entry,
+            source,
+            ..
+        } => {
+            let source_path = match source {
+                gix::status::index_worktree::RewriteSource::RewriteFromIndex { source_rela_path, .. } => {
+                    PathBuf::from(source_rela_path.to_string())
+                }
+                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry { source_dirwalk_entry, .. } => {
+                    PathBuf::from(source_dirwalk_entry.rela_path.to_string())
+                }
+            };
+            Some(FileChange {
+                path: PathBuf::from(dirwalk_entry.rela_path.to_string()),
+                old_path: Some(source_path),
+                change_type: ChangeType::Renamed,
+                additions: 0,
+                deletions: 0,
+                is_binary: false,
+                is_submodule: false,
+            })
+        }
+        gix::status::index_worktree::Item::DirectoryContents { .. } => None,
+    }
+}
+
+fn staged_change_to_file_diff(
+    repo: &gix::Repository,
+    change: &gix_diff::index::ChangeRef,
+    mode: &DiffMode,
+    whitespace: &WhitespaceMode,
+) -> Result<Option<FileDiff>, DiffError> {
+    let (path, old_path, _change_type, _is_binary, is_submodule, source_id, dest_id) = match change {
+        gix_diff::index::ChangeRef::Addition {
+            location,
+            entry_mode,
+            id,
+            ..
+        } => {
+            let is_sub = entry_mode.contains(gix_index::entry::Mode::COMMIT);
+            (
+                PathBuf::from(location.to_string()),
+                None,
+                if is_sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Added
+                },
+                false,
+                is_sub,
+                None as Option<gix::ObjectId>,
+                Some(gix::ObjectId::from(&**id)),
+            )
+        }
+        gix_diff::index::ChangeRef::Deletion {
+            location,
+            entry_mode,
+            id,
+            ..
+        } => {
+            let is_sub = entry_mode.contains(gix_index::entry::Mode::COMMIT);
+            (
+                PathBuf::from(location.to_string()),
+                None,
+                if is_sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Deleted
+                },
+                false,
+                is_sub,
+                Some(gix::ObjectId::from(&**id)),
+                None,
+            )
+        }
+        gix_diff::index::ChangeRef::Modification {
+            location,
+            previous_entry_mode,
+            previous_id,
+            entry_mode,
+            id,
+            ..
+        } => {
+            let is_sub = previous_entry_mode.contains(gix_index::entry::Mode::COMMIT)
+                || entry_mode.contains(gix_index::entry::Mode::COMMIT);
+            (
+                PathBuf::from(location.to_string()),
+                None,
+                if is_sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Modified
+                },
+                false,
+                is_sub,
+                Some(gix::ObjectId::from(&**previous_id)),
+                Some(gix::ObjectId::from(&**id)),
+            )
+        }
+        gix_diff::index::ChangeRef::Rewrite {
+            source_location,
+            location,
+            source_entry_mode,
+            source_id: sid,
+            entry_mode,
+            id,
+            copy,
+            ..
+        } => {
+            let is_sub = source_entry_mode.contains(gix_index::entry::Mode::COMMIT)
+                || entry_mode.contains(gix_index::entry::Mode::COMMIT);
+            (
+                PathBuf::from(location.to_string()),
+                Some(PathBuf::from(source_location.to_string())),
+                if *copy {
+                    ChangeType::Copied
+                } else {
+                    ChangeType::Renamed
+                },
+                false,
+                is_sub,
+                Some(gix::ObjectId::from(&**sid)),
+                Some(gix::ObjectId::from(&**id)),
+            )
+        }
+    };
+
+    if is_submodule {
+        return Ok(Some(FileDiff {
+            path,
+            old_path,
+            hunks: Vec::new(),
+            is_binary: false,
+            is_submodule: true,
+            old_size: None,
+            new_size: None,
+            truncated_at: None,
+        }));
+    }
+
+    let hunks = match (source_id, dest_id) {
+        (Some(src), Some(dst)) => {
+            let mut cache = repo
+                .diff_resource_cache_for_tree_diff()
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            let loc = change.location();
+            cache
+                .set_resource(
+                    src,
+                    gix_object::tree::EntryKind::Blob,
+                    loc,
+                    gix_diff::blob::ResourceKind::OldOrSource,
+                    &repo.objects,
+                )
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            cache
+                .set_resource(
+                    dst,
+                    gix_object::tree::EntryKind::Blob,
+                    loc,
+                    gix_diff::blob::ResourceKind::NewOrDestination,
+                    &repo.objects,
+                )
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            let result = run_blob_diff(&mut cache)?;
+            if result.is_binary {
+                return Ok(Some(FileDiff {
+                    path,
+                    old_path,
+                    hunks: Vec::new(),
+                    is_binary: true,
+                    is_submodule: false,
+                    old_size: None,
+                    new_size: None,
+                    truncated_at: None,
+                }));
+            }
+            result.hunks
+        }
+        (None, Some(dst)) => {
+            let obj = repo
+                .find_object(dst)
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            let data = obj.data.as_slice();
+            if data.iter().take(8192).any(|&b| b == 0) {
+                return Ok(Some(FileDiff {
+                    path,
+                    old_path,
+                    hunks: Vec::new(),
+                    is_binary: true,
+                    is_submodule: false,
+                    old_size: None,
+                    new_size: None,
+                    truncated_at: None,
+                }));
+            }
+            compute_hunks_for_addition_from_data(data)
+        }
+        (Some(src), None) => {
+            let obj = repo
+                .find_object(src)
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            let data = obj.data.as_slice();
+            if data.iter().take(8192).any(|&b| b == 0) {
+                return Ok(Some(FileDiff {
+                    path,
+                    old_path,
+                    hunks: Vec::new(),
+                    is_binary: true,
+                    is_submodule: false,
+                    old_size: None,
+                    new_size: None,
+                    truncated_at: None,
+                }));
+            }
+            compute_hunks_for_deletion_from_data(data)
+        }
+        (None, None) => Vec::new(),
+    };
+
+    let hunks = apply_diff_options(hunks, mode, whitespace);
+
+    Ok(Some(FileDiff {
+        path,
+        old_path,
+        hunks,
+        is_binary: false,
+        is_submodule: false,
+        old_size: None,
+        new_size: None,
+        truncated_at: None,
+    }))
+}
+
+fn compute_hunks_for_addition_from_data(data: &[u8]) -> Vec<Hunk> {
+    let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
+    let mut diff_lines = Vec::new();
+    for (line_num, line) in (1usize..).zip(lines.iter()) {
+        if line.is_empty() && diff_lines.len() == lines.len() - 1 {
+            break;
+        }
+        diff_lines.push(DiffLine::Addition {
+            content: String::from_utf8_lossy(line).into_owned(),
+            new_line: line_num,
+        });
+    }
+    if diff_lines.is_empty() {
+        return Vec::new();
+    }
+    vec![Hunk {
+        old_start: 0,
+        old_count: 0,
+        new_start: 1,
+        new_count: diff_lines.len(),
+        lines: diff_lines,
+    }]
+}
+
+fn compute_hunks_for_deletion_from_data(data: &[u8]) -> Vec<Hunk> {
+    let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
+    let mut diff_lines = Vec::new();
+    for (line_num, line) in (1usize..).zip(lines.iter()) {
+        if line.is_empty() && diff_lines.len() == lines.len() - 1 {
+            break;
+        }
+        diff_lines.push(DiffLine::Deletion {
+            content: String::from_utf8_lossy(line).into_owned(),
+            old_line: line_num,
+        });
+    }
+    if diff_lines.is_empty() {
+        return Vec::new();
+    }
+    vec![Hunk {
+        old_start: 1,
+        old_count: diff_lines.len(),
+        new_start: 0,
+        new_count: 0,
+        lines: diff_lines,
+    }]
+}
+
+fn unstaged_item_to_file_diff(
+    repo: &gix::Repository,
+    repo_path: &Path,
+    item: &gix::status::index_worktree::Item,
+    mode: &DiffMode,
+    whitespace: &WhitespaceMode,
+) -> Result<Option<FileDiff>, DiffError> {
+    match item {
+        gix::status::index_worktree::Item::Modification {
+            rela_path,
+            entry,
+            ..
+        } => {
+            let path = PathBuf::from(rela_path.to_string());
+            if entry.mode.contains(gix_index::entry::Mode::COMMIT) {
+                return Ok(Some(FileDiff {
+                    path,
+                    old_path: None,
+                    hunks: Vec::new(),
+                    is_binary: false,
+                    is_submodule: true,
+                    old_size: None,
+                    new_size: None,
+                    truncated_at: None,
+                }));
+            }
+
+            let index_oid = entry.id;
+            let old_data = repo
+                .find_object(index_oid)
+                .map_err(|e| DiffError::Gix(e.to_string()))?
+                .data
+                .to_owned();
+
+            let worktree_path = repo_path.join(rela_path.to_string());
+            let new_data = std::fs::read(&worktree_path).unwrap_or_default();
+
+            let (hunks, is_binary) = compute_hunks_from_data(&old_data, &new_data);
+            let hunks = apply_diff_options(hunks, mode, whitespace);
+
+            Ok(Some(FileDiff {
+                path,
+                old_path: None,
+                hunks,
+                is_binary,
+                is_submodule: false,
+                old_size: None,
+                new_size: None,
+                truncated_at: None,
+            }))
+        }
+        gix::status::index_worktree::Item::Rewrite {
+            dirwalk_entry,
+            source,
+            ..
+        } => {
+            let source_path = match source {
+                gix::status::index_worktree::RewriteSource::RewriteFromIndex { source_rela_path, .. } => {
+                    PathBuf::from(source_rela_path.to_string())
+                }
+                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry { source_dirwalk_entry, .. } => {
+                    PathBuf::from(source_dirwalk_entry.rela_path.to_string())
+                }
+            };
+
+            let old_data = match source {
+                gix::status::index_worktree::RewriteSource::RewriteFromIndex { source_entry, .. } => {
+                    let oid = source_entry.id;
+                    repo.find_object(oid)
+                        .map_err(|e| DiffError::Gix(e.to_string()))?
+                        .data
+                        .to_owned()
+                }
+                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry { .. } => {
+                    Vec::new()
+                }
+            };
+
+            let new_path = repo_path.join(dirwalk_entry.rela_path.to_string());
+            let new_data = std::fs::read(&new_path).unwrap_or_default();
+
+            let (hunks, is_binary) = compute_hunks_from_data(&old_data, &new_data);
+            let hunks = apply_diff_options(hunks, mode, whitespace);
+
+            Ok(Some(FileDiff {
+                path: PathBuf::from(dirwalk_entry.rela_path.to_string()),
+                old_path: Some(source_path),
+                hunks,
+                is_binary,
+                is_submodule: false,
+                old_size: None,
+                new_size: None,
+                truncated_at: None,
+            }))
+        }
+        gix::status::index_worktree::Item::DirectoryContents { .. } => Ok(None),
+    }
+}
+
 fn extract_submodule_shas(change: &gix::object::tree::diff::ChangeDetached) -> (String, String) {
     match change {
         gix::object::tree::diff::ChangeDetached::Addition { id, .. } => {
@@ -1376,117 +1964,149 @@ struct BlobDiffResult {
     is_binary: bool,
 }
 
+struct HunkCollector {
+    hunks: Vec<Hunk>,
+}
+
+impl gix_diff::blob::unified_diff::ConsumeHunk for HunkCollector {
+    type Out = Vec<Hunk>;
+
+    fn consume_hunk(
+        &mut self,
+        header: gix_diff::blob::unified_diff::HunkHeader,
+        lines: &[(gix_diff::blob::unified_diff::DiffLineKind, &[u8])],
+    ) -> std::io::Result<()> {
+        let mut diff_lines = Vec::with_capacity(lines.len());
+        let mut old_line = header.before_hunk_start as usize;
+        let mut new_line = header.after_hunk_start as usize;
+        let mut old_count = 0usize;
+        let mut new_count = 0usize;
+
+        for &(kind, content) in lines {
+            let content_str = String::from_utf8_lossy(content).into_owned();
+            match kind {
+                gix_diff::blob::unified_diff::DiffLineKind::Context => {
+                    diff_lines.push(DiffLine::Context {
+                        content: content_str,
+                        old_line,
+                        new_line,
+                    });
+                    old_line += 1;
+                    new_line += 1;
+                    old_count += 1;
+                    new_count += 1;
+                }
+                gix_diff::blob::unified_diff::DiffLineKind::Remove => {
+                    diff_lines.push(DiffLine::Deletion {
+                        content: content_str,
+                        old_line,
+                    });
+                    old_line += 1;
+                    old_count += 1;
+                }
+                gix_diff::blob::unified_diff::DiffLineKind::Add => {
+                    diff_lines.push(DiffLine::Addition {
+                        content: content_str,
+                        new_line,
+                    });
+                    new_line += 1;
+                    new_count += 1;
+                }
+            }
+        }
+
+        self.hunks.push(Hunk {
+            old_start: header.before_hunk_start as usize,
+            old_count,
+            new_start: header.after_hunk_start as usize,
+            new_count,
+            lines: diff_lines,
+        });
+
+        Ok(())
+    }
+
+    fn finish(self) -> Self::Out {
+        self.hunks
+    }
+}
+
 fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<BlobDiffResult, DiffError> {
-    let mut hunks: Vec<Hunk> = Vec::new();
-    let mut current_lines: Vec<DiffLine> = Vec::new();
-    let mut old_line = 1usize;
-    let mut new_line = 1usize;
-    let mut hunk_old_start = 0usize;
-    let mut hunk_new_start = 0usize;
-    let mut hunk_old_count = 0usize;
-    let mut hunk_new_count = 0usize;
-    let mut has_content = false;
-
-    let mut diff_platform = gix::object::blob::diff::Platform {
-        resource_cache: cache,
-    };
-
-    let result = diff_platform.lines(|line_change| {
-        let is_new_hunk = !current_lines.is_empty()
-            && match line_change {
-                gix::object::blob::diff::lines::Change::Addition { .. } => {
-                    matches!(current_lines.last(), Some(DiffLine::Deletion { .. }))
-                }
-                gix::object::blob::diff::lines::Change::Deletion { .. } => {
-                    matches!(current_lines.last(), Some(DiffLine::Addition { .. }))
-                }
-                gix::object::blob::diff::lines::Change::Modification { .. } => false,
-            };
-
-        if is_new_hunk {
-            hunks.push(Hunk {
-                old_start: hunk_old_start,
-                old_count: hunk_old_count,
-                new_start: hunk_new_start,
-                new_count: hunk_new_count,
-                lines: std::mem::take(&mut current_lines),
-            });
-            hunk_old_count = 0;
-            hunk_new_count = 0;
-            has_content = false;
-        }
-
-        if !has_content {
-            hunk_old_start = old_line;
-            hunk_new_start = new_line;
-            has_content = true;
-        }
-
-        match line_change {
-            gix::object::blob::diff::lines::Change::Addition { lines } => {
-                for l in lines {
-                    current_lines.push(DiffLine::Addition {
-                        content: l.to_string(),
-                        new_line,
-                    });
-                    new_line += 1;
-                    hunk_new_count += 1;
-                }
-            }
-            gix::object::blob::diff::lines::Change::Deletion { lines } => {
-                for l in lines {
-                    current_lines.push(DiffLine::Deletion {
-                        content: l.to_string(),
-                        old_line,
-                    });
-                    old_line += 1;
-                    hunk_old_count += 1;
-                }
-            }
-            gix::object::blob::diff::lines::Change::Modification {
-                lines_before,
-                lines_after,
-            } => {
-                for l in lines_before {
-                    current_lines.push(DiffLine::Deletion {
-                        content: l.to_string(),
-                        old_line,
-                    });
-                    old_line += 1;
-                    hunk_old_count += 1;
-                }
-                for l in lines_after {
-                    current_lines.push(DiffLine::Addition {
-                        content: l.to_string(),
-                        new_line,
-                    });
-                    new_line += 1;
-                    hunk_new_count += 1;
-                }
-            }
-        }
-
-        Ok::<(), std::convert::Infallible>(())
-    });
-
-    let outcome = result.map_err(|e| DiffError::Gix(e.to_string()))?;
+    let outcome = cache
+        .prepare_diff()
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
 
     let is_binary = matches!(
         outcome.operation,
         gix_diff::blob::platform::prepare_diff::Operation::SourceOrDestinationIsBinary
     );
 
-    if !current_lines.is_empty() {
-        hunks.push(Hunk {
-            old_start: hunk_old_start,
-            old_count: hunk_old_count,
-            new_start: hunk_new_start,
-            new_count: hunk_new_count,
-            lines: current_lines,
+    if is_binary {
+        return Ok(BlobDiffResult {
+            hunks: Vec::new(),
+            is_binary: true,
         });
     }
 
-    Ok(BlobDiffResult { hunks, is_binary })
+    let algorithm = match outcome.operation {
+        gix_diff::blob::platform::prepare_diff::Operation::InternalDiff { algorithm } => algorithm,
+        _ => gix_diff::blob::Algorithm::Histogram,
+    };
+
+    let input = outcome.interned_input();
+    let diff = gix_diff::blob::Diff::compute(algorithm, &input);
+
+    let collector = HunkCollector { hunks: Vec::new() };
+    let hunks = gix_diff::blob::UnifiedDiff::new(
+        &diff,
+        &input,
+        collector,
+        gix_diff::blob::unified_diff::ContextSize::symmetrical(3),
+    )
+    .consume()
+    .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    Ok(BlobDiffResult {
+        hunks,
+        is_binary: false,
+    })
+}
+
+fn compute_hunks_from_data(old_data: &[u8], new_data: &[u8]) -> (Vec<Hunk>, bool) {
+    let old_is_binary = old_data.iter().take(8192).any(|&b| b == 0);
+    let new_is_binary = new_data.iter().take(8192).any(|&b| b == 0);
+    if old_is_binary || new_is_binary {
+        return (Vec::new(), true);
+    }
+
+    if old_data.is_empty() && new_data.is_empty() {
+        return (Vec::new(), false);
+    }
+
+    if old_data.is_empty() {
+        return (compute_hunks_for_addition_from_data(new_data), false);
+    }
+    if new_data.is_empty() {
+        return (compute_hunks_for_deletion_from_data(old_data), false);
+    }
+
+    let input = gix_diff::blob::InternedInput::new(
+        gix_diff::blob::platform::resource::ByteLinesWithoutTerminator::new(old_data),
+        gix_diff::blob::platform::resource::ByteLinesWithoutTerminator::new(new_data),
+    );
+    let diff = gix_diff::blob::diff_with_slider_heuristics(gix_diff::blob::Algorithm::Histogram, &input);
+
+    let collector = HunkCollector { hunks: Vec::new() };
+    let hunks = gix_diff::blob::UnifiedDiff::new(
+        &diff,
+        &input,
+        collector,
+        gix_diff::blob::unified_diff::ContextSize::symmetrical(3),
+    )
+    .consume()
+    .unwrap_or_default();
+
+    (hunks, false)
 }
 
 fn apply_diff_options(hunks: Vec<Hunk>, mode: &DiffMode, whitespace: &WhitespaceMode) -> Vec<Hunk> {
@@ -1573,7 +2193,10 @@ where
         }
         flush_pending(&mut kept, &mut additions, &mut deletions, &is_same);
 
-        if !kept.is_empty() {
+        let has_changes = kept.iter().any(|l| {
+            matches!(l, DiffLine::Addition { .. } | DiffLine::Deletion { .. })
+        });
+        if has_changes {
             result.push(rebuild_hunk(hunk.old_start, hunk.new_start, kept));
         }
     }
@@ -1610,7 +2233,10 @@ fn filter_blank_line_hunks(hunks: Vec<Hunk>) -> Vec<Hunk> {
                 _ => true,
             })
             .collect();
-        if !kept.is_empty() {
+        let has_changes = kept.iter().any(|l| {
+            matches!(l, DiffLine::Addition { .. } | DiffLine::Deletion { .. })
+        });
+        if has_changes {
             result.push(rebuild_hunk(hunk.old_start, hunk.new_start, kept));
         }
     }
@@ -2579,5 +3205,68 @@ mod tests {
             .expect("blame");
         assert_eq!(blame.lines.len(), 1);
         assert_eq!(blame.lines[0].content.trim(), "original");
+    }
+
+    #[test]
+    fn compute_hunks_from_data_produces_context_lines() {
+        let old = b"line1\nline2\nline3\nline4\nline5\n";
+        let new = b"line1\nline2\nmodified\nline4\nline5\n";
+        let (hunks, is_binary) = compute_hunks_from_data(old, new);
+        assert!(!is_binary);
+        assert_eq!(hunks.len(), 1, "should have exactly one hunk");
+        let hunk = &hunks[0];
+        let has_context = hunk.lines.iter().any(|l| matches!(l, DiffLine::Context { .. }));
+        assert!(has_context, "hunk should have context lines");
+        let has_deletion = hunk.lines.iter().any(|l| matches!(l, DiffLine::Deletion { .. }));
+        let has_addition = hunk.lines.iter().any(|l| matches!(l, DiffLine::Addition { .. }));
+        assert!(has_deletion, "hunk should have a deletion");
+        assert!(has_addition, "hunk should have an addition");
+    }
+
+    #[test]
+    fn unstaged_file_diff_shows_changes() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
+        std::fs::write(temp.path().join("a.txt"), "line1\nline2\nMODIFIED\nline4\nline5").expect("write");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diffs = repo
+            .working_changes_file_diffs(false, DiffMode::Normal, WhitespaceMode::None)
+            .expect("diffs");
+        assert_eq!(diffs.len(), 1, "should have 1 unstaged file diff");
+        let diff = &diffs[0];
+        assert_eq!(diff.path, std::path::PathBuf::from("a.txt"));
+        assert!(!diff.hunks.is_empty(), "unstaged diff should have hunks");
+        let has_context = diff.hunks[0]
+            .lines
+            .iter()
+            .any(|l| matches!(l, DiffLine::Context { .. }));
+        assert!(has_context, "unstaged diff should have context lines");
+
+        let wc = repo.working_changes_diff().expect("wc");
+        assert_eq!(wc.unstaged.len(), 1, "should have 1 unstaged file change");
+        assert_eq!(
+            wc.unstaged[0].path, diff.path,
+            "FileChange path should match FileDiff path for frontend lookup"
+        );
+    }
+
+    #[test]
+    fn staged_file_diff_shows_changes() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
+        std::fs::write(temp.path().join("a.txt"), "line1\nline2\nMODIFIED\nline4\nline5").expect("write");
+        run_git(temp.path(), &["add", "a.txt"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diffs = repo
+            .working_changes_file_diffs(true, DiffMode::Normal, WhitespaceMode::None)
+            .expect("diffs");
+        assert_eq!(diffs.len(), 1, "should have 1 staged file diff");
+        let diff = &diffs[0];
+        assert!(!diff.hunks.is_empty(), "staged diff should have hunks");
+        let has_context = diff.hunks[0]
+            .lines
+            .iter()
+            .any(|l| matches!(l, DiffLine::Context { .. }));
+        assert!(has_context, "staged diff should have context lines");
     }
 }

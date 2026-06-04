@@ -9,6 +9,7 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 gix = { workspace = true }
 gix-diff = { workspace = true }
+gix-index = { workspace = true }
 gix-object = { workspace = true }
 postcard = { workspace = true }
 regex = { workspace = true }
