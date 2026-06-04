@@ -1,14 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { openRepository, getCommits, getGraphLayout } from '$lib/bindings/commands';
-	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
+	import { openRepository, getCommits, getGraphLayout, getCommitDetails } from '$lib/bindings/commands';
+	import type { CommitInfo, GraphLayout, CommitDetails } from '$lib/bindings/types';
 	import { repoInfo, selectedOid, isLoading, error, matchingOids } from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
+	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
 	let graphLayout = $state<GraphLayout | null>(null);
+	let commitDetails = $state<CommitDetails | null>(null);
+	let detailsLoading = $state(false);
+	let detailPanelHeight = $state(300);
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -44,8 +49,17 @@
 		}
 	}
 
-	function onSelectCommit(oid: string) {
+	async function onSelectCommit(oid: string) {
 		selectedOid.set(oid);
+		commitDetails = null;
+		detailsLoading = true;
+		try {
+			commitDetails = await getCommitDetails(repoPath, oid);
+		} catch {
+			commitDetails = null;
+		} finally {
+			detailsLoading = false;
+		}
 	}
 </script>
 
@@ -90,15 +104,37 @@
 				<span class="text-xs text-gray-500">Loading...</span>
 			{/if}
 		</header>
-		<div class="flex-1 overflow-hidden">
-			{#if graphLayout}
-				<CommitList
-					{commits}
-					layout={graphLayout}
-					selectedOid={$selectedOid}
-					matchingOids={$matchingOids}
-					onSelect={onSelectCommit}
-				/>
+		<div class="flex-1 overflow-hidden flex flex-col">
+			<div class="flex-1 overflow-hidden">
+				{#if graphLayout}
+					<CommitList
+						{commits}
+						layout={graphLayout}
+						selectedOid={$selectedOid}
+						matchingOids={$matchingOids}
+						onSelect={onSelectCommit}
+					/>
+				{/if}
+			</div>
+
+			{#if $selectedOid}
+				<ResizeHandle bind:panelHeight={detailPanelHeight} />
+				<div
+					class="overflow-hidden bg-gray-900 border-t border-gray-700"
+					style="height: {detailPanelHeight}px;"
+				>
+					{#if detailsLoading}
+						<div class="flex items-center justify-center h-full text-sm text-gray-500">
+							Loading details...
+						</div>
+					{:else if commitDetails}
+						<CommitDetailPanel details={commitDetails} repoPath={repoPath} />
+					{:else}
+						<div class="flex items-center justify-center h-full text-sm text-gray-500">
+							Failed to load commit details
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}

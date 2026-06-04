@@ -4,7 +4,10 @@ use gitv_git_core::repository::Repository;
 use std::path::PathBuf;
 
 #[tauri::command]
-pub fn get_commit_details(path: String, oid: String) -> Result<gitv_git_core::models::CommitDetails, String> {
+pub fn get_commit_details(
+    path: String,
+    oid: String,
+) -> Result<gitv_git_core::models::CommitDetails, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
