@@ -163,21 +163,44 @@ impl Repository for GixRepository {
         Ok(Vec::new())
     }
 
-    fn file_tree(&self, _at_commit: Option<Oid>) -> Result<FileTreeNode, GitError> {
-        Ok(FileTreeNode {
-            name: String::new(),
-            path: PathBuf::new(),
-            node_type: FileNodeType::Directory,
-            children: Vec::new(),
-            size: None,
-        })
+    fn file_tree(&self, at_commit: Option<Oid>) -> Result<FileTreeNode, GitError> {
+        let repo = self.thread_local();
+        let tree = match at_commit {
+            Some(oid) => {
+                let gix_oid = oid_to_gix_object_id(&oid);
+                let obj = repo
+                    .find_object(gix_oid)
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let commit = obj
+                    .try_into_commit()
+                    .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+                commit.tree().map_err(|e| GitError::Gix(e.to_string()))?
+            }
+            None => {
+                let head_id = repo.head_id().map_err(|e| GitError::Gix(e.to_string()))?;
+                let obj = repo
+                    .find_object(head_id)
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let commit = obj
+                    .try_into_commit()
+                    .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+                commit.tree().map_err(|e| GitError::Gix(e.to_string()))?
+            }
+        };
+        build_file_tree(&repo, &tree, PathBuf::new())
     }
 
     fn is_bare(&self) -> bool {
         self.thread_local().is_bare()
     }
 
-    fn diff_summary(&self, from: Option<Oid>, to: Oid) -> Result<DiffSummary, DiffError> {
+    fn diff_summary(
+        &self,
+        from: Option<Oid>,
+        to: Oid,
+        whitespace: WhitespaceMode,
+    ) -> Result<DiffSummary, DiffError> {
+        let _ = &whitespace;
         let repo = self.thread_local();
         let to_tree = tree_for_oid(&repo, to)?;
         let from_tree = from.map(|oid| tree_for_oid(&repo, oid)).transpose()?;
@@ -227,6 +250,8 @@ impl Repository for GixRepository {
         from: Option<Oid>,
         to: Oid,
         path: &std::path::Path,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
     ) -> Result<FileDiff, DiffError> {
         let repo = self.thread_local();
         let to_tree = tree_for_oid(&repo, to)?;
@@ -256,6 +281,8 @@ impl Repository for GixRepository {
         }
 
         let (hunks, blob_is_binary) = compute_hunks_for_change(&repo, change)?;
+
+        let hunks = apply_diff_options(hunks, &mode, &whitespace);
 
         Ok(FileDiff {
             path,
@@ -844,6 +871,484 @@ fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<BlobDiffResult,
     Ok(BlobDiffResult { hunks, is_binary })
 }
 
+fn apply_diff_options(hunks: Vec<Hunk>, mode: &DiffMode, whitespace: &WhitespaceMode) -> Vec<Hunk> {
+    let hunks = apply_whitespace_filter(hunks, whitespace);
+    match mode {
+        DiffMode::Normal => hunks,
+        DiffMode::WordDiff => hunks_to_word_diff(hunks),
+        DiffMode::StatOnly => Vec::new(),
+    }
+}
+
+fn apply_whitespace_filter(hunks: Vec<Hunk>, mode: &WhitespaceMode) -> Vec<Hunk> {
+    match mode {
+        WhitespaceMode::None => hunks,
+        WhitespaceMode::IgnoreSpaceChange => filter_whitespace_hunks(hunks, |old, new| {
+            collapse_whitespace(old) == collapse_whitespace(new)
+        }),
+        WhitespaceMode::IgnoreAllSpace => filter_whitespace_hunks(hunks, |old, new| {
+            remove_all_whitespace(old) == remove_all_whitespace(new)
+        }),
+        WhitespaceMode::IgnoreBlankLines => filter_blank_line_hunks(hunks),
+    }
+}
+
+fn filter_whitespace_hunks<F>(hunks: Vec<Hunk>, is_same: F) -> Vec<Hunk>
+where
+    F: Fn(&str, &str) -> bool,
+{
+    let mut result = Vec::new();
+    for hunk in hunks {
+        let mut kept = Vec::new();
+        let mut additions = Vec::new();
+        let mut deletions = Vec::new();
+
+        for line in hunk.lines {
+            match &line {
+                DiffLine::Addition { content, new_line } => {
+                    additions.push(line.clone());
+                    let _ = (content, new_line);
+                }
+                DiffLine::Deletion { content, old_line } => {
+                    deletions.push(line.clone());
+                    let _ = (content, old_line);
+                }
+                DiffLine::Context { .. } | DiffLine::WordDiff { .. } => {
+                    if !additions.is_empty() && !deletions.is_empty() {
+                        let del_content: Vec<&str> = deletions
+                            .iter()
+                            .map(|l| match l {
+                                DiffLine::Deletion { content, .. } => content.as_str(),
+                                _ => "",
+                            })
+                            .collect();
+                        let add_content: Vec<&str> = additions
+                            .iter()
+                            .map(|l| match l {
+                                DiffLine::Addition { content, .. } => content.as_str(),
+                                _ => "",
+                            })
+                            .collect();
+                        if !is_same(&del_content.join("\n"), &add_content.join("\n")) {
+                            kept.extend(deletions.clone());
+                            kept.extend(additions.clone());
+                        }
+                    } else {
+                        kept.extend(additions.clone());
+                        kept.extend(deletions.clone());
+                    }
+                    additions.clear();
+                    deletions.clear();
+                    kept.push(line);
+                }
+            }
+        }
+        if !additions.is_empty() && !deletions.is_empty() {
+            let del_content: Vec<&str> = deletions
+                .iter()
+                .map(|l| match l {
+                    DiffLine::Deletion { content, .. } => content.as_str(),
+                    _ => "",
+                })
+                .collect();
+            let add_content: Vec<&str> = additions
+                .iter()
+                .map(|l| match l {
+                    DiffLine::Addition { content, .. } => content.as_str(),
+                    _ => "",
+                })
+                .collect();
+            if !is_same(&del_content.join("\n"), &add_content.join("\n")) {
+                kept.extend(deletions);
+                kept.extend(additions);
+            }
+        } else {
+            kept.extend(additions);
+            kept.extend(deletions);
+        }
+
+        if !kept.is_empty() {
+            result.push(Hunk {
+                old_start: hunk.old_start,
+                old_count: kept
+                    .iter()
+                    .filter(|l| matches!(l, DiffLine::Deletion { .. }))
+                    .count(),
+                new_start: hunk.new_start,
+                new_count: kept
+                    .iter()
+                    .filter(|l| matches!(l, DiffLine::Addition { .. }))
+                    .count(),
+                lines: kept,
+            });
+        }
+    }
+    result
+}
+
+fn filter_blank_line_hunks(hunks: Vec<Hunk>) -> Vec<Hunk> {
+    let mut result = Vec::new();
+    for hunk in hunks {
+        let kept: Vec<DiffLine> = hunk
+            .lines
+            .into_iter()
+            .filter(|line| match line {
+                DiffLine::Addition { content, .. } => !content.trim().is_empty(),
+                DiffLine::Deletion { content, .. } => !content.trim().is_empty(),
+                _ => true,
+            })
+            .collect();
+        if !kept.is_empty() {
+            result.push(Hunk {
+                old_start: hunk.old_start,
+                old_count: kept
+                    .iter()
+                    .filter(|l| matches!(l, DiffLine::Deletion { .. }))
+                    .count(),
+                new_start: hunk.new_start,
+                new_count: kept
+                    .iter()
+                    .filter(|l| matches!(l, DiffLine::Addition { .. }))
+                    .count(),
+                lines: kept,
+            });
+        }
+    }
+    result
+}
+
+fn collapse_whitespace(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut in_whitespace = false;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !in_whitespace {
+                result.push(' ');
+                in_whitespace = true;
+            }
+        } else {
+            result.push(c);
+            in_whitespace = false;
+        }
+    }
+    result
+}
+
+fn remove_all_whitespace(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+fn hunks_to_word_diff(hunks: Vec<Hunk>) -> Vec<Hunk> {
+    hunks
+        .into_iter()
+        .map(|hunk| {
+            let mut word_lines: Vec<DiffLine> = Vec::new();
+            let mut i = 0;
+            let lines = hunk.lines;
+            while i < lines.len() {
+                match &lines[i] {
+                    DiffLine::Deletion { content, old_line } => {
+                        let old_line = *old_line;
+                        let old_content = content.clone();
+                        if i + 1 < lines.len()
+                            && let DiffLine::Addition {
+                                content: new_content,
+                                new_line,
+                            } = &lines[i + 1]
+                        {
+                            let segments = compute_word_segments(&old_content, new_content);
+                            word_lines.push(DiffLine::WordDiff {
+                                content: new_content.clone(),
+                                old_line,
+                                new_line: *new_line,
+                                segments,
+                            });
+                            i += 2;
+                            continue;
+                        }
+                        let segments = vec![WordDiffSegment {
+                            text: old_content,
+                            kind: WordDiffKind::Removed,
+                        }];
+                        word_lines.push(DiffLine::WordDiff {
+                            content: String::new(),
+                            old_line,
+                            new_line: 0,
+                            segments,
+                        });
+                        i += 1;
+                    }
+                    DiffLine::Addition { content, new_line } => {
+                        let segments = vec![WordDiffSegment {
+                            text: content.clone(),
+                            kind: WordDiffKind::Added,
+                        }];
+                        word_lines.push(DiffLine::WordDiff {
+                            content: content.clone(),
+                            old_line: 0,
+                            new_line: *new_line,
+                            segments,
+                        });
+                        i += 1;
+                    }
+                    DiffLine::Context {
+                        content,
+                        old_line,
+                        new_line,
+                    } => {
+                        let segments = vec![WordDiffSegment {
+                            text: content.clone(),
+                            kind: WordDiffKind::Unchanged,
+                        }];
+                        word_lines.push(DiffLine::WordDiff {
+                            content: content.clone(),
+                            old_line: *old_line,
+                            new_line: *new_line,
+                            segments,
+                        });
+                        i += 1;
+                    }
+                    DiffLine::WordDiff { .. } => {
+                        word_lines.push(lines[i].clone());
+                        i += 1;
+                    }
+                }
+            }
+            Hunk {
+                old_start: hunk.old_start,
+                old_count: hunk.old_count,
+                new_start: hunk.new_start,
+                new_count: hunk.new_count,
+                lines: word_lines,
+            }
+        })
+        .collect()
+}
+
+fn compute_word_segments(old: &str, new: &str) -> Vec<WordDiffSegment> {
+    let old_words = tokenize_words(old);
+    let new_words = tokenize_words(new);
+
+    let mut segments = Vec::new();
+    let mut old_idx = 0usize;
+    let mut new_idx = 0usize;
+
+    while old_idx < old_words.len() || new_idx < new_words.len() {
+        match (old_words.get(old_idx), new_words.get(new_idx)) {
+            (Some(ow), Some(nw)) if ow == nw => {
+                segments.push(WordDiffSegment {
+                    text: ow.clone(),
+                    kind: WordDiffKind::Unchanged,
+                });
+                old_idx += 1;
+                new_idx += 1;
+            }
+            (Some(_), None) => {
+                segments.push(WordDiffSegment {
+                    text: old_words[old_idx].clone(),
+                    kind: WordDiffKind::Removed,
+                });
+                old_idx += 1;
+            }
+            (None, Some(_)) => {
+                segments.push(WordDiffSegment {
+                    text: new_words[new_idx].clone(),
+                    kind: WordDiffKind::Added,
+                });
+                new_idx += 1;
+            }
+            (None, None) => break,
+            (Some(_), Some(_)) => {
+                let ahead_old =
+                    find_in_range(&new_words, new_idx + 1..new_idx + 4, &old_words[old_idx]);
+                let ahead_new =
+                    find_in_range(&old_words, old_idx + 1..old_idx + 4, &new_words[new_idx]);
+
+                if let Some(ao) = ahead_old {
+                    for word in new_words.iter().take(ao).skip(new_idx) {
+                        segments.push(WordDiffSegment {
+                            text: word.clone(),
+                            kind: WordDiffKind::Added,
+                        });
+                    }
+                    new_idx = ao;
+                } else if let Some(an) = ahead_new {
+                    for word in old_words.iter().take(an).skip(old_idx) {
+                        segments.push(WordDiffSegment {
+                            text: word.clone(),
+                            kind: WordDiffKind::Removed,
+                        });
+                    }
+                    old_idx = an;
+                } else {
+                    segments.push(WordDiffSegment {
+                        text: old_words[old_idx].clone(),
+                        kind: WordDiffKind::Removed,
+                    });
+                    segments.push(WordDiffSegment {
+                        text: new_words[new_idx].clone(),
+                        kind: WordDiffKind::Added,
+                    });
+                    old_idx += 1;
+                    new_idx += 1;
+                }
+            }
+        }
+    }
+
+    merge_adjacent_segments(segments)
+}
+
+fn find_in_range(words: &[String], mut range: std::ops::Range<usize>, target: &str) -> Option<usize> {
+    range.find(|&i| i < words.len() && words[i] == target)
+}
+
+fn tokenize_words(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_word = false;
+
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            if in_word {
+                tokens.push(std::mem::take(&mut current));
+                in_word = false;
+            }
+            current.push(ch);
+        } else if ch.is_alphanumeric() || ch == '_' {
+            if !in_word && !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            current.push(ch);
+            in_word = true;
+        } else {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            tokens.push(ch.to_string());
+            in_word = false;
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+fn merge_adjacent_segments(segments: Vec<WordDiffSegment>) -> Vec<WordDiffSegment> {
+    let mut merged: Vec<WordDiffSegment> = Vec::new();
+    for seg in segments {
+        if let Some(last) = merged.last_mut()
+            && last.kind == seg.kind
+        {
+            last.text.push_str(&seg.text);
+            continue;
+        }
+        merged.push(seg);
+    }
+    merged
+}
+
+fn build_file_tree(
+    repo: &gix::Repository,
+    tree: &gix::Tree<'_>,
+    prefix: PathBuf,
+) -> Result<FileTreeNode, GitError> {
+    let mut children = Vec::new();
+
+    for entry in tree.iter() {
+        let entry = entry.map_err(|e| GitError::Gix(e.to_string()))?;
+        let name = String::from_utf8_lossy(entry.filename()).into_owned();
+        let path = if prefix.as_os_str().is_empty() {
+            PathBuf::from(&name)
+        } else {
+            prefix.join(&name)
+        };
+
+        match entry.mode().kind() {
+            gix_object::tree::EntryKind::Tree => {
+                let obj = repo
+                    .find_object(entry.oid())
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let sub_tree = obj
+                    .try_into_tree()
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let child = build_file_tree(repo, &sub_tree, path.clone())?;
+                children.push(child);
+            }
+            gix_object::tree::EntryKind::Blob => {
+                let size = repo
+                    .find_object(entry.oid())
+                    .ok()
+                    .map(|obj| obj.data.as_slice().len() as u64);
+                children.push(FileTreeNode {
+                    name,
+                    path,
+                    node_type: FileNodeType::File,
+                    children: Vec::new(),
+                    size,
+                });
+            }
+            gix_object::tree::EntryKind::BlobExecutable => {
+                let size = repo
+                    .find_object(entry.oid())
+                    .ok()
+                    .map(|obj| obj.data.as_slice().len() as u64);
+                children.push(FileTreeNode {
+                    name,
+                    path,
+                    node_type: FileNodeType::File,
+                    children: Vec::new(),
+                    size,
+                });
+            }
+            gix_object::tree::EntryKind::Link => {
+                children.push(FileTreeNode {
+                    name,
+                    path,
+                    node_type: FileNodeType::Symlink,
+                    children: Vec::new(),
+                    size: None,
+                });
+            }
+            gix_object::tree::EntryKind::Commit => {
+                children.push(FileTreeNode {
+                    name,
+                    path,
+                    node_type: FileNodeType::Submodule,
+                    children: Vec::new(),
+                    size: None,
+                });
+            }
+        }
+    }
+
+    children.sort_by(|a, b| {
+        let a_is_dir = matches!(a.node_type, FileNodeType::Directory);
+        let b_is_dir = matches!(b.node_type, FileNodeType::Directory);
+        b_is_dir
+            .cmp(&a_is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    let dir_name = if prefix.as_os_str().is_empty() {
+        String::from("/")
+    } else {
+        prefix
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+
+    Ok(FileTreeNode {
+        name: dir_name,
+        path: prefix,
+        node_type: FileNodeType::Directory,
+        children,
+        size: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -869,6 +1374,9 @@ mod tests {
 
         fn commit_file(&self, name: &str, content: &str, msg: &str) -> Oid {
             let file_path = self.dir.path().join(name);
+            if let Some(parent) = file_path.parent() {
+                std::fs::create_dir_all(parent).expect("create dir");
+            }
             std::fs::write(&file_path, content).expect("write file");
             run_git(self.path(), &["add", name]);
             run_git(self.path(), &["commit", "-m", msg]);
@@ -978,7 +1486,9 @@ mod tests {
         let temp = TempRepo::new();
         let oid = temp.commit_file("a.txt", "hello", "first commit");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let summary = repo.diff_summary(None, oid).expect("diff_summary");
+        let summary = repo
+            .diff_summary(None, oid, WhitespaceMode::None)
+            .expect("diff_summary");
         assert_eq!(summary.files.len(), 1);
         assert_eq!(summary.files[0].path, std::path::PathBuf::from("a.txt"));
         assert_eq!(summary.files[0].change_type, ChangeType::Added);
@@ -993,7 +1503,9 @@ mod tests {
         let oid1 = temp.commit_file("a.txt", "hello", "first commit");
         let oid2 = temp.commit_file("b.txt", "world", "second commit");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let summary = repo.diff_summary(Some(oid1), oid2).expect("diff_summary");
+        let summary = repo
+            .diff_summary(Some(oid1), oid2, WhitespaceMode::None)
+            .expect("diff_summary");
         assert_eq!(summary.files.len(), 1);
         assert_eq!(summary.files[0].path, std::path::PathBuf::from("b.txt"));
         assert_eq!(summary.files[0].change_type, ChangeType::Added);
@@ -1006,7 +1518,9 @@ mod tests {
         let oid1 = temp.commit_file("a.txt", "hello", "first commit");
         let oid2 = temp.commit_file("a.txt", "hello world", "modify a");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let summary = repo.diff_summary(Some(oid1), oid2).expect("diff_summary");
+        let summary = repo
+            .diff_summary(Some(oid1), oid2, WhitespaceMode::None)
+            .expect("diff_summary");
         assert_eq!(summary.files.len(), 1);
         assert_eq!(summary.files[0].change_type, ChangeType::Modified);
         assert!(summary.files[0].additions > 0 || summary.files[0].deletions > 0);
@@ -1019,7 +1533,13 @@ mod tests {
         let oid2 = temp.commit_file("a.txt", "line1\nmodified\nline3", "second");
         let repo = GixRepository::open(temp.path()).expect("open");
         let diff = repo
-            .file_diff(Some(oid1), oid2, std::path::Path::new("a.txt"))
+            .file_diff(
+                Some(oid1),
+                oid2,
+                std::path::Path::new("a.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::None,
+            )
             .expect("file_diff");
         assert!(!diff.is_binary);
         assert!(!diff.hunks.is_empty());
@@ -1031,7 +1551,13 @@ mod tests {
         let temp = TempRepo::new();
         let oid = temp.commit_file("a.txt", "hello", "first");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let result = repo.file_diff(None, oid, std::path::Path::new("nonexistent.txt"));
+        let result = repo.file_diff(
+            None,
+            oid,
+            std::path::Path::new("nonexistent.txt"),
+            DiffMode::Normal,
+            WhitespaceMode::None,
+        );
         assert!(result.is_err());
     }
 
@@ -1040,8 +1566,126 @@ mod tests {
         let temp = TempRepo::new();
         let oid = temp.commit_file("a.txt", "hello", "first");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let summary = repo.diff_summary(Some(oid), oid).expect("diff_summary");
+        let summary = repo
+            .diff_summary(Some(oid), oid, WhitespaceMode::None)
+            .expect("diff_summary");
         assert!(summary.files.is_empty());
         assert_eq!(summary.stats.files_changed, 0);
+    }
+
+    #[test]
+    fn file_tree_returns_children() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first");
+        temp.commit_file("dir/b.txt", "world", "add nested");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let tree = repo.file_tree(None).expect("file_tree");
+        assert!(matches!(tree.node_type, FileNodeType::Directory));
+        assert!(tree.children.len() >= 2);
+        let has_dir = tree
+            .children
+            .iter()
+            .any(|c| matches!(c.node_type, FileNodeType::Directory) && c.name == "dir");
+        let has_file = tree
+            .children
+            .iter()
+            .any(|c| matches!(c.node_type, FileNodeType::File) && c.name == "a.txt");
+        assert!(has_dir, "should have dir directory");
+        assert!(has_file, "should have a.txt file");
+    }
+
+    #[test]
+    fn file_tree_at_commit_shows_state() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "hello", "first");
+        let _oid2 = temp.commit_file("b.txt", "world", "second");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let tree = repo.file_tree(Some(oid1)).expect("file_tree");
+        let has_a = tree
+            .children
+            .iter()
+            .any(|c| matches!(c.node_type, FileNodeType::File) && c.name == "a.txt");
+        let has_b = tree
+            .children
+            .iter()
+            .any(|c| matches!(c.node_type, FileNodeType::File) && c.name == "b.txt");
+        assert!(has_a, "first commit should have a.txt");
+        assert!(!has_b, "first commit should not have b.txt");
+    }
+
+    #[test]
+    fn stat_only_mode_returns_empty_hunks() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "line1\nline2\nline3", "first");
+        let oid2 = temp.commit_file("a.txt", "line1\nmodified\nline3", "second");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diff = repo
+            .file_diff(
+                Some(oid1),
+                oid2,
+                std::path::Path::new("a.txt"),
+                DiffMode::StatOnly,
+                WhitespaceMode::None,
+            )
+            .expect("file_diff");
+        assert!(diff.hunks.is_empty());
+    }
+
+    #[test]
+    fn word_diff_mode_returns_word_diff_lines() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "hello world", "first");
+        let oid2 = temp.commit_file("a.txt", "hello earth", "second");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diff = repo
+            .file_diff(
+                Some(oid1),
+                oid2,
+                std::path::Path::new("a.txt"),
+                DiffMode::WordDiff,
+                WhitespaceMode::None,
+            )
+            .expect("file_diff");
+        assert!(!diff.hunks.is_empty());
+        let has_word_diff = diff.hunks.iter().any(|h| {
+            h.lines
+                .iter()
+                .any(|l| matches!(l, DiffLine::WordDiff { .. }))
+        });
+        assert!(has_word_diff, "should have WordDiff lines");
+    }
+
+    #[test]
+    fn whitespace_ignore_blank_lines_filters_blank() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "line1\n\n\nline2", "first");
+        let oid2 = temp.commit_file("a.txt", "line1\nline2", "second");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diff_normal = repo
+            .file_diff(
+                Some(oid1),
+                oid2,
+                std::path::Path::new("a.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::None,
+            )
+            .expect("file_diff");
+        let diff_filtered = repo
+            .file_diff(
+                Some(oid1),
+                oid2,
+                std::path::Path::new("a.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::IgnoreBlankLines,
+            )
+            .expect("file_diff");
+        assert!(
+            !diff_normal.hunks.is_empty(),
+            "normal mode should show blank line changes"
+        );
+        assert!(
+            diff_filtered.hunks.is_empty(),
+            "ignore-blank-lines should filter blank line changes"
+        );
     }
 }

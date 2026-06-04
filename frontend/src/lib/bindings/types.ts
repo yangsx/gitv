@@ -150,7 +150,13 @@ export interface FileChange {
 	is_binary: boolean;
 }
 
-export type ChangeType = 'Added' | 'Deleted' | 'Modified' | 'Renamed' | 'Copied' | 'SubmoduleUpdated';
+export type ChangeType =
+	| 'Added'
+	| 'Deleted'
+	| 'Modified'
+	| 'Renamed'
+	| 'Copied'
+	| 'SubmoduleUpdated';
 
 export interface DiffSummary {
 	files: FileDiffSummary[];
@@ -193,4 +199,29 @@ export interface Hunk {
 export type DiffLine =
 	| { Context: { content: string; old_line: number; new_line: number } }
 	| { Addition: { content: string; new_line: number } }
-	| { Deletion: { content: string; old_line: number } };
+	| { Deletion: { content: string; old_line: number } }
+	| {
+			WordDiff: {
+				content: string;
+				old_line: number;
+				new_line: number;
+				segments: WordDiffSegment[];
+			};
+	  };
+
+export interface WordDiffSegment {
+	text: string;
+	kind: WordDiffKind;
+}
+
+export type WordDiffKind = 'Unchanged' | 'Added' | 'Removed';
+
+export interface FileTreeNode {
+	name: string;
+	path: string;
+	node_type: FileNodeType;
+	children: FileTreeNode[];
+	size: number | null;
+}
+
+export type FileNodeType = 'File' | 'Directory' | 'Symlink' | 'Submodule';

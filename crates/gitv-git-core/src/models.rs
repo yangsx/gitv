@@ -245,6 +245,25 @@ pub enum DiffLine {
         content: String,
         old_line: usize,
     },
+    WordDiff {
+        content: String,
+        old_line: usize,
+        new_line: usize,
+        segments: Vec<WordDiffSegment>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WordDiffSegment {
+    pub text: String,
+    pub kind: WordDiffKind,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum WordDiffKind {
+    Unchanged,
+    Added,
+    Removed,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

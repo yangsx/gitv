@@ -12,12 +12,19 @@ pub trait Repository {
     fn reflog(&self, ref_name: Option<&str>) -> Result<Vec<ReflogEntry>, GitError>;
     fn file_tree(&self, at_commit: Option<Oid>) -> Result<FileTreeNode, GitError>;
     fn is_bare(&self) -> bool;
-    fn diff_summary(&self, from: Option<Oid>, to: Oid) -> Result<DiffSummary, DiffError>;
+    fn diff_summary(
+        &self,
+        from: Option<Oid>,
+        to: Oid,
+        whitespace: WhitespaceMode,
+    ) -> Result<DiffSummary, DiffError>;
     fn file_diff(
         &self,
         from: Option<Oid>,
         to: Oid,
         path: &std::path::Path,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
     ) -> Result<FileDiff, DiffError>;
 }
 

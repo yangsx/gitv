@@ -7,6 +7,7 @@ import type {
 	CommitDetails,
 	DiffSummary,
 	FileDiff,
+	FileTreeNode,
 	SearchQuery,
 	SearchResult
 } from './types';
@@ -47,15 +48,33 @@ export async function getCommitDetails(path: string, oid: string): Promise<Commi
 	return invoke<CommitDetails>('get_commit_details', { path, oid });
 }
 
-export async function getDiff(path: string, from: string | null, to: string): Promise<DiffSummary> {
-	return invoke<DiffSummary>('get_diff', { path, from, to });
+export async function getDiff(
+	path: string,
+	from: string | null,
+	to: string,
+	whitespace?: string
+): Promise<DiffSummary> {
+	return invoke<DiffSummary>('get_diff', { path, from, to, whitespace: whitespace ?? null });
 }
 
 export async function getFileDiff(
 	path: string,
 	from: string | null,
 	to: string,
-	filePath: string
+	filePath: string,
+	diffMode?: string,
+	whitespace?: string
 ): Promise<FileDiff> {
-	return invoke<FileDiff>('get_file_diff', { path, from, to, filePath });
+	return invoke<FileDiff>('get_file_diff', {
+		path,
+		from,
+		to,
+		filePath,
+		diffMode: diffMode ?? null,
+		whitespace: whitespace ?? null
+	});
+}
+
+export async function getFileTree(path: string, atCommit?: string | null): Promise<FileTreeNode> {
+	return invoke<FileTreeNode>('get_file_tree', { path, atCommit: atCommit ?? null });
 }
