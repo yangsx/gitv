@@ -177,6 +177,83 @@ pub enum ChangeType {
     SubmoduleUpdated,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub enum DiffMode {
+    #[default]
+    Normal,
+    WordDiff,
+    StatOnly,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub enum WhitespaceMode {
+    #[default]
+    None,
+    IgnoreSpaceChange,
+    IgnoreAllSpace,
+    IgnoreBlankLines,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DiffSummary {
+    pub files: Vec<FileDiffSummary>,
+    pub stats: DiffStats,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileDiffSummary {
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,
+    pub change_type: ChangeType,
+    pub additions: usize,
+    pub deletions: usize,
+    pub is_binary: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileDiff {
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,
+    pub hunks: Vec<Hunk>,
+    pub is_binary: bool,
+    pub old_size: Option<u64>,
+    pub new_size: Option<u64>,
+    pub truncated_at: Option<usize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Hunk {
+    pub old_start: usize,
+    pub old_count: usize,
+    pub new_start: usize,
+    pub new_count: usize,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum DiffLine {
+    Context {
+        content: String,
+        old_line: usize,
+        new_line: usize,
+    },
+    Addition {
+        content: String,
+        new_line: usize,
+    },
+    Deletion {
+        content: String,
+        old_line: usize,
+    },
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct DiffStats {
+    pub files_changed: usize,
+    pub additions: usize,
+    pub deletions: usize,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum FileNodeType {
     File,

@@ -132,3 +132,65 @@ export interface RecentRepository {
 	name: string;
 	last_opened: string;
 }
+
+export interface CommitDetails {
+	info: CommitInfo;
+	tree_oid: string;
+	signature: string | null;
+	changed_files: FileChange[];
+	body: string | null;
+}
+
+export interface FileChange {
+	path: string;
+	old_path: string | null;
+	change_type: ChangeType;
+	additions: number;
+	deletions: number;
+	is_binary: boolean;
+}
+
+export type ChangeType = 'Added' | 'Deleted' | 'Modified' | 'Renamed' | 'Copied' | 'SubmoduleUpdated';
+
+export interface DiffSummary {
+	files: FileDiffSummary[];
+	stats: DiffStats;
+}
+
+export interface FileDiffSummary {
+	path: string;
+	old_path: string | null;
+	change_type: ChangeType;
+	additions: number;
+	deletions: number;
+	is_binary: boolean;
+}
+
+export interface DiffStats {
+	files_changed: number;
+	additions: number;
+	deletions: number;
+}
+
+export interface FileDiff {
+	path: string;
+	old_path: string | null;
+	hunks: Hunk[];
+	is_binary: boolean;
+	old_size: number | null;
+	new_size: number | null;
+	truncated_at: number | null;
+}
+
+export interface Hunk {
+	old_start: number;
+	old_count: number;
+	new_start: number;
+	new_count: number;
+	lines: DiffLine[];
+}
+
+export type DiffLine =
+	| { Context: { content: string; old_line: number; new_line: number } }
+	| { Addition: { content: string; new_line: number } }
+	| { Deletion: { content: string; old_line: number } };

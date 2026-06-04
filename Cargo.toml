@@ -14,6 +14,8 @@ license = "MIT"
 dirs = "6"
 gitv-git-core = { path = "crates/gitv-git-core" }
 gix = { version = "0.84", default-features = false, features = ["basic", "max-performance", "sha1"] }
+gix-diff = "0.64"
+gix-object = "0.61"
 postcard = { version = "1", features = ["alloc"] }
 regex = "1"
 roaring = "0.10"

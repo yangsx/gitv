@@ -55,3 +55,13 @@ pub enum OidError {
     #[error("invalid hex character at position {0}")]
     InvalidChar(usize),
 }
+
+#[derive(Error, Debug)]
+pub enum DiffError {
+    #[error("gix error: {0}")]
+    Gix(String),
+    #[error("object not found: {0}")]
+    ObjectNotFound(String),
+    #[error("binary file: {0}")]
+    BinaryFile(String),
+}
