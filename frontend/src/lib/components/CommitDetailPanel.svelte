@@ -139,7 +139,7 @@
 					: 'text-gray-500 hover:text-gray-300'}"
 				onclick={() => switchTab('changes')}
 			>
-				Changes
+				Patch
 			</button>
 			<button
 				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
@@ -148,7 +148,7 @@
 					: 'text-gray-500 hover:text-gray-300'}"
 				onclick={() => switchTab('tree')}
 			>
-				Files
+				Tree
 			</button>
 		</div>
 
