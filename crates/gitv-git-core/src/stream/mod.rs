@@ -221,7 +221,7 @@ mod tests {
         run_git(dir.path(), &["config", "user.email", "test@test.com"]);
         let repo = GixRepository::open(dir.path()).expect("open");
         let mut stream = CommitStream::new(Box::new(repo), CommitFilter::default());
-        let result = stream.next_batch(10);
-        assert!(result.is_err() || result.unwrap().is_none());
+        let result = stream.next_batch(10).expect("should not error");
+        assert!(result.is_none(), "empty repo should yield None");
     }
 }

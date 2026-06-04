@@ -260,6 +260,19 @@ pub struct CommitFilter {
     pub first_parent_only: bool,
 }
 
+impl CommitFilter {
+    pub const fn new() -> Self {
+        Self {
+            refs: None,
+            date_range: None,
+            author: None,
+            path: None,
+            hide_merges: false,
+            first_parent_only: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DateRange {
     pub from: Option<DateTime<Utc>>,

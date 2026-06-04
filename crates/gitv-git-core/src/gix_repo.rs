@@ -15,6 +15,8 @@ pub struct GixRepository {
 impl GixRepository {
     pub fn open(path: &Path) -> Result<Self, GitError> {
         let repo = gix::discover(path).map_err(|e| {
+            // gix doesn't expose a structured error kind for this; string match is fragile
+            // but currently the only way to distinguish "not a git repo" from other errors
             if e.to_string().contains("not a git repository") {
                 GitError::NotAGitRepository(path.display().to_string())
             } else {
@@ -54,7 +56,10 @@ impl Repository for GixRepository {
 
     fn commits(&self, max_count: Option<usize>) -> Result<Vec<CommitInfo>, GitError> {
         let repo = self.thread_local();
-        let head_id = repo.head_id().map_err(|e| GitError::Gix(e.to_string()))?;
+        let head_id = match repo.head_id() {
+            Ok(id) => id,
+            Err(_) => return Ok(Vec::new()),
+        };
         let refs = build_ref_map(&repo)?;
         let walk = head_id
             .ancestors()
@@ -245,7 +250,7 @@ fn gix_id_to_oid(id: &gix::Id) -> Oid {
 fn gix_object_id_to_oid(oid: gix::ObjectId) -> Oid {
     match oid {
         gix::ObjectId::Sha1(bytes) => Oid::from_bytes(bytes),
-        _ => Oid::from_bytes([0u8; 20]),
+        other => unreachable!("unsupported hash algorithm: {:?}", other),
     }
 }
 
@@ -268,18 +273,13 @@ fn gix_time_to_datetime(time: &gix::date::Time) -> chrono::DateTime<Utc> {
 }
 
 fn commit_to_commit_info(oid: &Oid, commit: &gix::Commit, refs: Vec<Ref>) -> CommitInfo {
-    let default_sig = gix::actor::SignatureRef {
+    let empty_sig = gix::actor::SignatureRef {
         name: "".into(),
         email: "".into(),
         time: "",
     };
-    let author_sig = commit.author().unwrap_or(default_sig.trim());
-    let default_sig2 = gix::actor::SignatureRef {
-        name: "".into(),
-        email: "".into(),
-        time: "",
-    };
-    let committer_sig = commit.committer().unwrap_or(default_sig2.trim());
+    let author_sig = commit.author().unwrap_or(empty_sig.trim());
+    let committer_sig = commit.committer().unwrap_or(empty_sig.trim());
     let author = gix_signature_to_author(&author_sig);
     let committer = gix_signature_to_author(&committer_sig);
     let author_time = author_sig
