@@ -188,7 +188,7 @@ impl Repository for GixRepository {
                 continue;
             };
 
-            let author_sig = stash_commit.committer().map(|s| s.trim()).ok();
+            let author_sig = stash_commit.author().ok();
             let author = author_sig
                 .as_ref()
                 .map(|s| gix_signature_to_author(s))
@@ -197,7 +197,6 @@ impl Repository for GixRepository {
                     email: String::new(),
                 });
             let time = author_sig
-                .as_ref()
                 .and_then(|s| s.time().ok())
                 .map(|t| gix_time_to_datetime(&t))
                 .unwrap_or_default();
@@ -208,7 +207,10 @@ impl Repository for GixRepository {
                 .unwrap_or_default();
             let summary = message.lines().next().unwrap_or("").to_string();
 
-            let file_summary = stash_file_summary(&repo, line.new_oid, &parent_ids)?;
+            let stash_tree = stash_commit
+                .tree()
+                .map_err(|e| GitError::Gix(e.to_string()))?;
+            let file_summary = stash_file_summary_from_tree(&repo, &stash_tree, &parent_ids)?;
 
             entries.push(StashEntry {
                 index,
@@ -248,13 +250,6 @@ impl Repository for GixRepository {
             let (_path, _old_path, _change_type, is_binary) = change_to_file_change_parts(change);
             if is_binary {
                 is_any_binary = true;
-                all_hunks.push(Hunk {
-                    old_start: 0,
-                    old_count: 0,
-                    new_start: 0,
-                    new_count: 0,
-                    lines: Vec::new(),
-                });
                 continue;
             }
             let (hunks, blob_binary) = compute_hunks_for_change(&repo, change)?;
@@ -307,13 +302,11 @@ impl Repository for GixRepository {
             None
         };
 
-        let staged = compute_stash_half_diff(
-            &repo,
-            &parent_tree,
-            index_tree.as_ref().unwrap_or(&stash_tree),
-            stash_index,
-            "staged",
-        )?;
+        let staged = if let Some(ref idx_tree) = index_tree {
+            compute_stash_half_diff(&repo, &parent_tree, idx_tree, stash_index, "staged")?
+        } else {
+            empty_stash_diff(stash_index, "staged")
+        };
 
         let unstaged = compute_stash_half_diff(
             &repo,
@@ -1714,21 +1707,11 @@ fn resolve_stash(
     Ok((line.new_oid, parent_tree))
 }
 
-fn stash_file_summary(
+fn stash_file_summary_from_tree(
     repo: &gix::Repository,
-    stash_oid: gix::ObjectId,
+    stash_tree: &gix::Tree<'_>,
     parent_ids: &[gix::Id<'_>],
 ) -> Result<Vec<StashFileSummary>, GitError> {
-    let stash_obj = repo
-        .find_object(stash_oid)
-        .map_err(|e| GitError::Gix(e.to_string()))?;
-    let stash_commit = stash_obj
-        .try_into_commit()
-        .map_err(|e| GitError::Gix(e.to_string()))?;
-    let stash_tree = stash_commit
-        .tree()
-        .map_err(|e| GitError::Gix(e.to_string()))?;
-
     let first_parent_id = match parent_ids.first() {
         Some(id) => *id,
         None => return Ok(Vec::new()),
@@ -1744,7 +1727,7 @@ fn stash_file_summary(
         .map_err(|e| GitError::Gix(e.to_string()))?;
 
     let changes = repo
-        .diff_tree_to_tree(Some(&parent_tree), Some(&stash_tree), None)
+        .diff_tree_to_tree(Some(&parent_tree), Some(stash_tree), None)
         .map_err(|e| GitError::Gix(e.to_string()))?;
 
     let mut summary = Vec::new();
@@ -1761,6 +1744,18 @@ fn stash_file_summary(
         });
     }
     Ok(summary)
+}
+
+fn empty_stash_diff(stash_index: usize, label: &str) -> FileDiff {
+    FileDiff {
+        path: PathBuf::from(format!("stash@{{{stash_index}}} ({label})")),
+        old_path: None,
+        hunks: Vec::new(),
+        is_binary: false,
+        old_size: None,
+        new_size: None,
+        truncated_at: None,
+    }
 }
 
 fn compute_stash_half_diff(
