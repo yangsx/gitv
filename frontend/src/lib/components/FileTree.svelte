@@ -6,14 +6,17 @@
 		repoPath: string;
 		depth?: number;
 		onhistoryfile?: (_path: string) => void;
+		onselectfile?: (_path: string) => void;
 	}
 
-	let { node, repoPath, depth = 0, onhistoryfile }: Props = $props();
+	let { node, repoPath, depth = 0, onhistoryfile, onselectfile }: Props = $props();
 	let expanded = $state(depth < 1);
 
 	function toggle() {
 		if (node.children.length > 0) {
 			expanded = !expanded;
+		} else if (node.node_type === 'File' && onselectfile) {
+			onselectfile(node.path);
 		}
 	}
 
@@ -58,6 +61,6 @@
 {#if expanded}
 	{#each node.children as child (child.path)}
 		<!-- svelte-ignore svelte_self_deprecated -->
-		<svelte:self node={child} {repoPath} depth={depth + 1} {onhistoryfile} />
+		<svelte:self node={child} {repoPath} depth={depth + 1} {onhistoryfile} {onselectfile} />
 	{/each}
 {/if}

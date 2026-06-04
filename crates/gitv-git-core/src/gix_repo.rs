@@ -115,11 +115,41 @@ impl Repository for GixRepository {
             None
         };
 
+        let to_tree = tree_for_oid(&repo, oid).map_err(|e| GitError::Gix(e.to_string()))?;
+        let parent_oid = info.parent_oids.first().copied();
+        let from_tree = parent_oid
+            .map(|p| tree_for_oid(&repo, p).map_err(|e| GitError::Gix(e.to_string())))
+            .transpose()?;
+
+        let gix_changes = repo
+            .diff_tree_to_tree(from_tree.as_ref(), Some(&to_tree), None)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let mut changed_files = Vec::new();
+        for change in &gix_changes {
+            let (path, old_path, change_type, is_binary, is_submodule) =
+                change_to_file_change_parts(change);
+            let (additions, deletions) = if is_binary || is_submodule {
+                (0, 0)
+            } else {
+                count_lines_for_change(&repo, change)
+            };
+            changed_files.push(FileChange {
+                path,
+                old_path,
+                change_type,
+                additions,
+                deletions,
+                is_binary,
+                is_submodule,
+            });
+        }
+
         Ok(CommitDetails {
             info,
             tree_oid,
             signature: None,
-            changed_files: Vec::new(),
+            changed_files,
             body,
         })
     }

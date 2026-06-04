@@ -131,6 +131,20 @@
 
 <div class="flex h-full">
 	<div class="w-64 shrink-0 flex flex-col border-r border-gray-700 bg-gray-900/50">
+		<div class="border-b border-gray-700 px-3 py-2">
+			<p class="text-sm font-semibold text-gray-200 break-words">{details.info.summary}</p>
+			<p class="mt-1 text-xs text-gray-400">
+				{details.info.author.name}
+				<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
+			</p>
+			<p class="text-[10px] text-gray-500">
+				{new Date(details.info.author_time).toLocaleString()}
+			</p>
+			{#if details.body}
+				<pre
+					class="mt-2 whitespace-pre-wrap text-xs text-gray-400 border-t border-gray-800 pt-2">{details.body}</pre>
+			{/if}
+		</div>
 		<div class="flex border-b border-gray-700">
 			<button
 				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
@@ -182,7 +196,12 @@
 			{:else if loadingTree}
 				<div class="px-3 py-4 text-xs text-gray-500">Loading tree...</div>
 			{:else if fileTree}
-				<FileTree node={fileTree} {repoPath} onhistoryfile={(p: string) => (historyFilePath = p)} />
+				<FileTree
+					node={fileTree}
+					{repoPath}
+					onhistoryfile={(p: string) => (historyFilePath = p)}
+					onselectfile={(p: string) => loadFileDiff(p)}
+				/>
 			{:else}
 				<div class="px-3 py-4 text-xs text-gray-500">No file tree</div>
 			{/if}
