@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { openRepository, getCommits, getGraphLayout } from '$lib/bindings/commands';
 	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
-	import { repoInfo, selectedOid, isLoading, error } from '$lib/stores/repository';
+	import { repoInfo, selectedOid, isLoading, error, matchingOids } from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
+	import SearchBar from '$lib/components/SearchBar.svelte';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -82,6 +83,9 @@
 					{$repoInfo.head_branch}
 				</span>
 			{/if}
+			<div class="ml-auto w-80">
+				<SearchBar {repoPath} />
+			</div>
 			{#if $isLoading}
 				<span class="text-xs text-gray-500">Loading...</span>
 			{/if}
@@ -92,6 +96,7 @@
 					{commits}
 					layout={graphLayout}
 					selectedOid={$selectedOid}
+					matchingOids={$matchingOids}
 					onSelect={onSelectCommit}
 				/>
 			{/if}

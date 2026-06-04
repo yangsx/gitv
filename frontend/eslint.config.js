@@ -25,7 +25,11 @@ export default ts.config(
 				HTMLDivElement: 'readonly',
 				CanvasRenderingContext2D: 'readonly',
 				Event: 'readonly',
-				Map: 'readonly'
+				Map: 'readonly',
+				setTimeout: 'readonly',
+				clearTimeout: 'readonly',
+				KeyboardEvent: 'readonly',
+				ReturnType: 'readonly'
 			}
 		}
 	},

@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { GraphLayout, RepositoryInfo, RecentRepository, CommitInfo } from './types';
+import type {
+	GraphLayout,
+	RepositoryInfo,
+	RecentRepository,
+	CommitInfo,
+	SearchQuery,
+	SearchResult
+} from './types';
 
 export async function openRepository(path: string): Promise<RepositoryInfo> {
 	return invoke<RepositoryInfo>('open_repository', { path });
@@ -27,4 +34,8 @@ export async function getGraphLayout(
 		orientation: options?.orientation ?? 'top-to-bottom',
 		color_mode: options?.color_mode ?? 'by-branch'
 	});
+}
+
+export async function searchCommits(path: string, query: SearchQuery): Promise<SearchResult[]> {
+	return invoke<SearchResult[]>('search_commits', { path, query });
 }

@@ -102,6 +102,31 @@ export interface CommitBatch {
 	has_more: boolean;
 }
 
+export interface SearchQuery {
+	text?: string;
+	use_regex: boolean;
+	sha_prefix?: string;
+	author?: string;
+	date_range?: DateRange;
+	combine_mode: 'And' | 'Or';
+}
+
+export interface DateRange {
+	from?: string;
+	to?: string;
+}
+
+export interface SearchResult {
+	commit_oid: string;
+	match_type: 'Message' | 'Sha' | 'Author';
+	highlights: Highlight[];
+}
+
+export interface Highlight {
+	start: number;
+	length: number;
+}
+
 export interface RecentRepository {
 	path: string;
 	name: string;

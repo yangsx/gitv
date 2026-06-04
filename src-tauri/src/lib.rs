@@ -10,6 +10,7 @@ pub fn run() {
             commands::commits::stream_commits,
             commands::commits::get_commits,
             commands::graph::get_graph_layout,
+            commands::search::search_commits,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

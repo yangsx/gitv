@@ -4,10 +4,11 @@
 	interface Props {
 		commit: CommitInfo;
 		isSelected: boolean;
+		isDimmed?: boolean;
 		onclick: (_oid: string) => void;
 	}
 
-	let { commit, isSelected, onclick }: Props = $props();
+	let { commit, isSelected, isDimmed = false, onclick }: Props = $props();
 
 	function formatTime(iso: string): string {
 		try {
@@ -32,7 +33,9 @@
 <button
 	class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
 		? 'bg-blue-900/40 text-blue-200'
-		: 'text-gray-300'}"
+		: isDimmed
+			? 'text-gray-600'
+			: 'text-gray-300'}"
 	onclick={() => onclick(commit.oid)}
 >
 	<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
