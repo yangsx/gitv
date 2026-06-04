@@ -45,9 +45,9 @@ export async function getGraphLayout(
 ): Promise<GraphLayout> {
 	return invoke<GraphLayout>('get_graph_layout', {
 		path,
-		hideMerges: options?.hide_merges ?? false,
+		hide_merges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
-		colorMode: options?.color_mode ?? 'by-branch'
+		color_mode: options?.color_mode ?? 'by-branch'
 	});
 }
 

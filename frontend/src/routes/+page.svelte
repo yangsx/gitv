@@ -77,6 +77,7 @@
 			commits = loadedCommits;
 			graphLayout = layout;
 			allRefs = loadedRefs;
+			layoutLoaded = true;
 		} catch (e: unknown) {
 			error.set(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -103,11 +104,13 @@
 		}
 	}
 
+	let layoutLoaded = $state(false);
+
 	$effect(() => {
 		void $graphColorMode;
 		void $graphHideMerges;
 		void $graphOrientation;
-		if ($repoInfo) reloadLayout();
+		if ($repoInfo && layoutLoaded) reloadLayout();
 	});
 
 	async function onSelectCommit(oid: string, ctrlKey = false) {
