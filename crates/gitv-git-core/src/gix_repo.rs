@@ -238,10 +238,10 @@ impl Repository for GixRepository {
 
         let change = gix_changes
             .iter()
-            .find(|c| std::path::PathBuf::from(c.location().to_string()) == path)
+            .find(|c| c.location() == gix::bstr::BStr::new(path.to_string_lossy().as_bytes()))
             .ok_or_else(|| DiffError::ObjectNotFound(path.display().to_string()))?;
 
-        let (path, old_path, change_type, is_binary) = change_to_file_change_parts(change);
+        let (path, old_path, _change_type, is_binary) = change_to_file_change_parts(change);
 
         if is_binary {
             return Ok(FileDiff {
@@ -255,15 +255,13 @@ impl Repository for GixRepository {
             });
         }
 
-        let hunks = compute_hunks_for_change(&repo, change)?;
-
-        let file_is_binary = hunks.is_empty() && matches!(change_type, ChangeType::Modified);
+        let (hunks, blob_is_binary) = compute_hunks_for_change(&repo, change)?;
 
         Ok(FileDiff {
             path,
             old_path,
             hunks,
-            is_binary: file_is_binary,
+            is_binary: is_binary || blob_is_binary,
             old_size: None,
             new_size: None,
             truncated_at: None,
@@ -459,6 +457,8 @@ fn change_to_file_change_parts(
             source_location,
             location,
             copy,
+            source_entry_mode,
+            entry_mode,
             ..
         } => (
             std::path::PathBuf::from(location.to_string()),
@@ -468,7 +468,7 @@ fn change_to_file_change_parts(
             } else {
                 ChangeType::Renamed
             },
-            false,
+            is_entry_mode_binary(*source_entry_mode) || is_entry_mode_binary(*entry_mode),
         ),
     }
 }
@@ -615,17 +615,17 @@ fn diff_line_counts(
 fn compute_hunks_for_change(
     repo: &gix::Repository,
     change: &gix::object::tree::diff::ChangeDetached,
-) -> Result<Vec<Hunk>, DiffError> {
+) -> Result<(Vec<Hunk>, bool), DiffError> {
     let location = change.location();
     let (source_id, dest_id): (&gix::hash::ObjectId, &gix::hash::ObjectId) = match change {
         gix::object::tree::diff::ChangeDetached::Modification {
             previous_id, id, ..
         } => (previous_id, id),
         gix::object::tree::diff::ChangeDetached::Addition { id, .. } => {
-            return compute_hunks_for_addition(repo, id);
+            return compute_hunks_for_addition(repo, id).map(|h| (h, false));
         }
         gix::object::tree::diff::ChangeDetached::Deletion { id, .. } => {
-            return compute_hunks_for_deletion(repo, id);
+            return compute_hunks_for_deletion(repo, id).map(|h| (h, false));
         }
         gix::object::tree::diff::ChangeDetached::Rewrite { source_id, id, .. } => (source_id, id),
     };
@@ -654,7 +654,8 @@ fn compute_hunks_for_change(
         )
         .map_err(|e| DiffError::Gix(e.to_string()))?;
 
-    run_blob_diff(&mut cache)
+    let result = run_blob_diff(&mut cache)?;
+    Ok((result.hunks, result.is_binary))
 }
 
 fn compute_hunks_for_addition(
@@ -725,7 +726,12 @@ fn compute_hunks_for_deletion(
     }])
 }
 
-fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<Vec<Hunk>, DiffError> {
+struct BlobDiffResult {
+    hunks: Vec<Hunk>,
+    is_binary: bool,
+}
+
+fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<BlobDiffResult, DiffError> {
     let mut hunks: Vec<Hunk> = Vec::new();
     let mut current_lines: Vec<DiffLine> = Vec::new();
     let mut old_line = 1usize;
@@ -818,7 +824,12 @@ fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<Vec<Hunk>, Diff
         Ok::<(), std::convert::Infallible>(())
     });
 
-    result.map_err(|e| DiffError::Gix(e.to_string()))?;
+    let outcome = result.map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    let is_binary = matches!(
+        outcome.operation,
+        gix_diff::blob::platform::prepare_diff::Operation::SourceOrDestinationIsBinary
+    );
 
     if !current_lines.is_empty() {
         hunks.push(Hunk {
@@ -830,7 +841,7 @@ fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<Vec<Hunk>, Diff
         });
     }
 
-    Ok(hunks)
+    Ok(BlobDiffResult { hunks, is_binary })
 }
 
 #[cfg(test)]

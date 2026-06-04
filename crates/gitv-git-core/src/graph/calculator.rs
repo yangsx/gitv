@@ -569,7 +569,6 @@ impl GraphCalculator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::*;
     use chrono::{TimeZone, Utc};
 
     fn make_oid(n: u8) -> Oid {

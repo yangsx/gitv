@@ -2,11 +2,13 @@
 	let {
 		panelHeight = $bindable(300),
 		minHeight = 200,
+		maxHeight = Infinity,
 		onDragStart,
 		onDragEnd
 	}: {
 		panelHeight?: number;
 		minHeight?: number;
+		maxHeight?: number;
 		onDragStart?: () => void;
 		onDragEnd?: () => void;
 	} = $props();
@@ -23,7 +25,7 @@
 
 		function onMouseMove(e: MouseEvent) {
 			const delta = startY - e.clientY;
-			panelHeight = Math.max(minHeight, startHeight + delta);
+			panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
 		}
 
 		function onMouseUp() {

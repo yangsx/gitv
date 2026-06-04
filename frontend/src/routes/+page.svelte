@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { openRepository, getCommits, getGraphLayout, getCommitDetails } from '$lib/bindings/commands';
+	import {
+		openRepository,
+		getCommits,
+		getGraphLayout,
+		getCommitDetails
+	} from '$lib/bindings/commands';
 	import type { CommitInfo, GraphLayout, CommitDetails } from '$lib/bindings/types';
 	import { repoInfo, selectedOid, isLoading, error, matchingOids } from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
@@ -14,6 +19,7 @@
 	let commitDetails = $state<CommitDetails | null>(null);
 	let detailsLoading = $state(false);
 	let detailPanelHeight = $state(300);
+	let viewportHeight = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -22,6 +28,12 @@
 			repoPath = path;
 			loadRepo(path);
 		}
+
+		function onResize() {
+			viewportHeight = window.innerHeight;
+		}
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
 	});
 
 	async function loadRepo(path: string) {
@@ -118,7 +130,10 @@
 			</div>
 
 			{#if $selectedOid}
-				<ResizeHandle bind:panelHeight={detailPanelHeight} />
+				<ResizeHandle
+					bind:panelHeight={detailPanelHeight}
+					maxHeight={Math.floor(viewportHeight * 0.7)}
+				/>
 				<div
 					class="overflow-hidden bg-gray-900 border-t border-gray-700"
 					style="height: {detailPanelHeight}px;"
@@ -128,7 +143,7 @@
 							Loading details...
 						</div>
 					{:else if commitDetails}
-						<CommitDetailPanel details={commitDetails} repoPath={repoPath} />
+						<CommitDetailPanel details={commitDetails} {repoPath} />
 					{:else}
 						<div class="flex items-center justify-center h-full text-sm text-gray-500">
 							Failed to load commit details

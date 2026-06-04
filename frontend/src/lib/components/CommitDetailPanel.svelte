@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CommitDetails, FileDiff } from '$lib/bindings/types';
-	import { getDiff, getFileDiff } from '$lib/bindings/commands';
+	import { getFileDiff } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
 
 	interface Props {
@@ -49,14 +49,6 @@
 			loadingDiff = false;
 		}
 	}
-
-	function formatFileChangeBar(additions: number, deletions: number): string {
-		if (additions + deletions === 0) return '';
-		const total = Math.max(additions + deletions, 1);
-		const addBars = Math.max(1, Math.round((additions / total) * 5));
-		const delBars = Math.max(1, Math.round((deletions / total) * 5));
-		return '+'.repeat(addBars) + '-'.repeat(delBars);
-	}
 </script>
 
 <div class="flex h-full">
@@ -66,7 +58,10 @@
 		</div>
 		{#each details.changed_files as file}
 			<button
-				class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70 {selectedFile === file.path ? 'bg-gray-800' : ''}"
+				class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70 {selectedFile ===
+				file.path
+					? 'bg-gray-800'
+					: ''}"
 				onclick={() => loadFileDiff(file.path)}
 			>
 				<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
