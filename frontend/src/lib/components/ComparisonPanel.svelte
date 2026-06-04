@@ -16,6 +16,7 @@
 	let selectedFile = $state<string | null>(null);
 	let fileDiff = $state<FileDiff | null>(null);
 	let loadingDiff = $state(false);
+	let fullDiff = $state(false);
 
 	const CHANGE_COLORS: Record<string, string> = {
 		Added: 'text-green-400',
@@ -50,9 +51,31 @@
 			return;
 		}
 		selectedFile = path;
+		fullDiff = false;
 		loadingDiff = true;
 		try {
 			fileDiff = await getFileDiff(repoPath, fromOid, toOid, path);
+		} catch {
+			fileDiff = null;
+		} finally {
+			loadingDiff = false;
+		}
+	}
+
+	async function loadFullDiff() {
+		fullDiff = true;
+		if (!selectedFile) return;
+		loadingDiff = true;
+		try {
+			fileDiff = await getFileDiff(
+				repoPath,
+				fromOid,
+				toOid,
+				selectedFile,
+				undefined,
+				undefined,
+				true
+			);
 		} catch {
 			fileDiff = null;
 		} finally {
@@ -105,7 +128,15 @@
 					Loading diff...
 				</div>
 			{:else if fileDiff}
-				{#if fileDiff.is_binary}
+				{#if fileDiff.is_submodule}
+					<div class="flex items-center justify-center py-8 text-sm text-orange-400">
+						{fileDiff.hunks
+							.flatMap((h) => h.lines)
+							.map((l) => ('Addition' in l ? l.Addition.content : ''))
+							.filter(Boolean)
+							.join(' ')}
+					</div>
+				{:else if fileDiff.is_binary}
 					<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 						Binary file (not displayed)
 					</div>
@@ -117,6 +148,19 @@
 					<div class="overflow-x-auto p-2">
 						<DiffViewer hunks={fileDiff.hunks} />
 					</div>
+					{#if fileDiff.truncated_at != null}
+						<div class="flex items-center justify-center gap-3 border-t border-gray-700 py-2">
+							<span class="text-xs text-gray-500">
+								Diff truncated at {fileDiff.truncated_at} lines
+							</span>
+							<button
+								class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600"
+								onclick={loadFullDiff}
+							>
+								Show full diff
+							</button>
+						</div>
+					{/if}
 				{/if}
 			{:else}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">

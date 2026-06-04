@@ -4,7 +4,16 @@ import type { RepositoryInfo, SearchQuery, SearchResult } from '$lib/bindings/ty
 export const repoInfo = writable<RepositoryInfo | null>(null);
 export const selectedOid = writable<string | null>(null);
 export const comparisonOid = writable<string | null>(null);
-export const isLoading = writable(false);
+export type OperationState =
+	| 'Idle'
+	| 'LoadingRepo'
+	| 'LoadingDetails'
+	| 'Searching'
+	| 'ApplyingFilter';
+
+export const operationState = writable<OperationState>('Idle');
+
+export const isLoading = derived(operationState, (s) => s !== 'Idle');
 export const error = writable<string | null>(null);
 export const searchQuery = writable<SearchQuery | null>(null);
 export const searchResults = writable<SearchResult[]>([]);

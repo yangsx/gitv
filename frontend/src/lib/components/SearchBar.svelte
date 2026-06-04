@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { searchCommits } from '$lib/bindings/commands';
-	import { searchQuery, searchResults, isLoading } from '$lib/stores/repository';
+	import { searchQuery, searchResults, operationState } from '$lib/stores/repository';
+	import { showToast } from '$lib/stores/toast';
 
 	interface Props {
 		repoPath: string;
@@ -51,14 +52,16 @@
 		searchQuery.set(query);
 
 		if (!repoPath) return;
-		isLoading.set(true);
+		operationState.set('Searching');
 		try {
 			const results = await searchCommits(repoPath, query);
 			searchResults.set(results);
+			showToast(`Search: ${results.length} match${results.length !== 1 ? 'es' : ''}`, 'info');
 		} catch {
 			searchResults.set([]);
+			showToast('Search failed', 'error');
 		} finally {
-			isLoading.set(false);
+			operationState.set('Idle');
 		}
 	}
 

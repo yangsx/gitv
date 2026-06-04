@@ -16,6 +16,7 @@
 	let selectedFile = $state<string | null>(null);
 	let fileDiff = $state<FileDiff | null>(null);
 	let loadingDiff = $state(false);
+	let diffError = $state<string | null>(null);
 	let diffMode = $state<'normal' | 'word-diff' | 'stat-only'>('normal');
 	let whitespaceMode = $state<
 		'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
@@ -26,6 +27,7 @@
 	let loadingTree = $state(false);
 	let historyFilePath = $state<string | null>(null);
 	let blameFilePath = $state<string | null>(null);
+	let fullDiff = $state(false);
 
 	$effect(() => {
 		void details.info.oid;
@@ -62,6 +64,8 @@
 			return;
 		}
 		selectedFile = path;
+		fullDiff = false;
+		diffError = null;
 		loadingDiff = true;
 		try {
 			const parentOid = details.info.parent_oids[0] ?? null;
@@ -73,8 +77,8 @@
 				diffMode,
 				whitespaceMode
 			);
-		} catch {
-			fileDiff = null;
+		} catch (e: unknown) {
+			diffError = e instanceof Error ? e.message : String(e);
 		} finally {
 			loadingDiff = false;
 		}
@@ -99,6 +103,7 @@
 
 	async function refreshDiff() {
 		if (!selectedFile) return;
+		diffError = null;
 		loadingDiff = true;
 		try {
 			const parentOid = details.info.parent_oids[0] ?? null;
@@ -108,13 +113,19 @@
 				details.info.oid,
 				selectedFile,
 				diffMode,
-				whitespaceMode
+				whitespaceMode,
+				fullDiff
 			);
-		} catch {
-			fileDiff = null;
+		} catch (e: unknown) {
+			diffError = e instanceof Error ? e.message : String(e);
 		} finally {
 			loadingDiff = false;
 		}
+	}
+
+	async function loadFullDiff() {
+		fullDiff = true;
+		await refreshDiff();
 	}
 </script>
 
@@ -181,6 +192,10 @@
 	<div class="relative flex-1 flex flex-col overflow-hidden bg-gray-900">
 		{#if loadingDiff}
 			<div class="flex items-center justify-center py-8 text-sm text-gray-500">Loading diff...</div>
+		{:else if diffError}
+			<div class="flex items-center justify-center py-8 text-sm text-red-400">
+				{diffError}
+			</div>
 		{:else if fileDiff}
 			<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-2">
 				<h3 class="font-mono text-sm text-gray-300">{fileDiff.path}</h3>
@@ -224,7 +239,15 @@
 					{/if}
 				</div>
 			</div>
-			{#if fileDiff.is_binary}
+			{#if fileDiff.is_submodule}
+				<div class="flex items-center justify-center py-8 text-sm text-orange-400">
+					{fileDiff.hunks
+						.flatMap((h) => h.lines)
+						.map((l) => ('Addition' in l ? l.Addition.content : ''))
+						.filter(Boolean)
+						.join(' ')}
+				</div>
+			{:else if fileDiff.is_binary}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					Binary file (not displayed)
 				</div>
@@ -236,6 +259,19 @@
 				<div class="flex-1 overflow-auto p-2">
 					<DiffViewer hunks={fileDiff.hunks} {viewMode} />
 				</div>
+				{#if fileDiff.truncated_at != null}
+					<div class="flex items-center justify-center gap-3 border-t border-gray-700 py-2">
+						<span class="text-xs text-gray-500">
+							Diff truncated at {fileDiff.truncated_at} lines
+						</span>
+						<button
+							class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600"
+							onclick={loadFullDiff}
+						>
+							Show full diff
+						</button>
+					</div>
+				{/if}
 			{/if}
 		{:else}
 			<div class="flex items-center justify-center py-8 text-sm text-gray-500">

@@ -41,6 +41,7 @@ pub fn get_file_diff(
     file_path: String,
     diff_mode: Option<String>,
     whitespace: Option<String>,
+    full: Option<bool>,
 ) -> Result<gitv_git_core::models::FileDiff, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
@@ -51,8 +52,20 @@ pub fn get_file_diff(
     let to_oid = Oid::from_hex(&to).map_err(|e| e.to_string())?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
-    repo.file_diff(from_oid, to_oid, std::path::Path::new(&file_path), mode, ws)
-        .map_err(|e| e.to_string())
+    let line_limit = if full.unwrap_or(false) {
+        None
+    } else {
+        Some(10_000)
+    };
+    repo.file_diff_limited(
+        from_oid,
+        to_oid,
+        std::path::Path::new(&file_path),
+        mode,
+        ws,
+        line_limit,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -74,7 +74,8 @@ export async function getFileDiff(
 	to: string,
 	filePath: string,
 	diffMode?: string,
-	whitespace?: string
+	whitespace?: string,
+	full?: boolean
 ): Promise<FileDiff> {
 	return invoke<FileDiff>('get_file_diff', {
 		path,
@@ -82,7 +83,8 @@ export async function getFileDiff(
 		to,
 		filePath,
 		diffMode: diffMode ?? null,
-		whitespace: whitespace ?? null
+		whitespace: whitespace ?? null,
+		full: full ?? false
 	});
 }
 

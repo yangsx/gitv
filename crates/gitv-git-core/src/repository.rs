@@ -28,6 +28,18 @@ pub trait Repository {
         path: &std::path::Path,
         mode: DiffMode,
         whitespace: WhitespaceMode,
+    ) -> Result<FileDiff, DiffError> {
+        self.file_diff_limited(from, to, path, mode, whitespace, Some(10_000))
+    }
+
+    fn file_diff_limited(
+        &self,
+        from: Option<Oid>,
+        to: Oid,
+        path: &std::path::Path,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+        line_limit: Option<usize>,
     ) -> Result<FileDiff, DiffError>;
     fn file_history(
         &self,

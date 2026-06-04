@@ -11,13 +11,13 @@
 	import {
 		repoInfo,
 		selectedOid,
-		isLoading,
 		error,
 		matchingOids,
 		comparisonOid,
 		graphColorMode,
 		graphHideMerges,
-		graphOrientation
+		graphOrientation,
+		operationState
 	} from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -30,6 +30,8 @@
 	import ReflogPanel from '$lib/components/Sidebar/ReflogPanel.svelte';
 	import Toolbar from '$lib/components/Toolbar.svelte';
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
+	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import { showToast } from '$lib/stores/toast';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -59,30 +61,56 @@
 		};
 	});
 
+	let loadError = $state<string | null>(null);
+
 	async function loadRepo(path: string) {
-		isLoading.set(true);
+		operationState.set('LoadingRepo');
 		error.set(null);
+		loadError = null;
 		try {
-			const [info, loadedCommits, layout, loadedRefs] = await Promise.all([
-				openRepository(path),
-				getCommits(path),
-				getGraphLayout(path, {
-					hide_merges: $graphHideMerges,
-					orientation: $graphOrientation,
-					color_mode: $graphColorMode
-				}),
-				getRefs(path)
-			]);
+			const info = await openRepository(path);
 			repoInfo.set(info);
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e);
+			error.set(msg);
+			showToast(`Failed to open repository: ${msg}`, 'error');
+			operationState.set('Idle');
+			return;
+		}
+
+		let commitCount = 0;
+		try {
+			const loadedCommits = await getCommits(path);
 			commits = loadedCommits;
+			commitCount = loadedCommits.length;
+		} catch (e: unknown) {
+			loadError = e instanceof Error ? e.message : String(e);
+			showToast('Partial load: commits failed', 'warning');
+		}
+
+		try {
+			const layout = await getGraphLayout(path, {
+				hide_merges: $graphHideMerges,
+				orientation: $graphOrientation,
+				color_mode: $graphColorMode
+			});
 			graphLayout = layout;
-			allRefs = loadedRefs;
 			layoutLoaded = true;
 		} catch (e: unknown) {
-			error.set(e instanceof Error ? e.message : String(e));
-		} finally {
-			isLoading.set(false);
+			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
+			showToast('Partial load: graph failed', 'warning');
 		}
+
+		try {
+			allRefs = await getRefs(path);
+		} catch (e: unknown) {
+			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
+		}
+
+		if (!loadError) {
+			showToast(`${commitCount} commits loaded`, 'info');
+		}
+		operationState.set('Idle');
 	}
 
 	function handleOpen() {
@@ -93,6 +121,7 @@
 
 	async function reloadLayout() {
 		if (!repoPath) return;
+		operationState.set('ApplyingFilter');
 		try {
 			graphLayout = await getGraphLayout(repoPath, {
 				hide_merges: $graphHideMerges,
@@ -101,6 +130,8 @@
 			});
 		} catch {
 			// keep existing layout
+		} finally {
+			if ($operationState === 'ApplyingFilter') operationState.set('Idle');
 		}
 	}
 
@@ -122,12 +153,14 @@
 		selectedOid.set(oid);
 		commitDetails = null;
 		detailsLoading = true;
+		operationState.set('LoadingDetails');
 		try {
 			commitDetails = await getCommitDetails(repoPath, oid);
 		} catch {
 			commitDetails = null;
 		} finally {
 			detailsLoading = false;
+			if ($operationState === 'LoadingDetails') operationState.set('Idle');
 		}
 	}
 
@@ -200,6 +233,11 @@
 					{$repoInfo.head_branch}
 				</span>
 			{/if}
+			{#if $repoInfo.is_bare}
+				<span class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-400">
+					bare repository
+				</span>
+			{/if}
 			{#if $graphHideMerges}
 				<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-xs text-yellow-300">
 					Merges hidden
@@ -212,8 +250,25 @@
 			<div class="ml-auto w-80">
 				<SearchBar {repoPath} />
 			</div>
-			{#if $isLoading}
-				<span class="text-xs text-gray-500">Loading...</span>
+			{#if loadError}
+				<span class="flex items-center gap-2 text-xs text-amber-400">
+					Loading incomplete
+					<button
+						class="rounded bg-amber-700/50 px-2 py-0.5 text-xs hover:bg-amber-700"
+						onclick={() => loadRepo(repoPath)}
+					>
+						Retry
+					</button>
+				</span>
+			{/if}
+			{#if $operationState === 'LoadingRepo'}
+				<span class="text-xs text-gray-500">Loading repository...</span>
+			{:else if $operationState === 'LoadingDetails'}
+				<span class="text-xs text-gray-500">Loading details...</span>
+			{:else if $operationState === 'Searching'}
+				<span class="text-xs text-gray-500">Searching...</span>
+			{:else if $operationState === 'ApplyingFilter'}
+				<span class="text-xs text-gray-500">Applying filter...</span>
 			{/if}
 		</header>
 		<div class="flex flex-1 overflow-hidden">
@@ -268,4 +323,5 @@
 			</div>
 		</div>
 	{/if}
+	<ToastContainer />
 </div>

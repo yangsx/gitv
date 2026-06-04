@@ -148,6 +148,7 @@ export interface FileChange {
 	additions: number;
 	deletions: number;
 	is_binary: boolean;
+	is_submodule: boolean;
 }
 
 export type ChangeType =
@@ -183,6 +184,7 @@ export interface FileDiff {
 	old_path: string | null;
 	hunks: Hunk[];
 	is_binary: boolean;
+	is_submodule: boolean;
 	old_size: number | null;
 	new_size: number | null;
 	truncated_at: number | null;

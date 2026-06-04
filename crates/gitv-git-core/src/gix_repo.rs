@@ -245,11 +245,18 @@ impl Repository for GixRepository {
 
         let mut all_hunks = Vec::new();
         let mut is_any_binary = false;
+        let mut is_any_submodule = false;
 
         for change in &changes {
-            let (_path, _old_path, _change_type, is_binary) = change_to_file_change_parts(change);
-            if is_binary {
-                is_any_binary = true;
+            let (_path, _old_path, _change_type, is_binary, is_submodule) =
+                change_to_file_change_parts(change);
+            if is_binary || is_submodule {
+                if is_binary {
+                    is_any_binary = true;
+                }
+                if is_submodule {
+                    is_any_submodule = true;
+                }
                 continue;
             }
             let (hunks, blob_binary) = compute_hunks_for_change(&repo, change)?;
@@ -266,6 +273,7 @@ impl Repository for GixRepository {
             old_path: None,
             hunks: all_hunks,
             is_binary: is_any_binary,
+            is_submodule: is_any_submodule,
             old_size: None,
             new_size: None,
             truncated_at: None,
@@ -484,9 +492,10 @@ impl Repository for GixRepository {
         let mut total_deletions = 0usize;
 
         for change in &gix_changes {
-            let (path, old_path, change_type, is_binary) = change_to_file_change_parts(change);
+            let (path, old_path, change_type, is_binary, is_submodule) =
+                change_to_file_change_parts(change);
 
-            let (additions, deletions) = if is_binary {
+            let (additions, deletions) = if is_binary || is_submodule {
                 (0, 0)
             } else {
                 count_lines_for_change(&repo, change)
@@ -515,13 +524,14 @@ impl Repository for GixRepository {
         })
     }
 
-    fn file_diff(
+    fn file_diff_limited(
         &self,
         from: Option<Oid>,
         to: Oid,
         path: &std::path::Path,
         mode: DiffMode,
         whitespace: WhitespaceMode,
+        line_limit: Option<usize>,
     ) -> Result<FileDiff, DiffError> {
         let repo = self.thread_local();
         let to_tree = tree_for_oid(&repo, to)?;
@@ -536,7 +546,37 @@ impl Repository for GixRepository {
             .find(|c| c.location() == gix::bstr::BStr::new(path.to_string_lossy().as_bytes()))
             .ok_or_else(|| DiffError::ObjectNotFound(path.display().to_string()))?;
 
-        let (path, old_path, _change_type, is_binary) = change_to_file_change_parts(change);
+        let (path, old_path, _change_type, is_binary, is_submodule) =
+            change_to_file_change_parts(change);
+
+        if is_submodule {
+            let (old_sha, new_sha) = extract_submodule_shas(change);
+            let msg = format!(
+                "Submodule path {}: updated {}..{}",
+                path.display(),
+                old_sha,
+                new_sha
+            );
+            return Ok(FileDiff {
+                path,
+                old_path,
+                hunks: vec![Hunk {
+                    old_start: 0,
+                    old_count: 1,
+                    new_start: 0,
+                    new_count: 1,
+                    lines: vec![DiffLine::Addition {
+                        content: msg,
+                        new_line: 1,
+                    }],
+                }],
+                is_binary: false,
+                is_submodule: true,
+                old_size: None,
+                new_size: None,
+                truncated_at: None,
+            });
+        }
 
         if is_binary {
             return Ok(FileDiff {
@@ -544,6 +584,7 @@ impl Repository for GixRepository {
                 old_path,
                 hunks: Vec::new(),
                 is_binary: true,
+                is_submodule: false,
                 old_size: None,
                 new_size: None,
                 truncated_at: None,
@@ -554,14 +595,30 @@ impl Repository for GixRepository {
 
         let hunks = apply_diff_options(hunks, &mode, &whitespace);
 
+        let limit = line_limit.unwrap_or(usize::MAX);
+        let mut total_lines = 0usize;
+        let mut kept_hunks = Vec::new();
+        let mut truncated_at: Option<usize> = None;
+
+        for hunk in hunks {
+            let hunk_lines = hunk.lines.len();
+            if total_lines + hunk_lines > limit {
+                truncated_at = Some(total_lines);
+                break;
+            }
+            total_lines += hunk_lines;
+            kept_hunks.push(hunk);
+        }
+
         Ok(FileDiff {
             path,
             old_path,
-            hunks,
+            hunks: kept_hunks,
             is_binary: is_binary || blob_is_binary,
+            is_submodule: false,
             old_size: None,
             new_size: None,
-            truncated_at: None,
+            truncated_at,
         })
     }
 
@@ -853,39 +910,69 @@ fn change_to_file_change_parts(
     Option<std::path::PathBuf>,
     ChangeType,
     bool,
+    bool,
 ) {
+    let is_submodule_entry = |mode: gix_object::tree::EntryMode| {
+        matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
+    };
+
     match change {
         gix::object::tree::diff::ChangeDetached::Addition {
             entry_mode,
             location,
             ..
-        } => (
-            std::path::PathBuf::from(location.to_string()),
-            None,
-            ChangeType::Added,
-            is_entry_mode_binary(*entry_mode),
-        ),
+        } => {
+            let is_sub = is_submodule_entry(*entry_mode);
+            (
+                std::path::PathBuf::from(location.to_string()),
+                None,
+                if is_sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Added
+                },
+                false,
+                is_sub,
+            )
+        }
         gix::object::tree::diff::ChangeDetached::Deletion {
             entry_mode,
             location,
             ..
-        } => (
-            std::path::PathBuf::from(location.to_string()),
-            None,
-            ChangeType::Deleted,
-            is_entry_mode_binary(*entry_mode),
-        ),
+        } => {
+            let is_sub = is_submodule_entry(*entry_mode);
+            (
+                std::path::PathBuf::from(location.to_string()),
+                None,
+                if is_sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Deleted
+                },
+                false,
+                is_sub,
+            )
+        }
         gix::object::tree::diff::ChangeDetached::Modification {
             previous_entry_mode,
             entry_mode,
             location,
             ..
-        } => (
-            std::path::PathBuf::from(location.to_string()),
-            None,
-            ChangeType::Modified,
-            is_entry_mode_binary(*previous_entry_mode) || is_entry_mode_binary(*entry_mode),
-        ),
+        } => {
+            let is_sub =
+                is_submodule_entry(*previous_entry_mode) || is_submodule_entry(*entry_mode);
+            (
+                std::path::PathBuf::from(location.to_string()),
+                None,
+                if is_sub {
+                    ChangeType::SubmoduleUpdated
+                } else {
+                    ChangeType::Modified
+                },
+                false,
+                is_sub,
+            )
+        }
         gix::object::tree::diff::ChangeDetached::Rewrite {
             source_location,
             location,
@@ -893,21 +980,46 @@ fn change_to_file_change_parts(
             source_entry_mode,
             entry_mode,
             ..
-        } => (
-            std::path::PathBuf::from(location.to_string()),
-            Some(std::path::PathBuf::from(source_location.to_string())),
-            if *copy {
-                ChangeType::Copied
-            } else {
-                ChangeType::Renamed
-            },
-            is_entry_mode_binary(*source_entry_mode) || is_entry_mode_binary(*entry_mode),
-        ),
+        } => {
+            let is_sub = is_submodule_entry(*source_entry_mode) || is_submodule_entry(*entry_mode);
+            (
+                std::path::PathBuf::from(location.to_string()),
+                Some(std::path::PathBuf::from(source_location.to_string())),
+                if *copy {
+                    ChangeType::Copied
+                } else {
+                    ChangeType::Renamed
+                },
+                false,
+                is_sub,
+            )
+        }
     }
 }
 
 fn is_entry_mode_binary(mode: gix_object::tree::EntryMode) -> bool {
     matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
+}
+
+fn extract_submodule_shas(change: &gix::object::tree::diff::ChangeDetached) -> (String, String) {
+    match change {
+        gix::object::tree::diff::ChangeDetached::Addition { id, .. } => {
+            ("0000000".to_string(), id.to_hex_with_len(7).to_string())
+        }
+        gix::object::tree::diff::ChangeDetached::Deletion { id, .. } => {
+            (id.to_hex_with_len(7).to_string(), "0000000".to_string())
+        }
+        gix::object::tree::diff::ChangeDetached::Modification {
+            previous_id, id, ..
+        } => (
+            previous_id.to_hex_with_len(7).to_string(),
+            id.to_hex_with_len(7).to_string(),
+        ),
+        gix::object::tree::diff::ChangeDetached::Rewrite { source_id, id, .. } => (
+            source_id.to_hex_with_len(7).to_string(),
+            id.to_hex_with_len(7).to_string(),
+        ),
+    }
 }
 
 fn count_lines_for_change(
@@ -1732,7 +1844,7 @@ fn stash_file_summary_from_tree(
 
     let mut summary = Vec::new();
     for change in &changes {
-        let (path, _, change_type, _) = change_to_file_change_parts(change);
+        let (path, _, change_type, _, _) = change_to_file_change_parts(change);
         let stash_change_type = match change_type {
             ChangeType::Added => StashChangeType::Added,
             ChangeType::Deleted => StashChangeType::Deleted,
@@ -1752,6 +1864,7 @@ fn empty_stash_diff(stash_index: usize, label: &str) -> FileDiff {
         old_path: None,
         hunks: Vec::new(),
         is_binary: false,
+        is_submodule: false,
         old_size: None,
         new_size: None,
         truncated_at: None,
@@ -1773,8 +1886,9 @@ fn compute_stash_half_diff(
     let mut is_any_binary = false;
 
     for change in &changes {
-        let (path, old_path, _change_type, is_binary) = change_to_file_change_parts(change);
-        if is_binary {
+        let (path, old_path, _change_type, is_binary, is_submodule) =
+            change_to_file_change_parts(change);
+        if is_binary || is_submodule {
             is_any_binary = true;
             continue;
         }
@@ -1793,6 +1907,7 @@ fn compute_stash_half_diff(
         old_path: None,
         hunks: all_hunks,
         is_binary: is_any_binary,
+        is_submodule: false,
         old_size: None,
         new_size: None,
         truncated_at: None,

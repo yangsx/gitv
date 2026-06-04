@@ -165,6 +165,7 @@ pub struct FileChange {
     pub additions: usize,
     pub deletions: usize,
     pub is_binary: bool,
+    pub is_submodule: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -216,6 +217,7 @@ pub struct FileDiff {
     pub old_path: Option<PathBuf>,
     pub hunks: Vec<Hunk>,
     pub is_binary: bool,
+    pub is_submodule: bool,
     pub old_size: Option<u64>,
     pub new_size: Option<u64>,
     pub truncated_at: Option<usize>,
