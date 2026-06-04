@@ -309,7 +309,9 @@ impl Repository for GixRepository {
 
         let walk = head_id
             .ancestors()
-            .sorting(gix::revision::walk::Sorting::BreadthFirst)
+            .sorting(gix::revision::walk::Sorting::ByCommitTime(
+                gix::traverse::commit::simple::CommitTimeOrder::NewestFirst,
+            ))
             .all()
             .map_err(|e| GitError::Gix(e.to_string()))?;
 
@@ -389,11 +391,6 @@ impl Repository for GixRepository {
                             rename_to = Some(source_location.to_owned());
                             break;
                         }
-                        if source_location == bstr_path {
-                            found = true;
-                            rename_to = Some(new_location.to_owned());
-                            break;
-                        }
                     }
                 }
             }
@@ -413,6 +410,8 @@ impl Repository for GixRepository {
                     .unwrap_or_default();
                 let summary = message.lines().next().unwrap_or("").to_string();
 
+                let entry_path =
+                    std::path::PathBuf::from(String::from_utf8_lossy(&current_path).into_owned());
                 let old_path = rename_to.as_ref().map(|p| {
                     let old = std::path::PathBuf::from(p.to_string());
                     current_path = p.clone();
@@ -421,7 +420,7 @@ impl Repository for GixRepository {
 
                 entries.push(FileHistoryEntry {
                     commit_oid,
-                    path: path.to_path_buf(),
+                    path: entry_path,
                     old_path,
                     summary,
                     author,
