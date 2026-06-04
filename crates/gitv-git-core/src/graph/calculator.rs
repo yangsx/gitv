@@ -233,7 +233,7 @@ impl GraphCalculator {
         let total_columns = if lanes.is_empty() { 0 } else { lanes.len() };
         let total_rows = sorted.len();
 
-        let stash_markers = self.place_stash_markers(&graph_data);
+        let mut stash_markers = self.place_stash_markers(&graph_data);
 
         self.assign_colors_to_nodes(&commits, &mut graph_data);
         let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
@@ -249,6 +249,9 @@ impl GraphCalculator {
                 let new_to = max_row - edge.to_row;
                 edge.from_row = new_from;
                 edge.to_row = new_to;
+            }
+            for marker in &mut stash_markers {
+                marker.row = max_row - marker.row;
             }
         }
 
@@ -307,13 +310,7 @@ impl GraphCalculator {
             .map(|c| c.oid)
             .collect();
 
-        let mut result: Vec<CommitInfo> = self
-            .commits
-            .iter()
-            .filter(|c| c.parent_oids.len() <= 1)
-            .cloned()
-            .collect();
-
+        let mut resolve: HashMap<Oid, Oid> = HashMap::new();
         for commit in &self.commits {
             if commit.parent_oids.len() <= 1 {
                 continue;
@@ -322,19 +319,46 @@ impl GraphCalculator {
                 Some(p) => *p,
                 None => continue,
             };
-            if !merge_oids.contains(&first_parent) {
-                continue;
-            }
-            for c in &mut result {
-                for p in &mut c.parent_oids {
-                    if *p == commit.oid {
-                        *p = first_parent;
-                    }
+            let resolved = Self::resolve_to_non_merge(&first_parent, &merge_oids, &resolve);
+            resolve.insert(commit.oid, resolved);
+        }
+
+        let mut result: Vec<CommitInfo> = self
+            .commits
+            .iter()
+            .filter(|c| c.parent_oids.len() <= 1)
+            .cloned()
+            .collect();
+
+        for c in &mut result {
+            for p in &mut c.parent_oids {
+                if let Some(&replacement) = resolve.get(p) {
+                    *p = replacement;
                 }
             }
         }
 
         result
+    }
+
+    fn resolve_to_non_merge(
+        oid: &Oid,
+        merge_oids: &HashSet<Oid>,
+        resolve: &HashMap<Oid, Oid>,
+    ) -> Oid {
+        let mut current = *oid;
+        let mut visited = HashSet::new();
+        while merge_oids.contains(&current) {
+            if !visited.insert(current) {
+                break;
+            }
+            if let Some(&resolved) = resolve.get(&current) {
+                current = resolved;
+            } else {
+                break;
+            }
+        }
+        current
     }
 
     fn build_children_map(commits: &[CommitInfo]) -> HashMap<Oid, Vec<Oid>> {
@@ -440,9 +464,9 @@ impl GraphCalculator {
             for c in commits {
                 let col = graph_data.get(&c.oid).map(|gd| gd.column).unwrap_or(0);
                 let color = *lane_colors.entry(col).or_insert_with(|| {
-                    let c = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
+                    let clr = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
                     color_idx += 1;
-                    c
+                    clr
                 });
                 if let Some(refs) = self.refs.get(&c.oid) {
                     for r in refs {
@@ -463,9 +487,9 @@ impl GraphCalculator {
             for c in commits {
                 let author_key = format!("{} <{}>", c.author.name, c.author.email);
                 let color = *author_colors.entry(author_key).or_insert_with(|| {
-                    let c = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
+                    let clr = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
                     color_idx += 1;
-                    c
+                    clr
                 });
                 if let Some(gd) = graph_data.get_mut(&c.oid) {
                     gd.color = color;
@@ -677,6 +701,40 @@ mod tests {
         let layout = calc.calculate_layout();
         assert_eq!(layout.nodes.len(), 3);
         assert!(layout.nodes.iter().all(|n| !n.is_merge));
+    }
+
+    #[test]
+    fn hide_merges_rewires_child_of_merge() {
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "branch a");
+        let c3 = make_commit(3, vec![1], "branch b");
+        let c4 = make_commit(4, vec![2, 3], "merge");
+        let c5 = make_commit(5, vec![4], "after merge");
+        let commits = vec![c5, c4, c3, c2, c1];
+        let options = GraphOptions {
+            hide_merges: true,
+            ..GraphOptions::default()
+        };
+        let calc = GraphCalculator::new(commits, HashMap::new(), Vec::new(), options);
+        let layout = calc.calculate_layout();
+        assert_eq!(layout.nodes.len(), 4, "merge removed, 4 nodes remain");
+        assert!(layout.nodes.iter().all(|n| !n.is_merge));
+        let after_merge = layout.nodes.iter().find(|n| n.oid == make_oid(5)).unwrap();
+        let edges_to_after: Vec<_> = layout
+            .edges
+            .iter()
+            .filter(|e| e.to_row == after_merge.row || e.from_row == after_merge.row)
+            .collect();
+        assert!(
+            edges_to_after.iter().any(|e| {
+                let other_oid = layout
+                    .nodes
+                    .iter()
+                    .find(|n| n.row == if e.from_row == after_merge.row { e.to_row } else { e.from_row });
+                other_oid.map_or(false, |n| n.oid == make_oid(2))
+            }),
+            "child of merge should be connected to merge's first parent"
+        );
     }
 
     #[test]
