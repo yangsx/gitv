@@ -69,6 +69,7 @@
 	let contextMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 	let isDragging = $state(false);
 	let isFullscreen = $state(false);
+	let selectedBranch = $state<string | null>(null);
 
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
 
@@ -312,6 +313,7 @@
 	});
 
 	async function onSelectCommit(oid: string, ctrlKey = false) {
+		selectedBranch = null;
 		if (ctrlKey && $selectedOid && $selectedOid !== oid) {
 			comparisonOid.set(oid);
 			return;
@@ -511,6 +513,14 @@
 		contextMenu = { x: e.clientX, y: e.clientY, items };
 	}
 
+	function handleBranchSelect(name: string) {
+		const ref = allRefs.find((r) => 'Branch' in r && r.Branch?.name === name);
+		if (ref && 'Branch' in ref && ref.Branch) {
+			onSelectCommit(ref.Branch.oid);
+			selectedBranch = name;
+		}
+	}
+
 	function handleDragOver(e: DragEvent) {
 		if (e.dataTransfer?.types.includes('Files')) {
 			e.preventDefault();
@@ -576,7 +586,11 @@
 		{#if !isFullscreen}
 			<header class="flex items-center gap-3 border-b border-gray-800 px-4 py-2">
 				<span class="font-mono text-sm text-gray-400">{$repoInfo.path}</span>
-				{#if $repoInfo.head_branch}
+				{#if selectedBranch}
+					<span class="rounded bg-blue-700/50 px-2 py-0.5 text-xs text-blue-300">
+						{selectedBranch}
+					</span>
+				{:else if $repoInfo.head_branch}
 					<span class="rounded bg-green-700/50 px-2 py-0.5 text-xs text-green-300">
 						{$repoInfo.head_branch}
 					</span>
@@ -631,7 +645,11 @@
 			{#if !isFullscreen}
 				<Sidebar gotoTab={sidebarGotoTab} width={sidebarWidth}>
 					{#snippet refs()}
-						<RefList refs={allRefs} onbranchcontextmenu={handleBranchContextMenu} />
+						<RefList
+							refs={allRefs}
+							onbranchselect={handleBranchSelect}
+							onbranchcontextmenu={handleBranchContextMenu}
+						/>
 					{/snippet}
 					{#snippet stash()}
 						<StashList {repoPath} />

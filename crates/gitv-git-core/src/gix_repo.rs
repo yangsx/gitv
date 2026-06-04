@@ -56,13 +56,24 @@ impl Repository for GixRepository {
 
     fn commits(&self, max_count: Option<usize>) -> Result<Vec<CommitInfo>, GitError> {
         let repo = self.thread_local();
-        let head_id = match repo.head_id() {
-            Ok(id) => id,
-            Err(_) => return Ok(Vec::new()),
-        };
         let refs = build_ref_map(&repo)?;
-        let walk = head_id
-            .ancestors()
+
+        let mut tips: Vec<gix::ObjectId> = refs
+            .iter()
+            .filter(|(_, refs)| refs.iter().any(|r| matches!(r, Ref::Branch(_))))
+            .map(|(oid, _)| oid_to_gix_object_id(oid))
+            .collect();
+
+        if tips.is_empty() {
+            let head_id = match repo.head_id() {
+                Ok(id) => id,
+                Err(_) => return Ok(Vec::new()),
+            };
+            tips.push(head_id.into());
+        }
+
+        let walk = repo
+            .rev_walk(tips)
             .sorting(gix::revision::walk::Sorting::BreadthFirst)
             .all()
             .map_err(|e| GitError::Gix(e.to_string()))?;
@@ -971,6 +982,7 @@ fn categorize_ref_from_parts(
     match category {
         Some("refs/heads/") => Some(Ref::Branch(BranchRef {
             name: name_str,
+            oid,
             is_head,
             is_remote: false,
             upstream: None,

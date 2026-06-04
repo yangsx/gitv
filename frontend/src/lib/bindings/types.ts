@@ -20,6 +20,7 @@ export type Ref = { Branch?: BranchRef; Tag?: TagRef; Remote?: RemoteRef };
 
 export interface BranchRef {
 	name: string;
+	oid: string;
 	is_head: boolean;
 	is_remote: boolean;
 	upstream: string | null;

@@ -135,6 +135,7 @@ pub enum Ref {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BranchRef {
+    pub oid: Oid,
     pub name: String,
     pub is_head: bool,
     pub is_remote: bool,

@@ -70,6 +70,12 @@
 		return () => observer.disconnect();
 	});
 
+	$effect(() => {
+		if (!containerEl || !selectedOid || !orderedCommits.length) return;
+		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+		if (idx >= 0) scrollToIndex(idx);
+	});
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (!orderedCommits.length) return;
 		const currentIdx = orderedCommits.findIndex((c) => c.oid === selectedOid);
