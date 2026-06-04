@@ -1,3 +1,5 @@
+import { writable } from 'svelte/store';
+
 export type ToastSeverity = 'info' | 'warning' | 'error';
 
 export interface Toast {
@@ -8,7 +10,8 @@ export interface Toast {
 }
 
 let nextId = 0;
-let toasts = $state<Toast[]>([]);
+
+export const toasts = writable<Toast[]>([]);
 
 const AUTO_DISMISS_MS: Record<ToastSeverity, number | null> = {
 	info: 3000,
@@ -16,14 +19,10 @@ const AUTO_DISMISS_MS: Record<ToastSeverity, number | null> = {
 	error: null
 };
 
-export function getToasts(): Toast[] {
-	return toasts;
-}
-
 export function showToast(message: string, severity: ToastSeverity = 'info') {
 	const id = nextId++;
 	const toast: Toast = { id, message, severity, createdAt: Date.now() };
-	toasts = [...toasts, toast];
+	toasts.update((list) => [...list, toast]);
 
 	const dismissAfter = AUTO_DISMISS_MS[severity];
 	if (dismissAfter !== null) {
@@ -32,5 +31,5 @@ export function showToast(message: string, severity: ToastSeverity = 'info') {
 }
 
 export function dismissToast(id: number) {
-	toasts = toasts.filter((t) => t.id !== id);
+	toasts.update((list) => list.filter((t) => t.id !== id));
 }

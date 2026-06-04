@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getToasts, dismissToast, type Toast } from '$lib/stores/toast';
+	import { toasts, dismissToast, type Toast } from '$lib/stores/toast';
 
 	function severityClasses(severity: Toast['severity']): string {
 		switch (severity) {
@@ -13,9 +13,9 @@
 	}
 </script>
 
-{#if getToasts().length > 0}
+{#if $toasts.length > 0}
 	<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
-		{#each getToasts() as toast (toast.id)}
+		{#each $toasts as toast (toast.id)}
 			<div
 				class="pointer-events-auto flex items-center gap-2 rounded border px-3 py-2 text-sm shadow-lg {severityClasses(
 					toast.severity
