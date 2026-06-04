@@ -14,7 +14,10 @@
 		isLoading,
 		error,
 		matchingOids,
-		comparisonOid
+		comparisonOid,
+		graphColorMode,
+		graphHideMerges,
+		graphOrientation
 	} from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -25,6 +28,8 @@
 	import RefList from '$lib/components/Sidebar/RefList.svelte';
 	import StashList from '$lib/components/Sidebar/StashList.svelte';
 	import ReflogPanel from '$lib/components/Sidebar/ReflogPanel.svelte';
+	import Toolbar from '$lib/components/Toolbar.svelte';
+	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -61,7 +66,11 @@
 			const [info, loadedCommits, layout, loadedRefs] = await Promise.all([
 				openRepository(path),
 				getCommits(path),
-				getGraphLayout(path),
+				getGraphLayout(path, {
+					hide_merges: $graphHideMerges,
+					orientation: $graphOrientation,
+					color_mode: $graphColorMode
+				}),
 				getRefs(path)
 			]);
 			repoInfo.set(info);
@@ -80,6 +89,26 @@
 			loadRepo(repoPath.trim());
 		}
 	}
+
+	async function reloadLayout() {
+		if (!repoPath) return;
+		try {
+			graphLayout = await getGraphLayout(repoPath, {
+				hide_merges: $graphHideMerges,
+				orientation: $graphOrientation,
+				color_mode: $graphColorMode
+			});
+		} catch {
+			// keep existing layout
+		}
+	}
+
+	$effect(() => {
+		void $graphColorMode;
+		void $graphHideMerges;
+		void $graphOrientation;
+		if ($repoInfo) reloadLayout();
+	});
 
 	async function onSelectCommit(oid: string, ctrlKey = false) {
 		if (ctrlKey && $selectedOid && $selectedOid !== oid) {
@@ -102,6 +131,34 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			comparisonOid.set(null);
+			return;
+		}
+		if (!$selectedOid || !commits.length) return;
+
+		const currentCommit = commits.find((c) => c.oid === $selectedOid);
+		if (!currentCommit) return;
+
+		if (e.key === 'n' && e.altKey) {
+			e.preventDefault();
+			navigateAuthor(currentCommit, 1);
+		} else if (e.key === 'p' && e.altKey) {
+			e.preventDefault();
+			navigateAuthor(currentCommit, -1);
+		}
+	}
+
+	function navigateAuthor(current: CommitInfo, direction: 1 | -1) {
+		const authorKey = current.author.name + ' <' + current.author.email + '>';
+		const idx = commits.findIndex((c) => c.oid === current.oid);
+		if (idx < 0) return;
+
+		for (let i = idx + direction; i >= 0 && i < commits.length; i += direction) {
+			const c = commits[i];
+			const key = c.author.name + ' <' + c.author.email + '>';
+			if (key === authorKey) {
+				onSelectCommit(c.oid);
+				return;
+			}
 		}
 	}
 </script>
@@ -139,6 +196,15 @@
 				<span class="rounded bg-green-700/50 px-2 py-0.5 text-xs text-green-300">
 					{$repoInfo.head_branch}
 				</span>
+			{/if}
+			{#if $graphHideMerges}
+				<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-xs text-yellow-300">
+					Merges hidden
+				</span>
+			{/if}
+			<Toolbar />
+			{#if graphLayout}
+				<AuthorLegend layout={graphLayout} />
 			{/if}
 			<div class="ml-auto w-80">
 				<SearchBar {repoPath} />

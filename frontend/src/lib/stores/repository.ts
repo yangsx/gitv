@@ -9,6 +9,10 @@ export const error = writable<string | null>(null);
 export const searchQuery = writable<SearchQuery | null>(null);
 export const searchResults = writable<SearchResult[]>([]);
 
+export const graphColorMode = writable<'by-branch' | 'by-author'>('by-branch');
+export const graphHideMerges = writable(false);
+export const graphOrientation = writable<'top-to-bottom' | 'bottom-to-top'>('top-to-bottom');
+
 export const matchingOids = derived(
 	searchResults,
 	($results) => new Set($results.map((r) => r.commit_oid))
