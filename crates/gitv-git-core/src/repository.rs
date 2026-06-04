@@ -9,7 +9,10 @@ pub trait Repository {
     fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError>;
     fn refs(&self) -> Result<Vec<Ref>, GitError>;
     fn stash_list(&self) -> Result<Vec<StashEntry>, GitError>;
+    fn stash_diff(&self, stash_index: usize) -> Result<FileDiff, DiffError>;
+    fn stash_split_diff(&self, stash_index: usize) -> Result<StashSplitDiff, DiffError>;
     fn reflog(&self, ref_name: Option<&str>) -> Result<Vec<ReflogEntry>, GitError>;
+    fn blame(&self, path: &Path, at_commit: Option<Oid>) -> Result<Blame, GitError>;
     fn file_tree(&self, at_commit: Option<Oid>) -> Result<FileTreeNode, GitError>;
     fn is_bare(&self) -> bool;
     fn diff_summary(

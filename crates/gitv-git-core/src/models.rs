@@ -334,6 +334,27 @@ pub struct ReflogEntry {
     pub time: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Blame {
+    pub file_path: PathBuf,
+    pub lines: Vec<BlameLine>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlameLine {
+    pub line_number: usize,
+    pub content: String,
+    pub commit_oid: Oid,
+    pub author: Author,
+    pub time: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StashSplitDiff {
+    pub staged: FileDiff,
+    pub unstaged: FileDiff,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Color {
     pub r: u8,

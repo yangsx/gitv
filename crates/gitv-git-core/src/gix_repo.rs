@@ -156,11 +156,287 @@ impl Repository for GixRepository {
     }
 
     fn stash_list(&self) -> Result<Vec<StashEntry>, GitError> {
-        Ok(Vec::new())
+        let repo = self.thread_local();
+        let stash_ref = match repo
+            .try_find_reference("stash")
+            .map_err(|e| GitError::Gix(e.to_string()))?
+        {
+            Some(r) => r,
+            None => return Ok(Vec::new()),
+        };
+        let mut platform = stash_ref.log_iter();
+        let rev_iter = match platform.rev().map_err(|e| GitError::Gix(e.to_string()))? {
+            Some(iter) => iter,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut entries = Vec::new();
+        for (index, entry_result) in rev_iter.enumerate() {
+            let line = entry_result.map_err(|e| GitError::Gix(e.to_string()))?;
+            let stash_oid = gix_object_id_to_oid(line.new_oid);
+            let stash_obj = repo
+                .find_object(line.new_oid)
+                .map_err(|e| GitError::Gix(e.to_string()))?;
+            let stash_commit = stash_obj
+                .try_into_commit()
+                .map_err(|e| GitError::Gix(e.to_string()))?;
+
+            let parent_ids: Vec<gix::Id<'_>> = stash_commit.parent_ids().collect();
+            let parent_oid = if let Some(first_parent) = parent_ids.first() {
+                gix_id_to_oid(first_parent)
+            } else {
+                continue;
+            };
+
+            let author_sig = stash_commit.committer().map(|s| s.trim()).ok();
+            let author = author_sig
+                .as_ref()
+                .map(|s| gix_signature_to_author(s))
+                .unwrap_or(Author {
+                    name: String::new(),
+                    email: String::new(),
+                });
+            let time = author_sig
+                .as_ref()
+                .and_then(|s| s.time().ok())
+                .map(|t| gix_time_to_datetime(&t))
+                .unwrap_or_default();
+
+            let message = stash_commit
+                .message_raw()
+                .map(|m| m.to_string())
+                .unwrap_or_default();
+            let summary = message.lines().next().unwrap_or("").to_string();
+
+            let file_summary = stash_file_summary(&repo, line.new_oid, &parent_ids)?;
+
+            entries.push(StashEntry {
+                index,
+                oid: stash_oid,
+                parent_oid,
+                message: summary,
+                author,
+                time,
+                file_summary,
+            });
+        }
+
+        Ok(entries)
     }
 
-    fn reflog(&self, _ref_name: Option<&str>) -> Result<Vec<ReflogEntry>, GitError> {
-        Ok(Vec::new())
+    fn stash_diff(&self, stash_index: usize) -> Result<FileDiff, DiffError> {
+        let repo = self.thread_local();
+        let (stash_oid, parent_tree) = resolve_stash(&repo, stash_index)?;
+        let stash_obj = repo
+            .find_object(stash_oid)
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+        let stash_commit = stash_obj
+            .try_into_commit()
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+        let stash_tree = stash_commit
+            .tree()
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let changes = repo
+            .diff_tree_to_tree(Some(&parent_tree), Some(&stash_tree), None)
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let mut all_hunks = Vec::new();
+        let mut is_any_binary = false;
+
+        for change in &changes {
+            let (_path, _old_path, _change_type, is_binary) = change_to_file_change_parts(change);
+            if is_binary {
+                is_any_binary = true;
+                all_hunks.push(Hunk {
+                    old_start: 0,
+                    old_count: 0,
+                    new_start: 0,
+                    new_count: 0,
+                    lines: Vec::new(),
+                });
+                continue;
+            }
+            let (hunks, blob_binary) = compute_hunks_for_change(&repo, change)?;
+            if blob_binary {
+                is_any_binary = true;
+            }
+            if !hunks.is_empty() {
+                all_hunks.extend(hunks);
+            }
+        }
+
+        Ok(FileDiff {
+            path: PathBuf::from(format!("stash@{{{stash_index}}}")),
+            old_path: None,
+            hunks: all_hunks,
+            is_binary: is_any_binary,
+            old_size: None,
+            new_size: None,
+            truncated_at: None,
+        })
+    }
+
+    fn stash_split_diff(&self, stash_index: usize) -> Result<StashSplitDiff, DiffError> {
+        let repo = self.thread_local();
+        let (stash_oid, parent_tree) = resolve_stash(&repo, stash_index)?;
+        let stash_obj = repo
+            .find_object(stash_oid)
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+        let stash_commit = stash_obj
+            .try_into_commit()
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+        let stash_tree = stash_commit
+            .tree()
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let parent_ids: Vec<gix::Id<'_>> = stash_commit.parent_ids().collect();
+        let index_tree = if let Some(index_id) = parent_ids.get(1) {
+            let index_obj = repo
+                .find_object(*index_id)
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            let index_commit = index_obj
+                .try_into_commit()
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            Some(
+                index_commit
+                    .tree()
+                    .map_err(|e| DiffError::Gix(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+
+        let staged = compute_stash_half_diff(
+            &repo,
+            &parent_tree,
+            index_tree.as_ref().unwrap_or(&stash_tree),
+            stash_index,
+            "staged",
+        )?;
+
+        let unstaged = compute_stash_half_diff(
+            &repo,
+            index_tree.as_ref().unwrap_or(&parent_tree),
+            &stash_tree,
+            stash_index,
+            "unstaged",
+        )?;
+
+        Ok(StashSplitDiff { staged, unstaged })
+    }
+
+    fn reflog(&self, ref_name: Option<&str>) -> Result<Vec<ReflogEntry>, GitError> {
+        let repo = self.thread_local();
+        let name = ref_name.unwrap_or("HEAD");
+
+        let mut entries = Vec::new();
+
+        if name == "HEAD" {
+            let head = repo.head().map_err(|e| GitError::Gix(e.to_string()))?;
+            let mut log_platform = head.log_iter();
+            let rev_iter = match log_platform
+                .rev()
+                .map_err(|e| GitError::Gix(e.to_string()))?
+            {
+                Some(iter) => iter,
+                None => return Ok(entries),
+            };
+            for entry_result in rev_iter {
+                let line = entry_result.map_err(|e| GitError::Gix(e.to_string()))?;
+                entries.push(reflog_line_to_entry(line, "HEAD".to_string()));
+            }
+        } else {
+            let reference = repo
+                .try_find_reference(name)
+                .map_err(|e| GitError::Gix(e.to_string()))?
+                .ok_or_else(|| GitError::RefNotFound(name.to_string()))?;
+            let mut log_platform = reference.log_iter();
+            let rev_iter = match log_platform
+                .rev()
+                .map_err(|e| GitError::Gix(e.to_string()))?
+            {
+                Some(iter) => iter,
+                None => return Ok(entries),
+            };
+            for entry_result in rev_iter {
+                let line = entry_result.map_err(|e| GitError::Gix(e.to_string()))?;
+                entries.push(reflog_line_to_entry(line, name.to_string()));
+            }
+        }
+
+        Ok(entries)
+    }
+
+    fn blame(&self, path: &Path, at_commit: Option<Oid>) -> Result<Blame, GitError> {
+        let repo = self.thread_local();
+        let suspect = match at_commit {
+            Some(oid) => oid_to_gix_object_id(&oid),
+            None => repo
+                .head_id()
+                .map_err(|e| GitError::Gix(e.to_string()))?
+                .detach(),
+        };
+
+        let file_path = gix::bstr::BString::from(path.to_string_lossy().into_owned());
+        let file_bstr = gix::bstr::BStr::new(file_path.as_slice());
+        let options = gix::repository::blame_file::Options::default();
+        let outcome = repo
+            .blame_file(file_bstr, suspect, options)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let mut lines = Vec::new();
+        let mut line_num = 1usize;
+
+        let mut commit_cache: HashMap<gix::ObjectId, (Author, chrono::DateTime<Utc>)> =
+            HashMap::new();
+
+        for (entry, entry_lines) in outcome.entries_with_lines() {
+            let commit_oid = gix_object_id_to_oid(entry.commit_id);
+
+            let (author, time) = match commit_cache.get(&entry.commit_id) {
+                Some(cached) => cached.clone(),
+                None => {
+                    let commit_obj = repo
+                        .find_object(entry.commit_id)
+                        .map_err(|e| GitError::Gix(e.to_string()))?;
+                    let commit = commit_obj
+                        .try_into_commit()
+                        .map_err(|e| GitError::Gix(e.to_string()))?;
+                    let author_sig = commit.author().ok();
+                    let author =
+                        author_sig
+                            .map(|s| gix_signature_to_author(&s))
+                            .unwrap_or(Author {
+                                name: String::new(),
+                                email: String::new(),
+                            });
+                    let time = author_sig
+                        .and_then(|s| s.time().ok())
+                        .map(|t| gix_time_to_datetime(&t))
+                        .unwrap_or_default();
+                    commit_cache.insert(entry.commit_id, (author.clone(), time));
+                    (author, time)
+                }
+            };
+
+            for blame_line in entry_lines {
+                let content = blame_line.to_string();
+                lines.push(BlameLine {
+                    line_number: line_num,
+                    content,
+                    commit_oid,
+                    author: author.clone(),
+                    time,
+                });
+                line_num += 1;
+            }
+        }
+
+        Ok(Blame {
+            file_path: path.to_path_buf(),
+            lines,
+        })
     }
 
     fn file_tree(&self, at_commit: Option<Oid>) -> Result<FileTreeNode, GitError> {
@@ -1372,6 +1648,162 @@ fn merge_adjacent_segments(segments: Vec<WordDiffSegment>) -> Vec<WordDiffSegmen
     merged
 }
 
+fn reflog_line_to_entry(line: gix::refs::log::Line, ref_name: String) -> ReflogEntry {
+    let oid = gix_object_id_to_oid(line.new_oid);
+    let null_oid = gix::hash::ObjectId::null(gix::hash::Kind::Sha1);
+    let old_oid = if line.previous_oid == null_oid {
+        None
+    } else {
+        Some(gix_object_id_to_oid(line.previous_oid))
+    };
+    let author = Author {
+        name: line.signature.name.to_string(),
+        email: line.signature.email.to_string(),
+    };
+    let time = gix_time_to_datetime(&line.signature.time);
+    ReflogEntry {
+        oid,
+        old_oid,
+        ref_name,
+        message: line.message.to_string(),
+        author,
+        time,
+    }
+}
+
+fn resolve_stash(
+    repo: &gix::Repository,
+    stash_index: usize,
+) -> Result<(gix::ObjectId, gix::Tree<'_>), DiffError> {
+    let stash_ref = repo
+        .try_find_reference("stash")
+        .map_err(|e| DiffError::Gix(e.to_string()))?
+        .ok_or_else(|| DiffError::ObjectNotFound("refs/stash not found".to_string()))?;
+    let mut platform = stash_ref.log_iter();
+    let mut rev_iter = platform
+        .rev()
+        .map_err(|e| DiffError::Gix(e.to_string()))?
+        .ok_or_else(|| DiffError::ObjectNotFound("stash reflog empty".to_string()))?;
+
+    let line = rev_iter
+        .nth(stash_index)
+        .ok_or_else(|| DiffError::ObjectNotFound(format!("stash@{{{stash_index}}} not found")))?
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    let stash_obj = repo
+        .find_object(line.new_oid)
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+    let stash_commit = stash_obj
+        .try_into_commit()
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    let parent_ids: Vec<gix::Id<'_>> = stash_commit.parent_ids().collect();
+    let first_parent_id = parent_ids
+        .first()
+        .ok_or_else(|| DiffError::ObjectNotFound("stash has no parent".to_string()))?;
+    let parent_obj = repo
+        .find_object(*first_parent_id)
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+    let parent_commit = parent_obj
+        .try_into_commit()
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+    let parent_tree = parent_commit
+        .tree()
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    Ok((line.new_oid, parent_tree))
+}
+
+fn stash_file_summary(
+    repo: &gix::Repository,
+    stash_oid: gix::ObjectId,
+    parent_ids: &[gix::Id<'_>],
+) -> Result<Vec<StashFileSummary>, GitError> {
+    let stash_obj = repo
+        .find_object(stash_oid)
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+    let stash_commit = stash_obj
+        .try_into_commit()
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+    let stash_tree = stash_commit
+        .tree()
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+
+    let first_parent_id = match parent_ids.first() {
+        Some(id) => *id,
+        None => return Ok(Vec::new()),
+    };
+    let parent_obj = repo
+        .find_object(first_parent_id)
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+    let parent_commit = parent_obj
+        .try_into_commit()
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+    let parent_tree = parent_commit
+        .tree()
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+
+    let changes = repo
+        .diff_tree_to_tree(Some(&parent_tree), Some(&stash_tree), None)
+        .map_err(|e| GitError::Gix(e.to_string()))?;
+
+    let mut summary = Vec::new();
+    for change in &changes {
+        let (path, _, change_type, _) = change_to_file_change_parts(change);
+        let stash_change_type = match change_type {
+            ChangeType::Added => StashChangeType::Added,
+            ChangeType::Deleted => StashChangeType::Deleted,
+            _ => StashChangeType::Modified,
+        };
+        summary.push(StashFileSummary {
+            path,
+            change_type: stash_change_type,
+        });
+    }
+    Ok(summary)
+}
+
+fn compute_stash_half_diff(
+    repo: &gix::Repository,
+    from_tree: &gix::Tree<'_>,
+    to_tree: &gix::Tree<'_>,
+    stash_index: usize,
+    label: &str,
+) -> Result<FileDiff, DiffError> {
+    let changes = repo
+        .diff_tree_to_tree(Some(from_tree), Some(to_tree), None)
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    let mut all_hunks = Vec::new();
+    let mut is_any_binary = false;
+
+    for change in &changes {
+        let (path, old_path, _change_type, is_binary) = change_to_file_change_parts(change);
+        if is_binary {
+            is_any_binary = true;
+            continue;
+        }
+        let (hunks, blob_binary) = compute_hunks_for_change(repo, change)?;
+        if blob_binary {
+            is_any_binary = true;
+        }
+        if !hunks.is_empty() {
+            all_hunks.extend(hunks);
+        }
+        let _ = (path, old_path);
+    }
+
+    Ok(FileDiff {
+        path: PathBuf::from(format!("stash@{{{stash_index}}} ({label})")),
+        old_path: None,
+        hunks: all_hunks,
+        is_binary: is_any_binary,
+        old_size: None,
+        new_size: None,
+        truncated_at: None,
+    })
+}
+
 fn build_file_tree(
     repo: &gix::Repository,
     tree: &gix::Tree<'_>,
@@ -1793,5 +2225,138 @@ mod tests {
             diff_filtered.hunks.is_empty(),
             "ignore-blank-lines should filter blank line changes"
         );
+    }
+
+    #[test]
+    fn reflog_returns_entries_for_head() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        temp.commit_file("b.txt", "world", "second commit");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let entries = repo.reflog(None).expect("reflog");
+        assert!(entries.len() >= 2, "should have at least 2 reflog entries");
+        assert_eq!(entries[0].ref_name, "HEAD");
+        assert!(!entries[0].message.is_empty() || !entries[0].oid.to_hex().is_empty());
+    }
+
+    #[test]
+    fn reflog_for_named_ref() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        run_git(temp.path(), &["checkout", "-b", "feature"]);
+        temp.commit_file("b.txt", "world", "on feature");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let entries = repo.reflog(Some("refs/heads/feature")).expect("reflog");
+        assert!(
+            entries.len() >= 1,
+            "should have at least 1 reflog entry for feature branch"
+        );
+    }
+
+    #[test]
+    fn reflog_empty_for_unborn() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        run_git(dir.path(), &["init"]);
+        run_git(dir.path(), &["config", "user.name", "Test"]);
+        run_git(dir.path(), &["config", "user.email", "test@test.com"]);
+        let repo = GixRepository::open(dir.path()).expect("open");
+        let entries = repo.reflog(None).expect("reflog");
+        assert!(entries.is_empty(), "unborn repo should have no reflog");
+    }
+
+    #[test]
+    fn stash_list_empty_when_no_stashes() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let stashes = repo.stash_list().expect("stash_list");
+        assert!(stashes.is_empty());
+    }
+
+    #[test]
+    fn stash_list_returns_entries() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        std::fs::write(temp.dir.path().join("a.txt"), "modified").expect("write");
+        run_git(temp.path(), &["stash", "--include-untracked"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let stashes = repo.stash_list().expect("stash_list");
+        assert_eq!(stashes.len(), 1);
+        assert_eq!(stashes[0].index, 0);
+        assert!(!stashes[0].message.is_empty());
+        assert!(!stashes[0].file_summary.is_empty());
+    }
+
+    #[test]
+    fn stash_list_multiple_stashes() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        std::fs::write(temp.dir.path().join("a.txt"), "mod1").expect("write");
+        run_git(temp.path(), &["stash"]);
+        std::fs::write(temp.dir.path().join("a.txt"), "mod2").expect("write");
+        run_git(temp.path(), &["stash"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let stashes = repo.stash_list().expect("stash_list");
+        assert_eq!(stashes.len(), 2);
+        assert_eq!(stashes[0].index, 0);
+        assert_eq!(stashes[1].index, 1);
+    }
+
+    #[test]
+    fn stash_diff_returns_combined_diff() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        std::fs::write(temp.dir.path().join("a.txt"), "modified content").expect("write");
+        run_git(temp.path(), &["stash"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diff = repo.stash_diff(0).expect("stash_diff");
+        assert!(
+            !diff.hunks.is_empty() || diff.is_binary,
+            "stash diff should have hunks"
+        );
+    }
+
+    #[test]
+    fn stash_split_diff_returns_staged_and_unstaged() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "hello", "first commit");
+        std::fs::write(temp.dir.path().join("a.txt"), "modified").expect("write");
+        run_git(temp.path(), &["stash"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let split = repo.stash_split_diff(0).expect("stash_split_diff");
+        let total_hunks = split.staged.hunks.len() + split.unstaged.hunks.len();
+        assert!(
+            total_hunks > 0 || split.staged.is_binary || split.unstaged.is_binary,
+            "split diff should have hunks"
+        );
+    }
+
+    #[test]
+    fn blame_returns_line_attributions() {
+        let temp = TempRepo::new();
+        temp.commit_file("a.txt", "line1\nline2\nline3", "first commit");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let blame = repo
+            .blame(std::path::Path::new("a.txt"), None)
+            .expect("blame");
+        assert_eq!(blame.lines.len(), 3);
+        assert_eq!(blame.lines[0].content.trim(), "line1");
+        assert_eq!(blame.lines[1].content.trim(), "line2");
+        assert_eq!(blame.lines[2].content.trim(), "line3");
+        assert_eq!(blame.lines[0].author.name, "Test");
+        assert_eq!(blame.lines[0].author.email, "test@test.com");
+    }
+
+    #[test]
+    fn blame_at_commit() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "original", "first commit");
+        let _oid2 = temp.commit_file("a.txt", "modified", "second commit");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let blame = repo
+            .blame(std::path::Path::new("a.txt"), Some(oid1))
+            .expect("blame");
+        assert_eq!(blame.lines.len(), 1);
+        assert_eq!(blame.lines[0].content.trim(), "original");
     }
 }
