@@ -5,7 +5,7 @@
 		commit: CommitInfo;
 		isSelected: boolean;
 		isDimmed?: boolean;
-		onclick: (_oid: string) => void;
+		onclick: (_oid: string, _ctrlKey: boolean) => void;
 	}
 
 	let { commit, isSelected, isDimmed = false, onclick }: Props = $props();
@@ -36,7 +36,8 @@
 		: isDimmed
 			? 'text-gray-600'
 			: 'text-gray-300'}"
-	onclick={() => onclick(commit.oid)}
+	onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
+		onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 >
 	<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
 		{commit.short_oid}

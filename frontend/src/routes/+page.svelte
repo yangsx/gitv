@@ -7,10 +7,18 @@
 		getCommitDetails
 	} from '$lib/bindings/commands';
 	import type { CommitInfo, GraphLayout, CommitDetails } from '$lib/bindings/types';
-	import { repoInfo, selectedOid, isLoading, error, matchingOids } from '$lib/stores/repository';
+	import {
+		repoInfo,
+		selectedOid,
+		isLoading,
+		error,
+		matchingOids,
+		comparisonOid
+	} from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
+	import ComparisonPanel from '$lib/components/ComparisonPanel.svelte';
 	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
 
 	let repoPath = $state('');
@@ -33,7 +41,11 @@
 			viewportHeight = window.innerHeight;
 		}
 		window.addEventListener('resize', onResize);
-		return () => window.removeEventListener('resize', onResize);
+		window.addEventListener('keydown', handleKeydown);
+		return () => {
+			window.removeEventListener('resize', onResize);
+			window.removeEventListener('keydown', handleKeydown);
+		};
 	});
 
 	async function loadRepo(path: string) {
@@ -61,7 +73,12 @@
 		}
 	}
 
-	async function onSelectCommit(oid: string) {
+	async function onSelectCommit(oid: string, ctrlKey = false) {
+		if (ctrlKey && $selectedOid && $selectedOid !== oid) {
+			comparisonOid.set(oid);
+			return;
+		}
+		comparisonOid.set(null);
 		selectedOid.set(oid);
 		commitDetails = null;
 		detailsLoading = true;
@@ -71,6 +88,12 @@
 			commitDetails = null;
 		} finally {
 			detailsLoading = false;
+		}
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			comparisonOid.set(null);
 		}
 	}
 </script>
@@ -124,7 +147,7 @@
 						layout={graphLayout}
 						selectedOid={$selectedOid}
 						matchingOids={$matchingOids}
-						onSelect={onSelectCommit}
+						onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 					/>
 				{/if}
 			</div>
@@ -138,7 +161,9 @@
 					class="overflow-hidden bg-gray-900 border-t border-gray-700"
 					style="height: {detailPanelHeight}px;"
 				>
-					{#if detailsLoading}
+					{#if $comparisonOid}
+						<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
+					{:else if detailsLoading}
 						<div class="flex items-center justify-center h-full text-sm text-gray-500">
 							Loading details...
 						</div>

@@ -8,7 +8,7 @@
 		layout: GraphLayout;
 		selectedOid: string | null;
 		matchingOids?: Set<string>;
-		onSelect: (_oid: string) => void;
+		onSelect: (_oid: string, _ctrlKey: boolean) => void;
 		rowHeight?: number;
 		graphWidth?: number;
 	}
