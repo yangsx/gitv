@@ -28,6 +28,7 @@
 	import RefList from '$lib/components/Sidebar/RefList.svelte';
 	import StashList from '$lib/components/Sidebar/StashList.svelte';
 	import ReflogPanel from '$lib/components/Sidebar/ReflogPanel.svelte';
+	import FileHistoryPanel from '$lib/components/FileHistoryPanel.svelte';
 	import Toolbar from '$lib/components/Toolbar.svelte';
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
@@ -41,6 +42,9 @@
 	let detailPanelHeight = $state(300);
 	let viewportHeight = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
 	let allRefs = $state<Ref[]>([]);
+	let historyFilePath = $state<string | null>(null);
+	let historyRevision = $state(0);
+	let sidebarGotoTab = $state<'refs' | 'stash' | 'reflog' | 'history'>('refs');
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -272,7 +276,7 @@
 			{/if}
 		</header>
 		<div class="flex flex-1 overflow-hidden">
-			<Sidebar>
+			<Sidebar gotoTab={sidebarGotoTab}>
 				{#snippet refs()}
 					<RefList refs={allRefs} />
 				{/snippet}
@@ -281,6 +285,18 @@
 				{/snippet}
 				{#snippet reflog()}
 					<ReflogPanel {repoPath} onentryselect={(oid) => onSelectCommit(oid)} />
+				{/snippet}
+				{#snippet history()}
+					{#if historyFilePath}
+						<FileHistoryPanel
+							{repoPath}
+							filePath={historyFilePath}
+							revision={historyRevision}
+							onenterselect={(oid: string) => onSelectCommit(oid)}
+						/>
+					{:else}
+						<div class="text-gray-500 italic">No file selected</div>
+					{/if}
 				{/snippet}
 			</Sidebar>
 			<div class="flex-1 overflow-hidden flex flex-col">
@@ -312,7 +328,15 @@
 								Loading details...
 							</div>
 						{:else if commitDetails}
-							<CommitDetailPanel details={commitDetails} {repoPath} />
+							<CommitDetailPanel
+									details={commitDetails}
+									{repoPath}
+									onhistoryfile={(p: string) => {
+										historyFilePath = p;
+										historyRevision++;
+										sidebarGotoTab = 'history';
+									}}
+								/>
 						{:else}
 							<div class="flex items-center justify-center h-full text-sm text-gray-500">
 								Failed to load commit details

@@ -1,20 +1,45 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	type Tab = 'refs' | 'stash' | 'reflog';
+	type Tab = 'refs' | 'stash' | 'reflog' | 'history';
 
 	let {
 		refs,
 		stash,
-		reflog
+		reflog,
+		history,
+		gotoTab
 	}: {
 		refs?: Snippet;
 		stash?: Snippet;
 		reflog?: Snippet;
+		history?: Snippet;
+		gotoTab?: Tab;
 	} = $props();
 
 	let activeTab = $state<Tab>('refs');
 	let collapsed = $state(false);
+
+	const tabs = $derived(
+		[
+			{ id: 'refs' as Tab, label: 'Refs', snippet: refs },
+			{ id: 'stash' as Tab, label: 'Stash', snippet: stash },
+			{ id: 'reflog' as Tab, label: 'Reflog', snippet: reflog },
+			...(history ? [{ id: 'history' as Tab, label: 'History', snippet: history }] : [])
+		].filter((t): t is { id: Tab; label: string; snippet: Snippet } => t.snippet !== undefined)
+	);
+
+	$effect(() => {
+		if (gotoTab && tabs.some((t) => t.id === gotoTab)) {
+			activeTab = gotoTab;
+		}
+	});
+
+	$effect(() => {
+		if (activeTab === 'history' && !history) {
+			activeTab = 'refs';
+		}
+	});
 </script>
 
 {#if collapsed}
@@ -36,14 +61,14 @@
 	>
 		<div class="flex items-center justify-between border-b border-gray-800 px-2 py-1">
 			<div class="flex gap-1">
-				{#each ['refs', 'stash', 'reflog'] as tab (tab)}
+				{#each tabs as tab (tab.id)}
 					<button
-						class="rounded px-2 py-0.5 text-xs {activeTab === tab
+						class="rounded px-2 py-0.5 text-xs {activeTab === tab.id
 							? 'bg-gray-700 text-white'
 							: 'text-gray-400 hover:text-white'}"
-						onclick={() => (activeTab = tab as Tab)}
+						onclick={() => (activeTab = tab.id)}
 					>
-						{tab === 'refs' ? 'Refs' : tab === 'stash' ? 'Stash' : 'Reflog'}
+						{tab.label}
 					</button>
 				{/each}
 			</div>
@@ -64,13 +89,11 @@
 		</div>
 
 		<div class="flex-1 overflow-y-auto p-2 text-xs">
-			{#if activeTab === 'refs' && refs}
-				{@render refs()}
-			{:else if activeTab === 'stash' && stash}
-				{@render stash()}
-			{:else if activeTab === 'reflog' && reflog}
-				{@render reflog()}
-			{/if}
+			{#each tabs as tab (tab.id)}
+				{#if activeTab === tab.id}
+					{@render tab.snippet()}
+				{/if}
+			{/each}
 		</div>
 	</div>
 {/if}

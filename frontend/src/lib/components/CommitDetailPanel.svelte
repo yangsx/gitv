@@ -3,21 +3,20 @@
 	import { getFileDiff, getFileTree, getBlobContent } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
-	import FileHistoryPanel from './FileHistoryPanel.svelte';
 	import BlamePanel from './BlamePanel.svelte';
 	import ResizeHandle from './ResizeHandle.svelte';
 
 	interface Props {
 		details: CommitDetails;
 		repoPath: string;
+		onhistoryfile?: (_path: string) => void;
 	}
 
-	let { details, repoPath }: Props = $props();
+	let { details, repoPath, onhistoryfile }: Props = $props();
 
 	let activeTab = $state<'patch' | 'tree'>('patch');
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
-	let historyFilePath = $state<string | null>(null);
 	let blameFilePath = $state<string | null>(null);
 	let rightPanelWidth = $state(240);
 	let diffMode = $state<'normal' | 'word-diff' | 'stat-only'>('normal');
@@ -55,7 +54,6 @@
 		void details.info.oid;
 		activeTab = 'patch';
 		fileTree = null;
-		historyFilePath = null;
 		blameFilePath = null;
 		blobContent = null;
 		blobPath = null;
@@ -333,16 +331,6 @@
 			{/if}
 		</div>
 
-		{#if historyFilePath}
-			<div class="absolute inset-0 z-10 bg-gray-900">
-				<FileHistoryPanel
-					{repoPath}
-					filePath={historyFilePath}
-					onclose={() => (historyFilePath = null)}
-				/>
-			</div>
-		{/if}
-
 		{#if blameFilePath}
 			<div class="absolute inset-0 z-20 bg-gray-900">
 				<BlamePanel
@@ -417,7 +405,7 @@
 				<FileTree
 					node={fileTree}
 					{repoPath}
-					onhistoryfile={(p: string) => (historyFilePath = p)}
+					onhistoryfile={(p: string) => onhistoryfile?.(p)}
 					onselectfile={(p: string) => showBlob(p)}
 				/>
 			{:else}

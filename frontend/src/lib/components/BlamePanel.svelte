@@ -78,7 +78,7 @@
 			<span class="text-xs font-medium text-gray-300">Blame:</span>
 			<span class="font-mono text-xs text-gray-400">{filePath}</span>
 		</div>
-		<button class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white" onclick={onclose}>
+		<button class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white" onclick={onclose} aria-label="Close">
 			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path
 					stroke-linecap="round"
@@ -97,38 +97,40 @@
 	{:else if blame}
 		<div class="flex-1 overflow-auto">
 			<table class="w-full border-collapse text-xs">
-				{#each groupByCommit() as group (group.oid)}
-					{#each group.lines as line, i (line.num)}
-						<tr
-							class={currentCommit === group.oid
-								? 'bg-blue-900/20'
-								: 'border-b border-gray-800/50 hover:bg-gray-800/50'}
-						>
-							<td class="w-10 border-r border-gray-800 px-1 py-0.5 text-right text-gray-500"
-								>#{line.num}</td
+				<tbody>
+					{#each groupByCommit() as group (group.oid)}
+						{#each group.lines as line, i (line.num)}
+							<tr
+								class={currentCommit === group.oid
+									? 'bg-blue-900/20'
+									: 'border-b border-gray-800/50 hover:bg-gray-800/50'}
 							>
-							<td
-								class="w-48 cursor-pointer border-r border-gray-800 px-2 py-0.5"
-								onclick={() => {
-									currentCommit = currentCommit === group.oid ? null : group.oid;
-								}}
-								ondblclick={() => oncommitclick?.(group.oid)}
-							>
-								{#if i === 0}
-									<div class="truncate text-gray-400" title="{group.author} · {group.date}">
-										<span class="text-gray-300">{group.author}</span>
-										<span class="ml-1 text-gray-500">· {group.date}</span>
-									</div>
-								{:else}
-									<div class="text-gray-600">...</div>
-								{/if}
-							</td>
-							<td class="px-2 py-0.5">
-								<pre class="whitespace-pre-wrap font-mono text-gray-300">{line.content}</pre>
-							</td>
-						</tr>
+								<td class="w-10 border-r border-gray-800 px-1 py-0.5 text-right text-gray-500"
+									>#{line.num}</td
+								>
+								<td
+									class="w-48 cursor-pointer border-r border-gray-800 px-2 py-0.5"
+									onclick={() => {
+										currentCommit = currentCommit === group.oid ? null : group.oid;
+									}}
+									ondblclick={() => oncommitclick?.(group.oid)}
+								>
+									{#if i === 0}
+										<div class="truncate text-gray-400" title="{group.author} · {group.date}">
+											<span class="text-gray-300">{group.author}</span>
+											<span class="ml-1 text-gray-500">· {group.date}</span>
+										</div>
+									{:else}
+										<div class="text-gray-600">...</div>
+									{/if}
+								</td>
+								<td class="px-2 py-0.5">
+									<pre class="whitespace-pre-wrap font-mono text-gray-300">{line.content}</pre>
+								</td>
+							</tr>
+						{/each}
 					{/each}
-				{/each}
+				</tbody>
 			</table>
 		</div>
 	{/if}

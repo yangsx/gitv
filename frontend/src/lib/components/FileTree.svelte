@@ -10,6 +10,7 @@
 	}
 
 	let { node, repoPath, depth = 0, onhistoryfile, onselectfile }: Props = $props();
+	// svelte-ignore state_referenced_locally
 	let expanded = $state(depth < 1);
 
 	function toggle() {
