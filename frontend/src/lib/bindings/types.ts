@@ -234,3 +234,54 @@ export interface FileHistoryEntry {
 	author: Author;
 	time: string;
 }
+
+export interface ReflogEntry {
+	oid: string;
+	old_oid: string | null;
+	ref_name: string;
+	message: string;
+	author: Author;
+	time: string;
+}
+
+export interface StashEntry {
+	index: number;
+	oid: string;
+	parent_oid: string;
+	message: string;
+	author: Author;
+	time: string;
+	file_summary: StashFileSummary[];
+}
+
+export interface StashFileSummary {
+	path: string;
+	change_type: StashChangeType;
+}
+
+export type StashChangeType = 'Added' | 'Modified' | 'Deleted';
+
+export interface StashSplitDiff {
+	staged: FileDiff;
+	unstaged: FileDiff;
+}
+
+export interface Blame {
+	file_path: string;
+	lines: BlameLine[];
+}
+
+export interface BlameLine {
+	line_number: number;
+	content: string;
+	commit_oid: string;
+	author: Author;
+	time: string;
+}
+
+export interface SavedSearch {
+	id: string;
+	name: string;
+	query: string;
+	created_at: string;
+}

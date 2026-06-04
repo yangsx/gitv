@@ -8,6 +8,7 @@ pub fn run() {
         .manage(state::AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::repository::open_repository,
+            commands::repository::get_refs,
             commands::repository::get_recent_repositories,
             commands::commits::stream_commits,
             commands::commits::get_commits,

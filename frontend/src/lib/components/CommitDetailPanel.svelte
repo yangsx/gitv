@@ -4,6 +4,7 @@
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
 	import FileHistoryPanel from './FileHistoryPanel.svelte';
+	import BlamePanel from './BlamePanel.svelte';
 
 	interface Props {
 		details: CommitDetails;
@@ -24,6 +25,7 @@
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
 	let historyFilePath = $state<string | null>(null);
+	let blameFilePath = $state<string | null>(null);
 
 	$effect(() => {
 		void details.info.oid;
@@ -182,6 +184,15 @@
 			<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-2">
 				<h3 class="font-mono text-sm text-gray-300">{fileDiff.path}</h3>
 				<div class="ml-auto flex items-center gap-2">
+					{#if selectedFile}
+						<button
+							class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+							onclick={() => (blameFilePath = selectedFile)}
+							title="View blame"
+						>
+							Blame
+						</button>
+					{/if}
 					<button
 						class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
 						onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
@@ -237,6 +248,17 @@
 					{repoPath}
 					filePath={historyFilePath}
 					onclose={() => (historyFilePath = null)}
+				/>
+			</div>
+		{/if}
+
+		{#if blameFilePath}
+			<div class="absolute inset-0 z-20 bg-gray-900">
+				<BlamePanel
+					{repoPath}
+					filePath={blameFilePath}
+					atCommit={details.info.oid}
+					onclose={() => (blameFilePath = null)}
 				/>
 			</div>
 		{/if}

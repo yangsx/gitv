@@ -4,9 +4,10 @@
 		openRepository,
 		getCommits,
 		getGraphLayout,
-		getCommitDetails
+		getCommitDetails,
+		getRefs
 	} from '$lib/bindings/commands';
-	import type { CommitInfo, GraphLayout, CommitDetails } from '$lib/bindings/types';
+	import type { CommitInfo, GraphLayout, CommitDetails, Ref } from '$lib/bindings/types';
 	import {
 		repoInfo,
 		selectedOid,
@@ -20,6 +21,10 @@
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
 	import ComparisonPanel from '$lib/components/ComparisonPanel.svelte';
 	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
+	import Sidebar from '$lib/components/Sidebar/Sidebar.svelte';
+	import RefList from '$lib/components/Sidebar/RefList.svelte';
+	import StashList from '$lib/components/Sidebar/StashList.svelte';
+	import ReflogPanel from '$lib/components/Sidebar/ReflogPanel.svelte';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -28,6 +33,7 @@
 	let detailsLoading = $state(false);
 	let detailPanelHeight = $state(300);
 	let viewportHeight = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
+	let allRefs = $state<Ref[]>([]);
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -52,14 +58,16 @@
 		isLoading.set(true);
 		error.set(null);
 		try {
-			const [info, loadedCommits, layout] = await Promise.all([
+			const [info, loadedCommits, layout, loadedRefs] = await Promise.all([
 				openRepository(path),
 				getCommits(path),
-				getGraphLayout(path)
+				getGraphLayout(path),
+				getRefs(path)
 			]);
 			repoInfo.set(info);
 			commits = loadedCommits;
 			graphLayout = layout;
+			allRefs = loadedRefs;
 		} catch (e: unknown) {
 			error.set(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -139,43 +147,56 @@
 				<span class="text-xs text-gray-500">Loading...</span>
 			{/if}
 		</header>
-		<div class="flex-1 overflow-hidden flex flex-col">
-			<div class="flex-1 overflow-hidden">
-				{#if graphLayout}
-					<CommitList
-						{commits}
-						layout={graphLayout}
-						selectedOid={$selectedOid}
-						matchingOids={$matchingOids}
-						onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
-					/>
-				{/if}
-			</div>
-
-			{#if $selectedOid}
-				<ResizeHandle
-					bind:panelHeight={detailPanelHeight}
-					maxHeight={Math.floor(viewportHeight * 0.7)}
-				/>
-				<div
-					class="overflow-hidden bg-gray-900 border-t border-gray-700"
-					style="height: {detailPanelHeight}px;"
-				>
-					{#if $comparisonOid}
-						<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
-					{:else if detailsLoading}
-						<div class="flex items-center justify-center h-full text-sm text-gray-500">
-							Loading details...
-						</div>
-					{:else if commitDetails}
-						<CommitDetailPanel details={commitDetails} {repoPath} />
-					{:else}
-						<div class="flex items-center justify-center h-full text-sm text-gray-500">
-							Failed to load commit details
-						</div>
+		<div class="flex flex-1 overflow-hidden">
+			<Sidebar>
+				{#snippet refs()}
+					<RefList refs={allRefs} />
+				{/snippet}
+				{#snippet stash()}
+					<StashList {repoPath} />
+				{/snippet}
+				{#snippet reflog()}
+					<ReflogPanel {repoPath} onentryselect={(oid) => onSelectCommit(oid)} />
+				{/snippet}
+			</Sidebar>
+			<div class="flex-1 overflow-hidden flex flex-col">
+				<div class="flex-1 overflow-hidden">
+					{#if graphLayout}
+						<CommitList
+							{commits}
+							layout={graphLayout}
+							selectedOid={$selectedOid}
+							matchingOids={$matchingOids}
+							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
+						/>
 					{/if}
 				</div>
-			{/if}
+
+				{#if $selectedOid}
+					<ResizeHandle
+						bind:panelHeight={detailPanelHeight}
+						maxHeight={Math.floor(viewportHeight * 0.7)}
+					/>
+					<div
+						class="overflow-hidden bg-gray-900 border-t border-gray-700"
+						style="height: {detailPanelHeight}px;"
+					>
+						{#if $comparisonOid}
+							<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
+						{:else if detailsLoading}
+							<div class="flex items-center justify-center h-full text-sm text-gray-500">
+								Loading details...
+							</div>
+						{:else if commitDetails}
+							<CommitDetailPanel details={commitDetails} {repoPath} />
+						{:else}
+							<div class="flex items-center justify-center h-full text-sm text-gray-500">
+								Failed to load commit details
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>
