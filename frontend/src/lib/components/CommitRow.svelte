@@ -6,10 +6,11 @@
 		isSelected: boolean;
 		isDimmed?: boolean;
 		onclick: (_oid: string, _ctrlKey: boolean) => void;
+		oncontextmenu?: (_e: MouseEvent, _oid: string) => void;
 		id?: string;
 	}
 
-	let { commit, isSelected, isDimmed = false, onclick, id }: Props = $props();
+	let { commit, isSelected, isDimmed = false, onclick, oncontextmenu, id }: Props = $props();
 
 	const STAGED_OID = '__staged__';
 	const UNSTAGED_OID = '__unstaged__';
@@ -76,6 +77,7 @@
 			: ''}"
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
 			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
+		oncontextmenu={(e: MouseEvent) => oncontextmenu?.(e, commit.oid)}
 	>
 		<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
 			{commit.short_oid}

@@ -69,6 +69,7 @@ export interface NodePosition {
 }
 
 export type EdgeType = 'Straight' | 'Branch' | 'Merge';
+export type EdgeStyle = 'Solid' | 'Dashed' | 'Dotted';
 
 export interface Edge {
 	from_row: number;
@@ -78,6 +79,7 @@ export interface Edge {
 	edge_type: EdgeType;
 	color: Color;
 	is_dimmed: boolean;
+	edge_style: EdgeStyle;
 }
 
 export interface StashMarker {

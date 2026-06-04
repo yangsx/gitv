@@ -39,7 +39,7 @@ export const debug = writable<DebugState>(initialState);
 export const avgIpcTime = derived(debug, ($d) => {
 	if ($d.ipcTimings.length === 0) return 0;
 	const sum = $d.ipcTimings.reduce((a, t) => a + t.durationMs, 0);
-	return Math.round(sum / $d.ipcTimings.length * 100) / 100;
+	return Math.round((sum / $d.ipcTimings.length) * 100) / 100;
 });
 
 export const recentIpcTimings = derived(debug, ($d) => {
@@ -55,8 +55,19 @@ export function recordIpcTiming(command: string, durationMs: number) {
 	});
 }
 
-export function updateDebugGraphStats(nodes: number, edges: number, stashMarkers: number, columns: number) {
-	debug.update((d) => ({ ...d, graphNodes: nodes, graphEdges: edges, graphStashMarkers: stashMarkers, graphColumns: columns }));
+export function updateDebugGraphStats(
+	nodes: number,
+	edges: number,
+	stashMarkers: number,
+	columns: number
+) {
+	debug.update((d) => ({
+		...d,
+		graphNodes: nodes,
+		graphEdges: edges,
+		graphStashMarkers: stashMarkers,
+		graphColumns: columns
+	}));
 }
 
 export function updateDebugCommitCounts(total: number, visible: number) {
@@ -74,7 +85,7 @@ export function tickFps() {
 	fpsFrames++;
 	const now = performance.now();
 	if (now - fpsLastTime >= 1000) {
-		debug.update((d) => ({ ...d, fps: Math.round(fpsFrames * 1000 / (now - fpsLastTime)) }));
+		debug.update((d) => ({ ...d, fps: Math.round((fpsFrames * 1000) / (now - fpsLastTime)) }));
 		fpsFrames = 0;
 		fpsLastTime = now;
 	}

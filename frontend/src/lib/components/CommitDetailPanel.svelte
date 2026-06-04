@@ -10,6 +10,10 @@
 	import FileTree from './FileTree.svelte';
 	import BlamePanel from './BlamePanel.svelte';
 	import ResizeHandle from './ResizeHandle.svelte';
+	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
+	import ContextMenu from './ContextMenu.svelte';
+	import type { ContextMenuItem } from './ContextMenu.svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	interface Props {
 		details: CommitDetails;
@@ -23,20 +27,42 @@
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
 	let blameFilePath = $state<string | null>(null);
-	let rightPanelWidth = $state(240);
+	let rightPanelWidth = $state(getClampedLayout().rightPanelWidth);
 	let diffMode = $state<'normal' | 'word-diff' | 'stat-only'>('normal');
 	let whitespaceMode = $state<
 		'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
 	>('none');
 	let viewMode = $state<'unified' | 'side-by-side'>('unified');
 
-	let fileDiffs = $state<Map<string, FileDiff>>(new Map());
+	let fileDiffs = new SvelteMap<string, FileDiff>();
 	let diffsLoading = $state(false);
 	let blobContent = $state<string | null>(null);
 	let blobLoading = $state(false);
 	let blobPath = $state<string | null>(null);
 
 	let scrollContainer: HTMLDivElement | undefined = $state();
+
+	function persistRightPanelWidth() {
+		updateLayout({ rightPanelWidth });
+	}
+
+	let fileContextMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+	let treeSearchQuery = $state('');
+
+	function handleFileContextMenu(e: MouseEvent, path: string) {
+		const items: ContextMenuItem[] = [
+			{ label: 'Copy file path', action: () => navigator.clipboard.writeText(path) },
+			{ separator: true },
+			{ label: 'View file history', shortcut: 'h', action: () => onhistoryfile?.(path) },
+			{
+				label: 'View blame',
+				action: () => {
+					blameFilePath = path;
+				}
+			}
+		];
+		fileContextMenu = { x: e.clientX, y: e.clientY, items };
+	}
 
 	const CHANGE_COLORS: Record<string, string> = {
 		Added: 'text-green-400',
@@ -62,7 +88,7 @@
 		blameFilePath = null;
 		blobContent = null;
 		blobPath = null;
-		fileDiffs = new Map();
+		fileDiffs.clear();
 		loadAllDiffs();
 	});
 
@@ -78,13 +104,14 @@
 					diffMode,
 					whitespaceMode
 				);
-				const map = new Map<string, FileDiff>();
+				const map = new SvelteMap<string, FileDiff>();
 				for (const diff of diffs) {
 					map.set(diff.path, diff);
 				}
-				fileDiffs = map;
+				fileDiffs.clear();
+				for (const [k, v] of map) fileDiffs.set(k, v);
 			} catch {
-				fileDiffs = new Map();
+				fileDiffs.clear();
 			}
 			diffsLoading = false;
 			return;
@@ -107,11 +134,12 @@
 			}
 		});
 		const results = await Promise.all(promises);
-		const map = new Map<string, FileDiff>();
+		const map = new SvelteMap<string, FileDiff>();
 		for (const [path, diff] of results) {
 			if (diff) map.set(path, diff);
 		}
-		fileDiffs = map;
+		fileDiffs.clear();
+		for (const [k, v] of map) fileDiffs.set(k, v);
 		diffsLoading = false;
 	}
 
@@ -269,7 +297,7 @@
 					<div class="px-4 py-3 border-b border-gray-800">
 						<div class="flex items-baseline gap-3 text-sm">
 							<span class="font-mono text-gray-500">commit {details.info.oid.substring(0, 7)}</span>
-							{#each details.info.refs as r}
+							{#each details.info.refs as r (r.Branch?.name ?? r.Tag?.name ?? r.Remote?.name ?? '')}
 								{#if r.Branch?.is_head}
 									<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
 										{r.Branch.name}
@@ -298,7 +326,7 @@
 						{#if details.info.parent_oids.length > 0}
 							<div class="text-xs text-gray-500">
 								Parent{details.info.parent_oids.length > 1 ? 's' : ''}:
-								{#each details.info.parent_oids as p, i}
+								{#each details.info.parent_oids as p, i (i)}
 									<span class="font-mono">{formatParent(p)}</span>{i <
 									details.info.parent_oids.length - 1
 										? ', '
@@ -404,7 +432,11 @@
 		{/if}
 	</div>
 
-	<ResizeHandle direction="horizontal" bind:panelWidth={rightPanelWidth} />
+	<ResizeHandle
+		direction="horizontal"
+		bind:panelWidth={rightPanelWidth}
+		onDragEnd={persistRightPanelWidth}
+	/>
 
 	<div
 		class="shrink-0 flex flex-col border-l border-gray-700 bg-gray-900/50 overflow-hidden"
@@ -474,11 +506,22 @@
 			{:else if loadingTree}
 				<div class="px-3 py-4 text-xs text-gray-500">Loading tree...</div>
 			{:else if fileTree}
+				<div class="border-b border-gray-800 px-2 py-1">
+					<input
+						type="text"
+						class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500 outline-none focus:border-blue-500"
+						placeholder="Search files..."
+						bind:value={treeSearchQuery}
+						aria-label="Search file tree"
+					/>
+				</div>
 				<FileTree
 					node={fileTree}
 					{repoPath}
 					onhistoryfile={(p: string) => onhistoryfile?.(p)}
 					onselectfile={(p: string) => showBlob(p)}
+					onfilecontextmenu={handleFileContextMenu}
+					filter={treeSearchQuery}
 				/>
 			{:else}
 				<div class="px-3 py-4 text-xs text-gray-500">No file tree</div>
@@ -486,3 +529,12 @@
 		</div>
 	</div>
 </div>
+
+{#if fileContextMenu}
+	<ContextMenu
+		x={fileContextMenu.x}
+		y={fileContextMenu.y}
+		items={fileContextMenu.items}
+		onclose={() => (fileContextMenu = null)}
+	/>
+{/if}

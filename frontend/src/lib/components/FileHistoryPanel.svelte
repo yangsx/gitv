@@ -7,7 +7,7 @@
 		filePath: string;
 		revision?: number;
 		onclose?: () => void;
-		onenterselect?: (oid: string) => void;
+		onenterselect?: (_oid: string) => void;
 	}
 
 	let { repoPath, filePath, revision, onclose, onenterselect }: Props = $props();

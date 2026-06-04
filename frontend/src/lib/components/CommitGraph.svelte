@@ -149,6 +149,14 @@
 		ctx.strokeStyle = colorToCss(edge.color);
 		ctx.lineWidth = 1.5;
 
+		if (edge.edge_style === 'Dashed') {
+			ctx.setLineDash([6, 3]);
+		} else if (edge.edge_style === 'Dotted') {
+			ctx.setLineDash([2, 3]);
+		} else {
+			ctx.setLineDash([]);
+		}
+
 		if (edge.from_col === edge.to_col) {
 			ctx.moveTo(x1, y1);
 			ctx.lineTo(x2, y2);
@@ -159,6 +167,7 @@
 		}
 
 		ctx.stroke();
+		ctx.setLineDash([]);
 		ctx.globalAlpha = 1.0;
 	}
 

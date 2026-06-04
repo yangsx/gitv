@@ -1,5 +1,5 @@
 use gitv_git_core::gix_repo::GixRepository;
-use gitv_git_core::graph::{GraphCalculator, GraphColorMode, GraphOptions, GraphOrientation};
+use gitv_git_core::graph::{GraphCalculator, GraphColorMode, GraphOptions, GraphOrientation, GraphPalette};
 use gitv_git_core::repository::Repository;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,6 +12,7 @@ pub fn get_graph_layout(
     hide_merges: Option<bool>,
     orientation: Option<String>,
     color_mode: Option<String>,
+    palette: Option<String>,
 ) -> Result<gitv_git_core::graph::GraphLayout, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
@@ -35,10 +36,18 @@ pub fn get_graph_layout(
         _ => GraphColorMode::ByBranch,
     };
 
+    let graph_palette = match palette.as_deref() {
+        Some("deuteranopia") => GraphPalette::DeuteranopiaSafe,
+        Some("protanopia") => GraphPalette::ProtanopiaSafe,
+        Some("tritanopia") => GraphPalette::TritanopiaSafe,
+        _ => GraphPalette::Default,
+    };
+
     let options = GraphOptions {
         hide_merges: hide_merges.unwrap_or(false),
         orientation,
         color_mode,
+        palette: graph_palette,
     };
 
     let calc = GraphCalculator::new(commits, refs_map, Vec::new(), options);

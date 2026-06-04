@@ -52,10 +52,16 @@
 			<div class="mt-2 border-t border-gray-800 pt-2">
 				<div class="text-gray-500 mb-1">Recent IPC</div>
 				<div class="max-h-32 overflow-y-auto">
-					{#each $recentIpcTimings as t}
+					{#each $recentIpcTimings as t, i (i)}
 						<div class="flex justify-between">
 							<span class="truncate max-w-[180px]">{t.command}</span>
-							<span class={t.durationMs > 100 ? 'text-red-400' : t.durationMs > 50 ? 'text-yellow-400' : ''}>
+							<span
+								class={t.durationMs > 100
+									? 'text-red-400'
+									: t.durationMs > 50
+										? 'text-yellow-400'
+										: ''}
+							>
 								{formatMs(t.durationMs)}ms
 							</span>
 						</div>

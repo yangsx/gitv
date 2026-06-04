@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
 import { invoke } from '@tauri-apps/api/core';
 import { recordIpcTiming } from '$lib/stores/debug';
 import type {
@@ -53,13 +54,15 @@ export async function getGraphLayout(
 		hide_merges?: boolean;
 		orientation?: string;
 		color_mode?: string;
+		palette?: string;
 	}
 ): Promise<GraphLayout> {
 	return timedInvoke<GraphLayout>('get_graph_layout', {
 		path,
 		hide_merges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
-		color_mode: options?.color_mode ?? 'by-branch'
+		color_mode: options?.color_mode ?? 'by-branch',
+		palette: options?.palette ?? null
 	});
 }
 

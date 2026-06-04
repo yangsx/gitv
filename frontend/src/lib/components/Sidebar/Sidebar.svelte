@@ -8,13 +8,15 @@
 		stash,
 		reflog,
 		history,
-		gotoTab
+		gotoTab,
+		width = 220
 	}: {
 		refs?: Snippet;
 		stash?: Snippet;
 		reflog?: Snippet;
 		history?: Snippet;
 		gotoTab?: Tab;
+		width?: number;
 	} = $props();
 
 	let activeTab = $state<Tab>('refs');
@@ -62,7 +64,7 @@
 {:else}
 	<div
 		class="flex flex-col border-r border-gray-800 bg-gray-900"
-		style="width: 220px; min-width: 180px;"
+		style="width: {width}px; min-width: 150px;"
 		role="navigation"
 		aria-label="Sidebar"
 	>

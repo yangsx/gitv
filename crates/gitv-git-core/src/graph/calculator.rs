@@ -4,67 +4,59 @@ use crate::graph::layout::*;
 use crate::models::*;
 
 const BRANCH_PALETTE: &[Color] = &[
-    Color {
-        r: 79,
-        g: 148,
-        b: 205,
-        a: 255,
-    },
-    Color {
-        r: 230,
-        g: 126,
-        b: 34,
-        a: 255,
-    },
-    Color {
-        r: 46,
-        g: 204,
-        b: 113,
-        a: 255,
-    },
-    Color {
-        r: 231,
-        g: 76,
-        b: 60,
-        a: 255,
-    },
-    Color {
-        r: 155,
-        g: 89,
-        b: 182,
-        a: 255,
-    },
-    Color {
-        r: 241,
-        g: 196,
-        b: 15,
-        a: 255,
-    },
-    Color {
-        r: 26,
-        g: 188,
-        b: 156,
-        a: 255,
-    },
-    Color {
-        r: 192,
-        g: 57,
-        b: 43,
-        a: 255,
-    },
-    Color {
-        r: 52,
-        g: 73,
-        b: 94,
-        a: 255,
-    },
-    Color {
-        r: 142,
-        g: 68,
-        b: 173,
-        a: 255,
-    },
+    Color { r: 79, g: 148, b: 205, a: 255 },
+    Color { r: 230, g: 126, b: 34, a: 255 },
+    Color { r: 46, g: 204, b: 113, a: 255 },
+    Color { r: 231, g: 76, b: 60, a: 255 },
+    Color { r: 155, g: 89, b: 182, a: 255 },
+    Color { r: 241, g: 196, b: 15, a: 255 },
+    Color { r: 26, g: 188, b: 156, a: 255 },
+    Color { r: 192, g: 57, b: 43, a: 255 },
+    Color { r: 52, g: 73, b: 94, a: 255 },
+    Color { r: 142, g: 68, b: 173, a: 255 },
 ];
+
+const DEUTERANOPIA_PALETTE: &[Color] = &[
+    Color { r: 0, g: 114, b: 178, a: 255 },
+    Color { r: 230, g: 159, b: 0, a: 255 },
+    Color { r: 0, g: 158, b: 115, a: 255 },
+    Color { r: 204, g: 121, b: 167, a: 255 },
+    Color { r: 86, g: 180, b: 233, a: 255 },
+    Color { r: 213, g: 94, b: 0, a: 255 },
+    Color { r: 240, g: 228, b: 66, a: 255 },
+    Color { r: 0, g: 0, b: 0, a: 255 },
+];
+
+const PROTANOPIA_PALETTE: &[Color] = &[
+    Color { r: 0, g: 114, b: 178, a: 255 },
+    Color { r: 230, g: 159, b: 0, a: 255 },
+    Color { r: 0, g: 158, b: 115, a: 255 },
+    Color { r: 204, g: 121, b: 167, a: 255 },
+    Color { r: 86, g: 180, b: 233, a: 255 },
+    Color { r: 213, g: 94, b: 0, a: 255 },
+    Color { r: 240, g: 228, b: 66, a: 255 },
+    Color { r: 0, g: 0, b: 0, a: 255 },
+];
+
+const TRITANOPIA_PALETTE: &[Color] = &[
+    Color { r: 230, g: 159, b: 0, a: 255 },
+    Color { r: 86, g: 180, b: 233, a: 255 },
+    Color { r: 0, g: 158, b: 115, a: 255 },
+    Color { r: 204, g: 121, b: 167, a: 255 },
+    Color { r: 213, g: 94, b: 0, a: 255 },
+    Color { r: 240, g: 228, b: 66, a: 255 },
+    Color { r: 0, g: 114, b: 178, a: 255 },
+    Color { r: 0, g: 0, b: 0, a: 255 },
+];
+
+fn palette_for(mode: GraphPalette) -> &'static [Color] {
+    match mode {
+        GraphPalette::Default => BRANCH_PALETTE,
+        GraphPalette::DeuteranopiaSafe => DEUTERANOPIA_PALETTE,
+        GraphPalette::ProtanopiaSafe => PROTANOPIA_PALETTE,
+        GraphPalette::TritanopiaSafe => TRITANOPIA_PALETTE,
+    }
+}
 
 pub struct GraphCalculator {
     commits: Vec<CommitInfo>,
@@ -110,6 +102,7 @@ impl GraphCalculator {
         let row_assignments = Self::temporal_topological_sort(&commits, &children);
 
         let mut graph_data: HashMap<Oid, CommitGraphData> = HashMap::new();
+        let palette = palette_for(self.options.palette);
         for c in &commits {
             let row = *row_assignments.get(&c.oid).unwrap_or(&0);
             graph_data.insert(
@@ -118,7 +111,7 @@ impl GraphCalculator {
                     row,
                     column: 0,
                     is_merge: c.parent_oids.len() > 1,
-                    color: BRANCH_PALETTE[0],
+                    color: palette[0],
                 },
             );
         }
@@ -454,6 +447,7 @@ impl GraphCalculator {
         commits: &[CommitInfo],
         graph_data: &mut HashMap<Oid, CommitGraphData>,
     ) {
+        let palette = palette_for(self.options.palette);
         let mut color_idx = 0usize;
 
         if self.options.color_mode == GraphColorMode::ByBranch {
@@ -462,7 +456,7 @@ impl GraphCalculator {
             for c in commits {
                 let col = graph_data.get(&c.oid).map(|gd| gd.column).unwrap_or(0);
                 let color = *lane_colors.entry(col).or_insert_with(|| {
-                    let clr = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
+                    let clr = palette[color_idx % palette.len()];
                     color_idx += 1;
                     clr
                 });
@@ -485,7 +479,7 @@ impl GraphCalculator {
             for c in commits {
                 let author_key = format!("{} <{}>", c.author.name, c.author.email);
                 let color = *author_colors.entry(author_key).or_insert_with(|| {
-                    let clr = BRANCH_PALETTE[color_idx % BRANCH_PALETTE.len()];
+                    let clr = palette[color_idx % palette.len()];
                     color_idx += 1;
                     clr
                 });
@@ -539,6 +533,15 @@ impl GraphCalculator {
                     } else {
                         EdgeType::Merge
                     };
+                    let edge_style = if self.options.palette == GraphPalette::Default {
+                        EdgeStyle::Solid
+                    } else {
+                        match c_col % 3 {
+                            0 => EdgeStyle::Solid,
+                            1 => EdgeStyle::Dashed,
+                            _ => EdgeStyle::Dotted,
+                        }
+                    };
                     edges.push(Edge {
                         from_row: c_row,
                         from_col: c_col,
@@ -547,6 +550,7 @@ impl GraphCalculator {
                         edge_type,
                         color: c_color,
                         is_dimmed: false,
+                        edge_style,
                     });
                 }
             }

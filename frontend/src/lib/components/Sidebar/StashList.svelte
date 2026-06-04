@@ -7,7 +7,7 @@
 		onstashselect
 	}: {
 		repoPath: string;
-		onstashselect?: (index: number) => void;
+		onstashselect?: (_index: number) => void;
 	} = $props();
 
 	let stashes = $state<StashEntry[]>([]);

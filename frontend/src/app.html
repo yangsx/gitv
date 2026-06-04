@@ -5,23 +5,23 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
 		<script>
-			window.addEventListener('error', function(e) {
+			window.addEventListener('error', function (e) {
 				try {
 					var m = e.message || String(e.error || '');
-					var s = e.error && e.error.stack || '';
+					var s = (e.error && e.error.stack) || '';
 					if (window.__TAURI__ && window.__TAURI__.invoke) {
 						window.__TAURI__.invoke('log_frontend_error', { message: m, stack: s });
 					}
-				} catch(_) {}
+				} catch (_) {}
 			});
-			window.addEventListener('unhandledrejection', function(e) {
+			window.addEventListener('unhandledrejection', function (e) {
 				try {
-					var m = e.reason && e.reason.message || String(e.reason || '');
-					var s = e.reason && e.reason.stack || '';
+					var m = (e.reason && e.reason.message) || String(e.reason || '');
+					var s = (e.reason && e.reason.stack) || '';
 					if (window.__TAURI__ && window.__TAURI__.invoke) {
 						window.__TAURI__.invoke('log_frontend_error', { message: m, stack: s });
 					}
-				} catch(_) {}
+				} catch (_) {}
 			});
 		</script>
 		%sveltekit.head%

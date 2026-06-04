@@ -16,7 +16,6 @@
 	let selectedFile = $state<string | null>(null);
 	let fileDiff = $state<FileDiff | null>(null);
 	let loadingDiff = $state(false);
-	let fullDiff = $state(false);
 	let diffError = $state<string | null>(null);
 
 	const CHANGE_COLORS: Record<string, string> = {
@@ -52,7 +51,6 @@
 			return;
 		}
 		selectedFile = path;
-		fullDiff = false;
 		diffError = null;
 		loadingDiff = true;
 		try {
@@ -65,7 +63,6 @@
 	}
 
 	async function loadFullDiff() {
-		fullDiff = true;
 		if (!selectedFile) return;
 		diffError = null;
 		loadingDiff = true;

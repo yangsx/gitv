@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import ts from 'typescript-eslint';
 import svelte from 'eslint-plugin-svelte';
 import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 import svelteParser from 'svelte-eslint-parser';
 
 export default ts.config(
@@ -16,19 +17,8 @@ export default ts.config(
 		files: ['**/*.svelte', '**/*.ts'],
 		languageOptions: {
 			globals: {
-				window: 'readonly',
-				document: 'readonly',
-				URLSearchParams: 'readonly',
-				ResizeObserver: 'readonly',
-				devicePixelRatio: 'readonly',
-				HTMLCanvasElement: 'readonly',
-				HTMLDivElement: 'readonly',
-				CanvasRenderingContext2D: 'readonly',
-				Event: 'readonly',
-				Map: 'readonly',
-				setTimeout: 'readonly',
-				clearTimeout: 'readonly',
-				KeyboardEvent: 'readonly',
+				...globals.browser,
+				...globals.es2021,
 				ReturnType: 'readonly'
 			}
 		}

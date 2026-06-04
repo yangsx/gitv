@@ -9,6 +9,7 @@
 		selectedOid: string | null;
 		matchingOids?: Set<string>;
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
+		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
 		rowHeight?: number;
 		graphWidth?: number;
 	}
@@ -19,6 +20,7 @@
 		selectedOid,
 		matchingOids,
 		onSelect,
+		onContextMenu,
 		rowHeight = 28,
 		graphWidth = 200
 	}: Props = $props();
@@ -148,6 +150,7 @@
 						isSelected={commit.oid === selectedOid}
 						isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
 						onclick={onSelect}
+						oncontextmenu={onContextMenu}
 					/>
 				{/each}
 			</div>

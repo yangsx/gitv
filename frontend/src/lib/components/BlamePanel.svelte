@@ -12,7 +12,7 @@
 		repoPath: string;
 		filePath: string;
 		atCommit?: string;
-		oncommitclick?: (oid: string) => void;
+		oncommitclick?: (_oid: string) => void;
 		onclose?: () => void;
 	} = $props();
 

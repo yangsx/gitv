@@ -7,7 +7,7 @@
 		onentryselect
 	}: {
 		repoPath: string;
-		onentryselect?: (oid: string) => void;
+		onentryselect?: (_oid: string) => void;
 	} = $props();
 
 	let entries = $state<ReflogEntry[]>([]);

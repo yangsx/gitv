@@ -3,10 +3,12 @@
 
 	let {
 		refs,
-		onbranchselect
+		onbranchselect,
+		onbranchcontextmenu
 	}: {
 		refs: Ref[];
-		onbranchselect?: (name: string) => void;
+		onbranchselect?: (_name: string) => void;
+		onbranchcontextmenu?: (_e: MouseEvent, _name: string) => void;
 	} = $props();
 
 	let branches = $derived(
@@ -43,6 +45,10 @@
 						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800"
 						aria-label="Branch {branch.name}{branch.is_head ? ' (current)' : ''}"
 						onclick={() => onbranchselect?.(branch.name)}
+						oncontextmenu={(e: MouseEvent) => {
+							e.preventDefault();
+							onbranchcontextmenu?.(e, branch.name);
+						}}
 					>
 						{#if branch.is_head}
 							<span class="text-green-400" aria-hidden="true">*</span>

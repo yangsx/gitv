@@ -21,6 +21,9 @@ export const searchResults = writable<SearchResult[]>([]);
 export const graphColorMode = writable<'by-branch' | 'by-author'>('by-branch');
 export const graphHideMerges = writable(false);
 export const graphOrientation = writable<'top-to-bottom' | 'bottom-to-top'>('top-to-bottom');
+export const graphPalette = writable<'default' | 'deuteranopia' | 'protanopia' | 'tritanopia'>(
+	'default'
+);
 
 export const matchingOids = derived(
 	searchResults,

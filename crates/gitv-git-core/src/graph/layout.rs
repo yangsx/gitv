@@ -15,11 +15,29 @@ pub enum GraphColorMode {
     ByAuthor,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GraphPalette {
+    #[default]
+    Default,
+    DeuteranopiaSafe,
+    ProtanopiaSafe,
+    TritanopiaSafe,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EdgeStyle {
+    #[default]
+    Solid,
+    Dashed,
+    Dotted,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GraphOptions {
     pub hide_merges: bool,
     pub orientation: GraphOrientation,
     pub color_mode: GraphColorMode,
+    pub palette: GraphPalette,
 }
 
 impl Default for GraphOptions {
@@ -28,6 +46,7 @@ impl Default for GraphOptions {
             hide_merges: false,
             orientation: GraphOrientation::TopToBottom,
             color_mode: GraphColorMode::ByBranch,
+            palette: GraphPalette::Default,
         }
     }
 }
@@ -61,6 +80,7 @@ pub struct Edge {
     pub edge_type: EdgeType,
     pub color: Color,
     pub is_dimmed: bool,
+    pub edge_style: EdgeStyle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

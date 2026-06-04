@@ -7,11 +7,44 @@
 		depth?: number;
 		onhistoryfile?: (_path: string) => void;
 		onselectfile?: (_path: string) => void;
+		onfilecontextmenu?: (_e: MouseEvent, _path: string) => void;
+		filter?: string;
 	}
 
-	let { node, repoPath, depth = 0, onhistoryfile, onselectfile }: Props = $props();
+	let {
+		node,
+		repoPath,
+		depth = 0,
+		onhistoryfile,
+		onselectfile,
+		onfilecontextmenu,
+		filter = ''
+	}: Props = $props();
 	// svelte-ignore state_referenced_locally
 	let expanded = $state(depth < 1);
+
+	function matchesFilter(name: string, f: string): boolean {
+		if (!f) return true;
+		const lower = f.toLowerCase();
+		const nl = name.toLowerCase();
+		let fi = 0;
+		for (let i = 0; i < nl.length && fi < lower.length; i++) {
+			if (nl[i] === lower[fi]) fi++;
+		}
+		return fi === lower.length;
+	}
+
+	let hasMatchingDescendant = (n: FileTreeNode, f: string): boolean => {
+		if (!f) return true;
+		if (n.node_type === 'File') return matchesFilter(n.name, f);
+		return n.children.some((c) => hasMatchingDescendant(c, f));
+	};
+
+	let filteredChildren = $derived(
+		filter ? node.children.filter((c) => hasMatchingDescendant(c, filter)) : node.children
+	);
+
+	let shouldForceExpand = $derived(!!filter && depth < 10);
 
 	function toggle() {
 		if (node.children.length > 0) {
@@ -21,10 +54,14 @@
 		}
 	}
 
-	function handleContextmenu(e: Event) {
-		if (node.node_type === 'File' && onhistoryfile) {
+	function handleContextmenu(e: MouseEvent) {
+		if (node.node_type === 'File') {
 			e.preventDefault();
-			onhistoryfile(node.path);
+			if (onfilecontextmenu) {
+				onfilecontextmenu(e, node.path);
+			} else if (onhistoryfile) {
+				onhistoryfile(node.path);
+			}
 		}
 	}
 
@@ -42,7 +79,7 @@
 	}
 </script>
 
-{#if node.name}
+{#if node.name && (!filter || hasMatchingDescendant(node, filter))}
 	<button
 		class="flex w-full items-center gap-1.5 border-b border-gray-800/50 px-3 py-1 text-left text-xs hover:bg-gray-800/70"
 		style="padding-left: {12 + depth * 16}px;"
@@ -67,9 +104,17 @@
 	</button>
 {/if}
 
-{#if expanded}
-	{#each node.children as child (child.path)}
+{#if shouldForceExpand || expanded}
+	{#each filteredChildren as child (child.path)}
 		<!-- svelte-ignore svelte_self_deprecated -->
-		<svelte:self node={child} {repoPath} depth={depth + 1} {onhistoryfile} {onselectfile} />
+		<svelte:self
+			node={child}
+			{repoPath}
+			depth={depth + 1}
+			{onhistoryfile}
+			{onselectfile}
+			{onfilecontextmenu}
+			{filter}
+		/>
 	{/each}
 {/if}

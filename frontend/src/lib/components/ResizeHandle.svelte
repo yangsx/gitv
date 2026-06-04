@@ -21,8 +21,6 @@
 		onDragEnd?: () => void;
 	} = $props();
 
-	let dragging = $state(false);
-
 	function onKeyDown(e: KeyboardEvent) {
 		if (isVertical()) {
 			if (e.key === 'ArrowUp') {
@@ -49,7 +47,6 @@
 
 	function onMouseDown(e: MouseEvent) {
 		e.preventDefault();
-		dragging = true;
 		onDragStart?.();
 
 		const startX = e.clientX;
@@ -68,7 +65,6 @@
 		}
 
 		function onMouseUp() {
-			dragging = false;
 			onDragEnd?.();
 			window.removeEventListener('mousemove', onMouseMove);
 			window.removeEventListener('mouseup', onMouseUp);
