@@ -127,8 +127,11 @@ impl Repository for GixRepository {
 
         let mut changed_files = Vec::new();
         for change in &gix_changes {
-            let (path, old_path, change_type, is_binary, is_submodule) =
-                change_to_file_change_parts(change);
+            let Some((path, old_path, change_type, is_binary, is_submodule)) =
+                change_to_file_change_parts(change)
+            else {
+                continue;
+            };
             let (additions, deletions) = if is_binary || is_submodule {
                 (0, 0)
             } else {
@@ -278,8 +281,11 @@ impl Repository for GixRepository {
         let mut is_any_submodule = false;
 
         for change in &changes {
-            let (_path, _old_path, _change_type, is_binary, is_submodule) =
-                change_to_file_change_parts(change);
+            let Some((_path, _old_path, _change_type, is_binary, is_submodule)) =
+                change_to_file_change_parts(change)
+            else {
+                continue;
+            };
             if is_binary || is_submodule {
                 if is_binary {
                     is_any_binary = true;
@@ -567,8 +573,11 @@ impl Repository for GixRepository {
         let mut total_deletions = 0usize;
 
         for change in &gix_changes {
-            let (path, old_path, change_type, is_binary, is_submodule) =
-                change_to_file_change_parts(change);
+            let Some((path, old_path, change_type, is_binary, is_submodule)) =
+                change_to_file_change_parts(change)
+            else {
+                continue;
+            };
 
             let (additions, deletions) = if is_binary || is_submodule {
                 (0, 0)
@@ -622,7 +631,8 @@ impl Repository for GixRepository {
             .ok_or_else(|| DiffError::ObjectNotFound(path.display().to_string()))?;
 
         let (path, old_path, _change_type, is_binary, is_submodule) =
-            change_to_file_change_parts(change);
+            change_to_file_change_parts(change)
+                .ok_or_else(|| DiffError::ObjectNotFound(path.display().to_string()))?;
 
         if is_submodule {
             let (old_sha, new_sha) = extract_submodule_shas(change);
@@ -980,13 +990,15 @@ fn tree_for_oid(repo: &gix::Repository, oid: Oid) -> Result<gix::Tree<'_>, DiffE
 
 fn change_to_file_change_parts(
     change: &gix::object::tree::diff::ChangeDetached,
-) -> (
+) -> Option<(
     std::path::PathBuf,
     Option<std::path::PathBuf>,
     ChangeType,
     bool,
     bool,
-) {
+)> {
+    let is_tree =
+        |mode: gix_object::tree::EntryMode| mode.kind() == gix_object::tree::EntryKind::Tree;
     let is_submodule_entry = |mode: gix_object::tree::EntryMode| {
         matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
     };
@@ -997,8 +1009,11 @@ fn change_to_file_change_parts(
             location,
             ..
         } => {
+            if is_tree(*entry_mode) {
+                return None;
+            }
             let is_sub = is_submodule_entry(*entry_mode);
-            (
+            Some((
                 std::path::PathBuf::from(location.to_string()),
                 None,
                 if is_sub {
@@ -1008,15 +1023,18 @@ fn change_to_file_change_parts(
                 },
                 false,
                 is_sub,
-            )
+            ))
         }
         gix::object::tree::diff::ChangeDetached::Deletion {
             entry_mode,
             location,
             ..
         } => {
+            if is_tree(*entry_mode) {
+                return None;
+            }
             let is_sub = is_submodule_entry(*entry_mode);
-            (
+            Some((
                 std::path::PathBuf::from(location.to_string()),
                 None,
                 if is_sub {
@@ -1026,7 +1044,7 @@ fn change_to_file_change_parts(
                 },
                 false,
                 is_sub,
-            )
+            ))
         }
         gix::object::tree::diff::ChangeDetached::Modification {
             previous_entry_mode,
@@ -1034,9 +1052,12 @@ fn change_to_file_change_parts(
             location,
             ..
         } => {
+            if is_tree(*previous_entry_mode) || is_tree(*entry_mode) {
+                return None;
+            }
             let is_sub =
                 is_submodule_entry(*previous_entry_mode) || is_submodule_entry(*entry_mode);
-            (
+            Some((
                 std::path::PathBuf::from(location.to_string()),
                 None,
                 if is_sub {
@@ -1046,7 +1067,7 @@ fn change_to_file_change_parts(
                 },
                 false,
                 is_sub,
-            )
+            ))
         }
         gix::object::tree::diff::ChangeDetached::Rewrite {
             source_location,
@@ -1056,8 +1077,11 @@ fn change_to_file_change_parts(
             entry_mode,
             ..
         } => {
+            if is_tree(*source_entry_mode) || is_tree(*entry_mode) {
+                return None;
+            }
             let is_sub = is_submodule_entry(*source_entry_mode) || is_submodule_entry(*entry_mode);
-            (
+            Some((
                 std::path::PathBuf::from(location.to_string()),
                 Some(std::path::PathBuf::from(source_location.to_string())),
                 if *copy {
@@ -1067,7 +1091,7 @@ fn change_to_file_change_parts(
                 },
                 false,
                 is_sub,
-            )
+            ))
         }
     }
 }
@@ -1920,7 +1944,9 @@ fn stash_file_summary_from_tree(
 
     let mut summary = Vec::new();
     for change in &changes {
-        let (path, _, change_type, _, _) = change_to_file_change_parts(change);
+        let Some((path, _, change_type, _, _)) = change_to_file_change_parts(change) else {
+            continue;
+        };
         let stash_change_type = match change_type {
             ChangeType::Added => StashChangeType::Added,
             ChangeType::Deleted => StashChangeType::Deleted,
@@ -1963,8 +1989,11 @@ fn compute_stash_half_diff(
     let mut is_any_submodule = false;
 
     for change in &changes {
-        let (path, old_path, _change_type, is_binary, is_submodule) =
-            change_to_file_change_parts(change);
+        let Some((path, old_path, _change_type, is_binary, is_submodule)) =
+            change_to_file_change_parts(change)
+        else {
+            continue;
+        };
         if is_binary || is_submodule {
             if is_binary {
                 is_any_binary = true;
