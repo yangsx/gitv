@@ -22,6 +22,14 @@
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
 
+	$effect(() => {
+		void details.info.oid;
+		selectedFile = null;
+		fileDiff = null;
+		fileTree = null;
+		activeTab = 'changes';
+	});
+
 	const CHANGE_COLORS: Record<string, string> = {
 		Added: 'text-green-400',
 		Deleted: 'text-red-400',

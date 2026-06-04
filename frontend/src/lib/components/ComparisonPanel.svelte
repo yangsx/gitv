@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { DiffSummary } from '$lib/bindings/types';
-	import { getDiff } from '$lib/bindings/commands';
+	import type { DiffSummary, FileDiff } from '$lib/bindings/types';
+	import { getDiff, getFileDiff } from '$lib/bindings/commands';
+	import DiffViewer from './DiffViewer.svelte';
 
 	interface Props {
 		repoPath: string;
@@ -13,6 +14,8 @@
 	let summary = $state<DiffSummary | null>(null);
 	let loading = $state(true);
 	let selectedFile = $state<string | null>(null);
+	let fileDiff = $state<FileDiff | null>(null);
+	let loadingDiff = $state(false);
 
 	const CHANGE_COLORS: Record<string, string> = {
 		Added: 'text-green-400',
@@ -29,12 +32,31 @@
 
 	async function loadDiff() {
 		loading = true;
+		selectedFile = null;
+		fileDiff = null;
 		try {
 			summary = await getDiff(repoPath, fromOid, toOid);
 		} catch {
 			summary = null;
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadFileDiff(path: string) {
+		if (selectedFile === path) {
+			selectedFile = null;
+			fileDiff = null;
+			return;
+		}
+		selectedFile = path;
+		loadingDiff = true;
+		try {
+			fileDiff = await getFileDiff(repoPath, fromOid, toOid, path);
+		} catch {
+			fileDiff = null;
+		} finally {
+			loadingDiff = false;
 		}
 	}
 </script>
@@ -59,7 +81,7 @@
 					file.path
 						? 'bg-gray-800'
 						: ''}"
-					onclick={() => (selectedFile = file.path === selectedFile ? null : file.path)}
+					onclick={() => loadFileDiff(file.path)}
 				>
 					<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
 						{file.change_type[0]}
@@ -78,10 +100,24 @@
 		</div>
 
 		<div class="flex-1 overflow-y-auto bg-gray-900">
-			{#if selectedFile}
+			{#if loadingDiff}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
-					Select a file in the diff viewer to see details
+					Loading diff...
 				</div>
+			{:else if fileDiff}
+				{#if fileDiff.is_binary}
+					<div class="flex items-center justify-center py-8 text-sm text-gray-500">
+						Binary file (not displayed)
+					</div>
+				{:else if fileDiff.hunks.length === 0}
+					<div class="flex items-center justify-center py-8 text-sm text-gray-500">
+						No content changes
+					</div>
+				{:else}
+					<div class="overflow-x-auto p-2">
+						<DiffViewer hunks={fileDiff.hunks} />
+					</div>
+				{/if}
 			{:else}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					Select a file to view diff
