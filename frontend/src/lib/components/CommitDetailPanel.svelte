@@ -3,6 +3,7 @@
 	import { getFileDiff, getFileTree } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
+	import FileHistoryPanel from './FileHistoryPanel.svelte';
 
 	interface Props {
 		details: CommitDetails;
@@ -18,9 +19,11 @@
 	let whitespaceMode = $state<
 		'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
 	>('none');
+	let viewMode = $state<'unified' | 'side-by-side'>('unified');
 	let activeTab = $state<'changes' | 'tree'>('changes');
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
+	let historyFilePath = $state<string | null>(null);
 
 	$effect(() => {
 		void details.info.oid;
@@ -28,6 +31,7 @@
 		fileDiff = null;
 		fileTree = null;
 		activeTab = 'changes';
+		historyFilePath = null;
 	});
 
 	const CHANGE_COLORS: Record<string, string> = {
@@ -164,20 +168,27 @@
 			{:else if loadingTree}
 				<div class="px-3 py-4 text-xs text-gray-500">Loading tree...</div>
 			{:else if fileTree}
-				<FileTree node={fileTree} {repoPath} />
+				<FileTree node={fileTree} {repoPath} onhistoryfile={(p: string) => (historyFilePath = p)} />
 			{:else}
 				<div class="px-3 py-4 text-xs text-gray-500">No file tree</div>
 			{/if}
 		</div>
 	</div>
 
-	<div class="flex-1 flex flex-col overflow-hidden bg-gray-900">
+	<div class="relative flex-1 flex flex-col overflow-hidden bg-gray-900">
 		{#if loadingDiff}
 			<div class="flex items-center justify-center py-8 text-sm text-gray-500">Loading diff...</div>
 		{:else if fileDiff}
 			<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-2">
 				<h3 class="font-mono text-sm text-gray-300">{fileDiff.path}</h3>
 				<div class="ml-auto flex items-center gap-2">
+					<button
+						class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+						onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
+						title={viewMode === 'unified' ? 'Switch to side-by-side' : 'Switch to unified'}
+					>
+						{viewMode === 'unified' ? 'Unified' : 'Side by Side'}
+					</button>
 					<select
 						class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
 						bind:value={diffMode}
@@ -211,12 +222,22 @@
 				</div>
 			{:else}
 				<div class="flex-1 overflow-auto p-2">
-					<DiffViewer hunks={fileDiff.hunks} />
+					<DiffViewer hunks={fileDiff.hunks} {viewMode} />
 				</div>
 			{/if}
 		{:else}
 			<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 				Select a file to view diff
+			</div>
+		{/if}
+
+		{#if historyFilePath}
+			<div class="absolute inset-0 z-10 bg-gray-900">
+				<FileHistoryPanel
+					{repoPath}
+					filePath={historyFilePath}
+					onclose={() => (historyFilePath = null)}
+				/>
 			</div>
 		{/if}
 	</div>

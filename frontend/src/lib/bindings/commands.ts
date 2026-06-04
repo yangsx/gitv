@@ -8,6 +8,7 @@ import type {
 	DiffSummary,
 	FileDiff,
 	FileTreeNode,
+	FileHistoryEntry,
 	SearchQuery,
 	SearchResult
 } from './types';
@@ -77,4 +78,16 @@ export async function getFileDiff(
 
 export async function getFileTree(path: string, atCommit?: string | null): Promise<FileTreeNode> {
 	return invoke<FileTreeNode>('get_file_tree', { path, atCommit: atCommit ?? null });
+}
+
+export async function getFileHistory(
+	path: string,
+	filePath: string,
+	maxCount?: number
+): Promise<FileHistoryEntry[]> {
+	return invoke<FileHistoryEntry[]>('get_file_history', {
+		path,
+		filePath,
+		maxCount: maxCount ?? null
+	});
 }

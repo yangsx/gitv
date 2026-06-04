@@ -77,6 +77,18 @@ fn parse_diff_mode(s: Option<&str>) -> DiffMode {
     }
 }
 
+#[tauri::command]
+pub fn get_file_history(
+    path: String,
+    file_path: String,
+    max_count: Option<usize>,
+) -> Result<Vec<gitv_git_core::models::FileHistoryEntry>, String> {
+    let repo_path = PathBuf::from(&path);
+    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    repo.file_history(std::path::Path::new(&file_path), max_count)
+        .map_err(|e| e.to_string())
+}
+
 fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
     match s.unwrap_or("none") {
         "ignore-space-change" => WhitespaceMode::IgnoreSpaceChange,

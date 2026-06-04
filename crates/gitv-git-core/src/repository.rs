@@ -26,6 +26,11 @@ pub trait Repository {
         mode: DiffMode,
         whitespace: WhitespaceMode,
     ) -> Result<FileDiff, DiffError>;
+    fn file_history(
+        &self,
+        path: &std::path::Path,
+        max_count: Option<usize>,
+    ) -> Result<Vec<FileHistoryEntry>, GitError>;
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {

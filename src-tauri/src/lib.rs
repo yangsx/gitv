@@ -17,6 +17,7 @@ pub fn run() {
             commands::diff::get_diff,
             commands::diff::get_file_diff,
             commands::diff::get_file_tree,
+            commands::diff::get_file_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

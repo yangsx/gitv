@@ -315,6 +315,16 @@ pub enum StashChangeType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileHistoryEntry {
+    pub commit_oid: Oid,
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,
+    pub summary: String,
+    pub author: Author,
+    pub time: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReflogEntry {
     pub oid: Oid,
     pub old_oid: Option<Oid>,

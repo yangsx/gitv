@@ -225,3 +225,12 @@ export interface FileTreeNode {
 }
 
 export type FileNodeType = 'File' | 'Directory' | 'Symlink' | 'Submodule';
+
+export interface FileHistoryEntry {
+	commit_oid: string;
+	path: string;
+	old_path: string | null;
+	summary: string;
+	author: Author;
+	time: string;
+}

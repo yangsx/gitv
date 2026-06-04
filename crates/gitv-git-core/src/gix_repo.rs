@@ -295,6 +295,143 @@ impl Repository for GixRepository {
             truncated_at: None,
         })
     }
+
+    fn file_history(
+        &self,
+        path: &std::path::Path,
+        max_count: Option<usize>,
+    ) -> Result<Vec<FileHistoryEntry>, GitError> {
+        let repo = self.thread_local();
+        let head_id = match repo.head_id() {
+            Ok(id) => id,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let walk = head_id
+            .ancestors()
+            .sorting(gix::revision::walk::Sorting::BreadthFirst)
+            .all()
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let mut entries = Vec::new();
+        let mut current_path = gix::bstr::BString::from(path.to_string_lossy().into_owned());
+
+        for info_result in walk {
+            if let Some(max) = max_count
+                && entries.len() >= max
+            {
+                break;
+            }
+            let info = info_result.map_err(|e| GitError::Gix(e.to_string()))?;
+            let commit_oid = gix_object_id_to_oid(info.id);
+            let commit = info.object().map_err(|e| GitError::Gix(e.to_string()))?;
+
+            let first_parent = commit.parent_ids().next();
+            let parent_tree = if let Some(pid) = first_parent {
+                let parent_obj = repo
+                    .find_object(pid)
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let parent_commit = parent_obj
+                    .try_into_commit()
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                Some(
+                    parent_commit
+                        .tree()
+                        .map_err(|e| GitError::Gix(e.to_string()))?,
+                )
+            } else {
+                None
+            };
+
+            let commit_tree = commit.tree().map_err(|e| GitError::Gix(e.to_string()))?;
+
+            let parent_tree_ref = parent_tree.as_ref();
+            let changes = repo
+                .diff_tree_to_tree(
+                    parent_tree_ref.map(|t| t as &gix::Tree<'_>),
+                    Some(&commit_tree),
+                    None,
+                )
+                .map_err(|e| GitError::Gix(e.to_string()))?;
+
+            let bstr_path = gix::bstr::BStr::new(current_path.as_slice());
+            let mut found = false;
+            let mut rename_to: Option<gix::bstr::BString> = None;
+
+            for change in &changes {
+                let location = change.location();
+                match change {
+                    gix::object::tree::diff::ChangeDetached::Modification { .. } => {
+                        if location == bstr_path {
+                            found = true;
+                            break;
+                        }
+                    }
+                    gix::object::tree::diff::ChangeDetached::Addition { .. } => {
+                        if location == bstr_path {
+                            found = true;
+                            break;
+                        }
+                    }
+                    gix::object::tree::diff::ChangeDetached::Deletion { .. } => {
+                        if location == bstr_path {
+                            found = true;
+                            break;
+                        }
+                    }
+                    gix::object::tree::diff::ChangeDetached::Rewrite {
+                        source_location,
+                        location: new_location,
+                        ..
+                    } => {
+                        if new_location == bstr_path {
+                            found = true;
+                            rename_to = Some(source_location.to_owned());
+                            break;
+                        }
+                        if source_location == bstr_path {
+                            found = true;
+                            rename_to = Some(new_location.to_owned());
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if found {
+                let committer_sig = commit
+                    .committer()
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let author = gix_signature_to_author(&committer_sig);
+                let time = committer_sig
+                    .time()
+                    .map(|t| gix_time_to_datetime(&t))
+                    .unwrap_or_default();
+                let message = commit
+                    .message_raw()
+                    .map(|m| m.to_string())
+                    .unwrap_or_default();
+                let summary = message.lines().next().unwrap_or("").to_string();
+
+                let old_path = rename_to.as_ref().map(|p| {
+                    let old = std::path::PathBuf::from(p.to_string());
+                    current_path = p.clone();
+                    old
+                });
+
+                entries.push(FileHistoryEntry {
+                    commit_oid,
+                    path: path.to_path_buf(),
+                    old_path,
+                    summary,
+                    author,
+                    time,
+                });
+            }
+        }
+
+        Ok(entries)
+    }
 }
 
 fn build_ref_map(repo: &gix::Repository) -> Result<HashMap<Oid, Vec<Ref>>, GitError> {
