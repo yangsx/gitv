@@ -1,3 +1,4 @@
+pub mod args;
 pub mod commits;
 pub mod diagnostics;
 pub mod diff;

@@ -176,3 +176,11 @@ export async function getWorkingChangesDiffs(
 		whitespace: whitespace ?? null
 	});
 }
+
+export interface StartupInfo {
+	paths: string[];
+}
+
+export async function getStartupInfo(): Promise<StartupInfo> {
+	return timedInvoke<StartupInfo>('get_startup_info');
+}

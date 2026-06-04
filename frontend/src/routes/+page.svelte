@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { listen } from '@tauri-apps/api/event';
 	import {
 		openRepository,
 		getCommits,
 		getGraphLayout,
 		getCommitDetails,
 		getRefs,
-		getWorkingChanges
+		getWorkingChanges,
+		getStartupInfo
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -79,14 +81,37 @@
 	const UNSTAGED_OID = '__unstaged__';
 	const VIRTUAL_OIDS = new Set([STAGED_OID, UNSTAGED_OID]);
 
+	let unlistenNewRepo: (() => void) | null = null;
+	let unlistenFocus: (() => void) | null = null;
+
 	onMount(() => {
 		registerCommands();
+
 		const params = new URLSearchParams(window.location.search);
-		const path = params.get('path');
-		if (path) {
-			repoPath = path;
-			loadRepo(path);
+		const pathParam = params.get('path');
+		if (pathParam) {
+			repoPath = pathParam;
+			loadRepo(pathParam);
+		} else {
+			getStartupInfo().then((info) => {
+				if (info.paths.length > 0) {
+					repoPath = info.paths[0];
+					loadRepo(info.paths[0]);
+				}
+			});
 		}
+
+		listen<string[]>('new-repo-request', (event) => {
+			const paths = event.payload;
+			if (paths.length > 0) {
+				repoPath = paths[0];
+				loadRepo(paths[0]);
+			}
+		}).then((fn) => (unlistenNewRepo = fn));
+
+		listen<void>('focus-request', () => {
+			window.focus();
+		}).then((fn) => (unlistenFocus = fn));
 
 		function onResize() {
 			viewportHeight = window.innerHeight;
@@ -105,6 +130,8 @@
 			window.removeEventListener('resize', onResize);
 			window.removeEventListener('keydown', handleKeydown);
 			cancelAnimationFrame(fpsRafId);
+			unlistenNewRepo?.();
+			unlistenFocus?.();
 		};
 	});
 
