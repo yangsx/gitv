@@ -2,10 +2,12 @@ use std::backtrace::Backtrace;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use tracing::instrument;
 
 static CRASH_DIR: OnceLock<PathBuf> = OnceLock::new();
+static CRASH_LOCK: Mutex<()> = Mutex::new(());
 
 fn get_crash_dir() -> &'static PathBuf {
     CRASH_DIR.get_or_init(|| {
@@ -46,12 +48,7 @@ pub fn install_panic_hook(app_version: &str) {
             .payload()
             .downcast_ref::<&str>()
             .map(|s| s.to_string())
-            .or_else(|| {
-                panic_info
-                    .payload()
-                    .downcast_ref::<String>()
-                    .cloned()
-            })
+            .or_else(|| panic_info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "unknown".into());
         let location = panic_info
             .location()
@@ -75,11 +72,10 @@ pub fn install_panic_hook(app_version: &str) {
         if let Ok(mut f) = fs::File::create(&path) {
             let _ = f.write_all(report.as_bytes());
         }
+        let _lock = CRASH_LOCK.lock().ok();
         evict_old_crashes(dir, 5);
     }));
 }
-
-static FRONTEND_CRASH_LOCK: Mutex<()> = Mutex::new(());
 
 #[tauri::command]
 #[instrument(skip(message, stack), fields(command = "log_frontend_error"))]
@@ -91,14 +87,17 @@ pub fn log_frontend_error(message: String, stack: Option<String>) {
     };
     tracing::error!("Frontend error: {detail}");
 
-    let _lock = FRONTEND_CRASH_LOCK.lock().ok();
+    let _lock = CRASH_LOCK.lock().ok();
     let dir = get_crash_dir();
     let report = format!(
         "gitv frontend error report\n\
          timestamp: {timestamp}\n\
          message: {message}\n\
          stack: {}\n",
-        stack.as_deref().filter(|s| !s.is_empty()).unwrap_or("(none)")
+        stack
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("(none)")
     );
     let path = dir.join(format!("error-{timestamp}.txt"));
     if let Ok(mut f) = fs::File::create(&path) {

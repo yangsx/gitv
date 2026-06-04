@@ -42,7 +42,12 @@
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import { showToast } from '$lib/stores/toast';
-	import { toggleDebug, tickFps, updateDebugGraphStats } from '$lib/stores/debug';
+	import {
+		toggleDebug,
+		tickFps,
+		updateDebugGraphStats,
+		updateDebugCommitCounts
+	} from '$lib/stores/debug';
 	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
 	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
 	import { registerCommand } from '$lib/stores/commands';

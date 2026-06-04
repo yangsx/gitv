@@ -25,7 +25,7 @@ import type {
 async function timedInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 	const start = performance.now();
 	try {
-		const result = await timedInvoke<T>(command, args);
+		const result = await invoke<T>(command, args);
 		return result;
 	} finally {
 		recordIpcTiming(command, performance.now() - start);

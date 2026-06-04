@@ -17,7 +17,6 @@ interface DebugState {
 	graphStashMarkers: number;
 	graphColumns: number;
 	memoryUsed: number;
-	operationState: string;
 }
 
 const initialState: DebugState = {
@@ -30,8 +29,7 @@ const initialState: DebugState = {
 	graphEdges: 0,
 	graphStashMarkers: 0,
 	graphColumns: 0,
-	memoryUsed: 0,
-	operationState: 'Idle'
+	memoryUsed: 0
 };
 
 export const debug = writable<DebugState>(initialState);

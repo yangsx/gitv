@@ -126,7 +126,7 @@ proptest! {
         };
         if let Ok(results) = engine.search(&query) {
             for r in &results {
-                assert!(r.commit_oid == make_oid(0) || r.commit_oid.to_hex().starts_with("00") || true,
+                assert!(r.commit_oid == make_oid(0) || r.commit_oid.to_hex().starts_with("00"),
                     "all results should reference valid commits");
             }
         }

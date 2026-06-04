@@ -4,49 +4,219 @@ use crate::graph::layout::*;
 use crate::models::*;
 
 const BRANCH_PALETTE: &[Color] = &[
-    Color { r: 79, g: 148, b: 205, a: 255 },
-    Color { r: 230, g: 126, b: 34, a: 255 },
-    Color { r: 46, g: 204, b: 113, a: 255 },
-    Color { r: 231, g: 76, b: 60, a: 255 },
-    Color { r: 155, g: 89, b: 182, a: 255 },
-    Color { r: 241, g: 196, b: 15, a: 255 },
-    Color { r: 26, g: 188, b: 156, a: 255 },
-    Color { r: 192, g: 57, b: 43, a: 255 },
-    Color { r: 52, g: 73, b: 94, a: 255 },
-    Color { r: 142, g: 68, b: 173, a: 255 },
+    Color {
+        r: 79,
+        g: 148,
+        b: 205,
+        a: 255,
+    },
+    Color {
+        r: 230,
+        g: 126,
+        b: 34,
+        a: 255,
+    },
+    Color {
+        r: 46,
+        g: 204,
+        b: 113,
+        a: 255,
+    },
+    Color {
+        r: 231,
+        g: 76,
+        b: 60,
+        a: 255,
+    },
+    Color {
+        r: 155,
+        g: 89,
+        b: 182,
+        a: 255,
+    },
+    Color {
+        r: 241,
+        g: 196,
+        b: 15,
+        a: 255,
+    },
+    Color {
+        r: 26,
+        g: 188,
+        b: 156,
+        a: 255,
+    },
+    Color {
+        r: 192,
+        g: 57,
+        b: 43,
+        a: 255,
+    },
+    Color {
+        r: 52,
+        g: 73,
+        b: 94,
+        a: 255,
+    },
+    Color {
+        r: 142,
+        g: 68,
+        b: 173,
+        a: 255,
+    },
 ];
 
 const DEUTERANOPIA_PALETTE: &[Color] = &[
-    Color { r: 0, g: 114, b: 178, a: 255 },
-    Color { r: 230, g: 159, b: 0, a: 255 },
-    Color { r: 0, g: 158, b: 115, a: 255 },
-    Color { r: 204, g: 121, b: 167, a: 255 },
-    Color { r: 86, g: 180, b: 233, a: 255 },
-    Color { r: 213, g: 94, b: 0, a: 255 },
-    Color { r: 240, g: 228, b: 66, a: 255 },
-    Color { r: 0, g: 0, b: 0, a: 255 },
+    Color {
+        r: 0,
+        g: 114,
+        b: 178,
+        a: 255,
+    },
+    Color {
+        r: 230,
+        g: 159,
+        b: 0,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 158,
+        b: 115,
+        a: 255,
+    },
+    Color {
+        r: 204,
+        g: 121,
+        b: 167,
+        a: 255,
+    },
+    Color {
+        r: 86,
+        g: 180,
+        b: 233,
+        a: 255,
+    },
+    Color {
+        r: 213,
+        g: 94,
+        b: 0,
+        a: 255,
+    },
+    Color {
+        r: 240,
+        g: 228,
+        b: 66,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    },
 ];
 
 const PROTANOPIA_PALETTE: &[Color] = &[
-    Color { r: 0, g: 114, b: 178, a: 255 },
-    Color { r: 230, g: 159, b: 0, a: 255 },
-    Color { r: 0, g: 158, b: 115, a: 255 },
-    Color { r: 204, g: 121, b: 167, a: 255 },
-    Color { r: 86, g: 180, b: 233, a: 255 },
-    Color { r: 213, g: 94, b: 0, a: 255 },
-    Color { r: 240, g: 228, b: 66, a: 255 },
-    Color { r: 0, g: 0, b: 0, a: 255 },
+    Color {
+        r: 0,
+        g: 114,
+        b: 178,
+        a: 255,
+    },
+    Color {
+        r: 230,
+        g: 159,
+        b: 0,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 158,
+        b: 115,
+        a: 255,
+    },
+    Color {
+        r: 204,
+        g: 121,
+        b: 167,
+        a: 255,
+    },
+    Color {
+        r: 86,
+        g: 180,
+        b: 233,
+        a: 255,
+    },
+    Color {
+        r: 213,
+        g: 94,
+        b: 0,
+        a: 255,
+    },
+    Color {
+        r: 240,
+        g: 228,
+        b: 66,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    },
 ];
 
 const TRITANOPIA_PALETTE: &[Color] = &[
-    Color { r: 230, g: 159, b: 0, a: 255 },
-    Color { r: 86, g: 180, b: 233, a: 255 },
-    Color { r: 0, g: 158, b: 115, a: 255 },
-    Color { r: 204, g: 121, b: 167, a: 255 },
-    Color { r: 213, g: 94, b: 0, a: 255 },
-    Color { r: 240, g: 228, b: 66, a: 255 },
-    Color { r: 0, g: 114, b: 178, a: 255 },
-    Color { r: 0, g: 0, b: 0, a: 255 },
+    Color {
+        r: 230,
+        g: 159,
+        b: 0,
+        a: 255,
+    },
+    Color {
+        r: 86,
+        g: 180,
+        b: 233,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 158,
+        b: 115,
+        a: 255,
+    },
+    Color {
+        r: 204,
+        g: 121,
+        b: 167,
+        a: 255,
+    },
+    Color {
+        r: 213,
+        g: 94,
+        b: 0,
+        a: 255,
+    },
+    Color {
+        r: 240,
+        g: 228,
+        b: 66,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 114,
+        b: 178,
+        a: 255,
+    },
+    Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    },
 ];
 
 fn palette_for(mode: GraphPalette) -> &'static [Color] {

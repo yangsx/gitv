@@ -619,7 +619,9 @@ impl Repository for GixRepository {
                     if !staged {
                         continue;
                     }
-                    if let Some(fd) = staged_change_to_file_diff(&repo, &change, &mode, &whitespace)? {
+                    if let Some(fd) =
+                        staged_change_to_file_diff(&repo, &change, &mode, &whitespace)?
+                    {
                         diffs.push(fd);
                     }
                 }
@@ -627,7 +629,9 @@ impl Repository for GixRepository {
                     if staged {
                         continue;
                     }
-                    if let Some(fd) = unstaged_item_to_file_diff(&repo, &self.path, &iw_item, &mode, &whitespace)? {
+                    if let Some(fd) =
+                        unstaged_item_to_file_diff(&repo, &self.path, &iw_item, &mode, &whitespace)?
+                    {
                         diffs.push(fd);
                     }
                 }
@@ -1185,9 +1189,7 @@ fn is_entry_mode_submodule(mode: gix_object::tree::EntryMode) -> bool {
     matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
 }
 
-fn tree_index_change_to_file_change(
-    change: &gix_diff::index::Change,
-) -> Option<FileChange> {
+fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<FileChange> {
     let is_dir = |mode: gix_index::entry::Mode| mode.contains(gix_index::entry::Mode::DIR);
     let is_sub = |mode: gix_index::entry::Mode| mode.contains(gix_index::entry::Mode::COMMIT);
 
@@ -1294,9 +1296,7 @@ fn index_worktree_item_to_file_change(
 ) -> Option<FileChange> {
     match item {
         gix::status::index_worktree::Item::Modification {
-            rela_path,
-            entry,
-            ..
+            rela_path, entry, ..
         } => Some(FileChange {
             path: PathBuf::from(rela_path.to_string()),
             old_path: None,
@@ -1312,12 +1312,14 @@ fn index_worktree_item_to_file_change(
             ..
         } => {
             let source_path = match source {
-                gix::status::index_worktree::RewriteSource::RewriteFromIndex { source_rela_path, .. } => {
-                    PathBuf::from(source_rela_path.to_string())
-                }
-                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry { source_dirwalk_entry, .. } => {
-                    PathBuf::from(source_dirwalk_entry.rela_path.to_string())
-                }
+                gix::status::index_worktree::RewriteSource::RewriteFromIndex {
+                    source_rela_path,
+                    ..
+                } => PathBuf::from(source_rela_path.to_string()),
+                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry {
+                    source_dirwalk_entry,
+                    ..
+                } => PathBuf::from(source_dirwalk_entry.rela_path.to_string()),
             };
             Some(FileChange {
                 path: PathBuf::from(dirwalk_entry.rela_path.to_string()),
@@ -1339,7 +1341,8 @@ fn staged_change_to_file_diff(
     mode: &DiffMode,
     whitespace: &WhitespaceMode,
 ) -> Result<Option<FileDiff>, DiffError> {
-    let (path, old_path, _change_type, _is_binary, is_submodule, source_id, dest_id) = match change {
+    let (path, old_path, _change_type, _is_binary, is_submodule, source_id, dest_id) = match change
+    {
         gix_diff::index::ChangeRef::Addition {
             location,
             entry_mode,
@@ -1598,9 +1601,7 @@ fn unstaged_item_to_file_diff(
 ) -> Result<Option<FileDiff>, DiffError> {
     match item {
         gix::status::index_worktree::Item::Modification {
-            rela_path,
-            entry,
-            ..
+            rela_path, entry, ..
         } => {
             let path = PathBuf::from(rela_path.to_string());
             if entry.mode.contains(gix_index::entry::Mode::COMMIT) {
@@ -1646,16 +1647,21 @@ fn unstaged_item_to_file_diff(
             ..
         } => {
             let source_path = match source {
-                gix::status::index_worktree::RewriteSource::RewriteFromIndex { source_rela_path, .. } => {
-                    PathBuf::from(source_rela_path.to_string())
-                }
-                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry { source_dirwalk_entry, .. } => {
-                    PathBuf::from(source_dirwalk_entry.rela_path.to_string())
-                }
+                gix::status::index_worktree::RewriteSource::RewriteFromIndex {
+                    source_rela_path,
+                    ..
+                } => PathBuf::from(source_rela_path.to_string()),
+                gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry {
+                    source_dirwalk_entry,
+                    ..
+                } => PathBuf::from(source_dirwalk_entry.rela_path.to_string()),
             };
 
             let old_data = match source {
-                gix::status::index_worktree::RewriteSource::RewriteFromIndex { source_entry, .. } => {
+                gix::status::index_worktree::RewriteSource::RewriteFromIndex {
+                    source_entry,
+                    ..
+                } => {
                     let oid = source_entry.id;
                     repo.find_object(oid)
                         .map_err(|e| DiffError::Gix(e.to_string()))?
@@ -2094,7 +2100,8 @@ fn compute_hunks_from_data(old_data: &[u8], new_data: &[u8]) -> (Vec<Hunk>, bool
         gix_diff::blob::platform::resource::ByteLinesWithoutTerminator::new(old_data),
         gix_diff::blob::platform::resource::ByteLinesWithoutTerminator::new(new_data),
     );
-    let diff = gix_diff::blob::diff_with_slider_heuristics(gix_diff::blob::Algorithm::Histogram, &input);
+    let diff =
+        gix_diff::blob::diff_with_slider_heuristics(gix_diff::blob::Algorithm::Histogram, &input);
 
     let collector = HunkCollector { hunks: Vec::new() };
     let hunks = gix_diff::blob::UnifiedDiff::new(
@@ -2193,9 +2200,9 @@ where
         }
         flush_pending(&mut kept, &mut additions, &mut deletions, &is_same);
 
-        let has_changes = kept.iter().any(|l| {
-            matches!(l, DiffLine::Addition { .. } | DiffLine::Deletion { .. })
-        });
+        let has_changes = kept
+            .iter()
+            .any(|l| matches!(l, DiffLine::Addition { .. } | DiffLine::Deletion { .. }));
         if has_changes {
             result.push(rebuild_hunk(hunk.old_start, hunk.new_start, kept));
         }
@@ -2233,9 +2240,9 @@ fn filter_blank_line_hunks(hunks: Vec<Hunk>) -> Vec<Hunk> {
                 _ => true,
             })
             .collect();
-        let has_changes = kept.iter().any(|l| {
-            matches!(l, DiffLine::Addition { .. } | DiffLine::Deletion { .. })
-        });
+        let has_changes = kept
+            .iter()
+            .any(|l| matches!(l, DiffLine::Addition { .. } | DiffLine::Deletion { .. }));
         if has_changes {
             result.push(rebuild_hunk(hunk.old_start, hunk.new_start, kept));
         }
@@ -3215,10 +3222,19 @@ mod tests {
         assert!(!is_binary);
         assert_eq!(hunks.len(), 1, "should have exactly one hunk");
         let hunk = &hunks[0];
-        let has_context = hunk.lines.iter().any(|l| matches!(l, DiffLine::Context { .. }));
+        let has_context = hunk
+            .lines
+            .iter()
+            .any(|l| matches!(l, DiffLine::Context { .. }));
         assert!(has_context, "hunk should have context lines");
-        let has_deletion = hunk.lines.iter().any(|l| matches!(l, DiffLine::Deletion { .. }));
-        let has_addition = hunk.lines.iter().any(|l| matches!(l, DiffLine::Addition { .. }));
+        let has_deletion = hunk
+            .lines
+            .iter()
+            .any(|l| matches!(l, DiffLine::Deletion { .. }));
+        let has_addition = hunk
+            .lines
+            .iter()
+            .any(|l| matches!(l, DiffLine::Addition { .. }));
         assert!(has_deletion, "hunk should have a deletion");
         assert!(has_addition, "hunk should have an addition");
     }
@@ -3227,7 +3243,11 @@ mod tests {
     fn unstaged_file_diff_shows_changes() {
         let temp = TempRepo::new();
         temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
-        std::fs::write(temp.path().join("a.txt"), "line1\nline2\nMODIFIED\nline4\nline5").expect("write");
+        std::fs::write(
+            temp.path().join("a.txt"),
+            "line1\nline2\nMODIFIED\nline4\nline5",
+        )
+        .expect("write");
         let repo = GixRepository::open(temp.path()).expect("open");
         let diffs = repo
             .working_changes_file_diffs(false, DiffMode::Normal, WhitespaceMode::None)
@@ -3254,7 +3274,11 @@ mod tests {
     fn staged_file_diff_shows_changes() {
         let temp = TempRepo::new();
         temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
-        std::fs::write(temp.path().join("a.txt"), "line1\nline2\nMODIFIED\nline4\nline5").expect("write");
+        std::fs::write(
+            temp.path().join("a.txt"),
+            "line1\nline2\nMODIFIED\nline4\nline5",
+        )
+        .expect("write");
         run_git(temp.path(), &["add", "a.txt"]);
         let repo = GixRepository::open(temp.path()).expect("open");
         let diffs = repo
