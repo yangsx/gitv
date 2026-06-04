@@ -39,7 +39,7 @@
 	let graphLayout = $state<GraphLayout | null>(null);
 	let commitDetails = $state<CommitDetails | null>(null);
 	let detailsLoading = $state(false);
-	let detailPanelHeight = $state(300);
+	let detailPanelHeight = $state(typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.7) : 400);
 	let viewportHeight = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
 	let allRefs = $state<Ref[]>([]);
 	let historyFilePath = $state<string | null>(null);
@@ -56,6 +56,7 @@
 
 		function onResize() {
 			viewportHeight = window.innerHeight;
+			detailPanelHeight = Math.floor(window.innerHeight * 0.7);
 		}
 		window.addEventListener('resize', onResize);
 		window.addEventListener('keydown', handleKeydown);
@@ -315,7 +316,7 @@
 				{#if $selectedOid}
 					<ResizeHandle
 						bind:panelHeight={detailPanelHeight}
-						maxHeight={Math.floor(viewportHeight * 0.7)}
+						maxHeight={Math.floor(viewportHeight * 0.9)}
 					/>
 					<div
 						class="overflow-hidden bg-gray-900 border-t border-gray-700"
