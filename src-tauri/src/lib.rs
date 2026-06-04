@@ -18,6 +18,14 @@ pub fn run() {
             commands::diff::get_file_diff,
             commands::diff::get_file_tree,
             commands::diff::get_file_history,
+            commands::reflog_stash::get_reflog,
+            commands::reflog_stash::get_stash_list,
+            commands::reflog_stash::get_stash_diff,
+            commands::reflog_stash::get_stash_split_diff,
+            commands::reflog_stash::get_blame,
+            commands::saved_searches::save_search,
+            commands::saved_searches::list_saved_searches,
+            commands::saved_searches::delete_saved_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

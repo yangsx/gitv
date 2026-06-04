@@ -12,6 +12,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+chrono = { workspace = true }
 gitv-git-core = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }

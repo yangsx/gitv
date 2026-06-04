@@ -355,6 +355,14 @@ pub struct StashSplitDiff {
     pub unstaged: FileDiff,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SavedSearch {
+    pub id: String,
+    pub name: String,
+    pub query: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Color {
     pub r: u8,

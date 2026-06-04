@@ -1412,6 +1412,7 @@ dependencies = [
 name = "gitv"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gitv-git-core",
  "postcard",
  "serde",
