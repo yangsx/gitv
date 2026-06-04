@@ -102,6 +102,19 @@ pub fn get_file_history(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn get_blob_content(
+    path: String,
+    at_commit: String,
+    file_path: String,
+) -> Result<String, String> {
+    let repo_path = PathBuf::from(&path);
+    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let oid = Oid::from_hex(&at_commit).map_err(|e| e.to_string())?;
+    repo.blob_content(oid, std::path::Path::new(&file_path))
+        .map_err(|e| e.to_string())
+}
+
 fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
     match s.unwrap_or("none") {
         "ignore-space-change" => WhitespaceMode::IgnoreSpaceChange,

@@ -19,6 +19,7 @@ pub fn run() {
             commands::diff::get_file_diff,
             commands::diff::get_file_tree,
             commands::diff::get_file_history,
+            commands::diff::get_blob_content,
             commands::reflog_stash::get_reflog,
             commands::reflog_stash::get_stash_list,
             commands::reflog_stash::get_stash_diff,

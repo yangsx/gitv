@@ -1,31 +1,50 @@
 <script lang="ts">
 	let {
 		panelHeight = $bindable(300),
+		panelWidth = $bindable(240),
 		minHeight = 200,
 		maxHeight = Infinity,
+		minWidth = 160,
+		maxWidth = 400,
+		direction = 'vertical',
 		onDragStart,
 		onDragEnd
 	}: {
 		panelHeight?: number;
+		panelWidth?: number;
 		minHeight?: number;
 		maxHeight?: number;
+		minWidth?: number;
+		maxWidth?: number;
+		direction?: 'vertical' | 'horizontal';
 		onDragStart?: () => void;
 		onDragEnd?: () => void;
 	} = $props();
 
 	let dragging = $state(false);
 
+	function isVertical(): boolean {
+		return direction === 'vertical';
+	}
+
 	function onMouseDown(e: MouseEvent) {
 		e.preventDefault();
 		dragging = true;
 		onDragStart?.();
 
+		const startX = e.clientX;
 		const startY = e.clientY;
+		const startWidth = panelWidth;
 		const startHeight = panelHeight;
 
 		function onMouseMove(e: MouseEvent) {
-			const delta = startY - e.clientY;
-			panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
+			if (isVertical()) {
+				const delta = startY - e.clientY;
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
+			} else {
+				const delta = e.clientX - startX;
+				panelWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
+			}
 		}
 
 		function onMouseUp() {
@@ -42,12 +61,16 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-	class="flex h-1 cursor-row-resize items-center justify-center border-y border-gray-700 bg-gray-800 hover:bg-gray-700"
+	class="flex {isVertical()
+		? 'h-1 cursor-row-resize border-y'
+		: 'w-1 cursor-col-resize border-x'} items-center justify-center border-gray-700 bg-gray-800 hover:bg-gray-700 {isVertical()
+		? ''
+		: 'flex-col'}"
 	role="separator"
-	aria-orientation="horizontal"
-	aria-label="Resize detail panel"
+	aria-orientation={isVertical() ? 'horizontal' : 'vertical'}
+	aria-label={isVertical() ? 'Resize detail panel' : 'Resize file list'}
 	tabindex="-1"
 	onmousedown={onMouseDown}
 >
-	<div class="h-0.5 w-8 rounded bg-gray-500"></div>
+	<div class="rounded bg-gray-500 {isVertical() ? 'h-0.5 w-8' : 'w-0.5 h-8'}"></div>
 </div>

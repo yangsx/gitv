@@ -501,6 +501,51 @@ impl Repository for GixRepository {
         self.thread_local().is_bare()
     }
 
+    fn blob_content(&self, oid: Oid, path: &Path) -> Result<String, GitError> {
+        let repo = self.thread_local();
+        let gix_oid = oid_to_gix_object_id(&oid);
+        let obj = repo
+            .find_object(gix_oid)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let commit = obj
+            .try_into_commit()
+            .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+        let mut tree = commit.tree().map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let parts: Vec<std::ffi::OsString> = path.iter().map(|p| p.to_os_string()).collect();
+        for (i, part) in parts.iter().enumerate() {
+            let lossy = part.to_string_lossy();
+            let name = gix::bstr::BStr::new(lossy.as_bytes());
+            let entry = tree
+                .iter()
+                .find_map(|e| {
+                    let e = e.ok()?;
+                    if e.filename() == name { Some(e) } else { None }
+                })
+                .ok_or_else(|| GitError::ObjectNotFound(path.display().to_string()))?;
+
+            if i == parts.len() - 1 {
+                let blob = repo
+                    .find_object(entry.oid())
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let blob_obj = blob
+                    .try_into_blob()
+                    .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+                return String::from_utf8(blob_obj.data.to_vec())
+                    .map_err(|e| GitError::Gix(format!("blob is not valid UTF-8: {e}")));
+            } else {
+                let obj = repo
+                    .find_object(entry.oid())
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                tree = obj
+                    .try_into_tree()
+                    .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+            }
+        }
+
+        Err(GitError::ObjectNotFound(path.display().to_string()))
+    }
+
     fn diff_summary(
         &self,
         from: Option<Oid>,

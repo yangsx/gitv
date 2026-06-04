@@ -46,6 +46,7 @@ pub trait Repository {
         path: &std::path::Path,
         max_count: Option<usize>,
     ) -> Result<Vec<FileHistoryEntry>, GitError>;
+    fn blob_content(&self, oid: Oid, path: &Path) -> Result<String, GitError>;
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {

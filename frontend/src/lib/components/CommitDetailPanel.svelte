@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { CommitDetails, FileDiff, FileTreeNode } from '$lib/bindings/types';
-	import { getFileDiff, getFileTree } from '$lib/bindings/commands';
+	import { getFileDiff, getFileTree, getBlobContent } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
 	import FileHistoryPanel from './FileHistoryPanel.svelte';
 	import BlamePanel from './BlamePanel.svelte';
+	import ResizeHandle from './ResizeHandle.svelte';
 
 	interface Props {
 		details: CommitDetails;
@@ -13,31 +14,25 @@
 
 	let { details, repoPath }: Props = $props();
 
-	let selectedFile = $state<string | null>(null);
-	let fileDiff = $state<FileDiff | null>(null);
-	let loadingDiff = $state(false);
-	let diffError = $state<string | null>(null);
+	let activeTab = $state<'patch' | 'tree'>('patch');
+	let fileTree = $state<FileTreeNode | null>(null);
+	let loadingTree = $state(false);
+	let historyFilePath = $state<string | null>(null);
+	let blameFilePath = $state<string | null>(null);
+	let rightPanelWidth = $state(240);
 	let diffMode = $state<'normal' | 'word-diff' | 'stat-only'>('normal');
 	let whitespaceMode = $state<
 		'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
 	>('none');
 	let viewMode = $state<'unified' | 'side-by-side'>('unified');
-	let activeTab = $state<'changes' | 'tree'>('changes');
-	let fileTree = $state<FileTreeNode | null>(null);
-	let loadingTree = $state(false);
-	let historyFilePath = $state<string | null>(null);
-	let blameFilePath = $state<string | null>(null);
-	let fullDiff = $state(false);
 
-	$effect(() => {
-		void details.info.oid;
-		selectedFile = null;
-		fileDiff = null;
-		fileTree = null;
-		activeTab = 'changes';
-		historyFilePath = null;
-		blameFilePath = null;
-	});
+	let fileDiffs = $state<Map<string, FileDiff>>(new Map());
+	let diffsLoading = $state(false);
+	let blobContent = $state<string | null>(null);
+	let blobLoading = $state(false);
+	let blobPath = $state<string | null>(null);
+
+	let scrollContainer: HTMLDivElement | undefined = $state();
 
 	const CHANGE_COLORS: Record<string, string> = {
 		Added: 'text-green-400',
@@ -47,7 +42,6 @@
 		Copied: 'text-purple-400',
 		SubmoduleUpdated: 'text-orange-400'
 	};
-
 	const CHANGE_LETTERS: Record<string, string> = {
 		Added: 'A',
 		Deleted: 'D',
@@ -57,31 +51,44 @@
 		SubmoduleUpdated: 'S'
 	};
 
-	async function loadFileDiff(path: string) {
-		if (selectedFile === path) {
-			selectedFile = null;
-			fileDiff = null;
-			return;
+	$effect(() => {
+		void details.info.oid;
+		activeTab = 'patch';
+		fileTree = null;
+		historyFilePath = null;
+		blameFilePath = null;
+		blobContent = null;
+		blobPath = null;
+		fileDiffs = new Map();
+		loadAllDiffs();
+	});
+
+	async function loadAllDiffs() {
+		if (details.changed_files.length === 0) return;
+		diffsLoading = true;
+		const parentOid = details.info.parent_oids[0] ?? null;
+		const promises = details.changed_files.map(async (file) => {
+			try {
+				const diff = await getFileDiff(
+					repoPath,
+					parentOid,
+					details.info.oid,
+					file.path,
+					diffMode,
+					whitespaceMode
+				);
+				return [file.path, diff] as const;
+			} catch {
+				return [file.path, null] as const;
+			}
+		});
+		const results = await Promise.all(promises);
+		const map = new Map<string, FileDiff>();
+		for (const [path, diff] of results) {
+			if (diff) map.set(path, diff);
 		}
-		selectedFile = path;
-		fullDiff = false;
-		diffError = null;
-		loadingDiff = true;
-		try {
-			const parentOid = details.info.parent_oids[0] ?? null;
-			fileDiff = await getFileDiff(
-				repoPath,
-				parentOid,
-				details.info.oid,
-				path,
-				diffMode,
-				whitespaceMode
-			);
-		} catch (e: unknown) {
-			diffError = e instanceof Error ? e.message : String(e);
-		} finally {
-			loadingDiff = false;
-		}
+		fileDiffs = map;
+		diffsLoading = false;
 	}
 
 	async function loadFileTree() {
@@ -96,207 +103,235 @@
 		}
 	}
 
-	function switchTab(tab: 'changes' | 'tree') {
+	function switchTab(tab: 'patch' | 'tree') {
 		activeTab = tab;
+		blobContent = null;
+		blobPath = null;
 		if (tab === 'tree') loadFileTree();
 	}
 
-	async function refreshDiff() {
-		if (!selectedFile) return;
-		diffError = null;
-		loadingDiff = true;
+	function scrollToId(id: string) {
+		scrollContainer?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ behavior: 'smooth' });
+	}
+
+	function scrollToComments() {
+		scrollContainer?.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+
+	async function showBlob(path: string) {
+		if (blobPath === path && blobContent !== null) return;
+		blobPath = path;
+		blobLoading = true;
 		try {
-			const parentOid = details.info.parent_oids[0] ?? null;
-			fileDiff = await getFileDiff(
-				repoPath,
-				parentOid,
-				details.info.oid,
-				selectedFile,
-				diffMode,
-				whitespaceMode,
-				fullDiff
-			);
-		} catch (e: unknown) {
-			diffError = e instanceof Error ? e.message : String(e);
+			blobContent = await getBlobContent(repoPath, details.info.oid, path);
+		} catch {
+			blobContent = null;
 		} finally {
-			loadingDiff = false;
+			blobLoading = false;
 		}
 	}
 
-	async function loadFullDiff() {
-		fullDiff = true;
-		await refreshDiff();
+	function openBlame(path: string) {
+		blameFilePath = path;
+	}
+
+	function formatParent(oid: string): string {
+		return oid.substring(0, 7);
+	}
+
+	function formatTime(iso: string): string {
+		return new Date(iso).toLocaleString();
+	}
+
+	function fileHeaderId(index: number): string {
+		return `diff-${index}`;
 	}
 </script>
 
 <div class="flex h-full">
-	<div class="w-64 shrink-0 flex flex-col border-r border-gray-700 bg-gray-900/50">
-		<div class="border-b border-gray-700 px-3 py-2">
-			<p class="text-sm font-semibold text-gray-200 break-words">{details.info.summary}</p>
-			<p class="mt-1 text-xs text-gray-400">
-				{details.info.author.name}
-				<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
-			</p>
-			<p class="text-[10px] text-gray-500">
-				{new Date(details.info.author_time).toLocaleString()}
-			</p>
-			{#if details.body}
-				<pre
-					class="mt-2 whitespace-pre-wrap text-xs text-gray-400 border-t border-gray-800 pt-2">{details.body}</pre>
+	<div class="flex-1 flex flex-col overflow-hidden bg-gray-900">
+		<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-1.5 shrink-0">
+			<button
+				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+				onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
+			>
+				{viewMode === 'unified' ? 'Unified' : 'Side by Side'}
+			</button>
+			<select
+				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+				bind:value={diffMode}
+				onchange={loadAllDiffs}
+			>
+				<option value="normal">Normal</option>
+				<option value="word-diff">Word Diff</option>
+				<option value="stat-only">Stat Only</option>
+			</select>
+			{#if diffMode !== 'stat-only'}
+				<select
+					class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+					bind:value={whitespaceMode}
+					onchange={loadAllDiffs}
+				>
+					<option value="none">Show Whitespace</option>
+					<option value="ignore-space-change">Ignore Space Change</option>
+					<option value="ignore-all-space">Ignore All Space</option>
+					<option value="ignore-blank-lines">Ignore Blank Lines</option>
+				</select>
+			{/if}
+			{#if activeTab === 'patch'}
+				<span class="ml-auto text-xs text-gray-500">
+					{details.changed_files.length} file{details.changed_files.length !== 1 ? 's' : ''} changed
+				</span>
 			{/if}
 		</div>
-		<div class="flex border-b border-gray-700">
-			<button
-				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
-				'changes'
-					? 'text-gray-200 border-b-2 border-blue-500'
-					: 'text-gray-500 hover:text-gray-300'}"
-				onclick={() => switchTab('changes')}
-			>
-				Patch
-			</button>
-			<button
-				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
-				'tree'
-					? 'text-gray-200 border-b-2 border-blue-500'
-					: 'text-gray-500 hover:text-gray-300'}"
-				onclick={() => switchTab('tree')}
-			>
-				Tree
-			</button>
-		</div>
 
-		<div class="flex-1 overflow-y-auto">
-			{#if activeTab === 'changes'}
-				{#each details.changed_files as file (file.path)}
-					<button
-						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70 {selectedFile ===
-						file.path
-							? 'bg-gray-800'
-							: ''}"
-						onclick={() => loadFileDiff(file.path)}
-					>
-						<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
-							{CHANGE_LETTERS[file.change_type] ?? '?'}
-						</span>
-						<span class="flex-1 truncate font-mono text-gray-300">{file.path}</span>
-						{#if !file.is_binary}
-							<span class="shrink-0 font-mono text-[10px]">
-								<span class="text-green-500">{file.additions > 0 ? '+' + file.additions : ''}</span>
-								<span class="text-red-500">{file.deletions > 0 ? '-' + file.deletions : ''}</span>
-							</span>
-						{:else}
-							<span class="text-[10px] text-gray-500">binary</span>
-						{/if}
-					</button>
-				{/each}
-				{#if details.changed_files.length === 0}
-					<div class="px-3 py-4 text-xs text-gray-500">No changed files</div>
-				{/if}
-			{:else if loadingTree}
-				<div class="px-3 py-4 text-xs text-gray-500">Loading tree...</div>
-			{:else if fileTree}
-				<FileTree
-					node={fileTree}
-					{repoPath}
-					onhistoryfile={(p: string) => (historyFilePath = p)}
-					onselectfile={(p: string) => loadFileDiff(p)}
-				/>
-			{:else}
-				<div class="px-3 py-4 text-xs text-gray-500">No file tree</div>
-			{/if}
-		</div>
-	</div>
+		{#if activeTab === 'tree' && blobPath}
+			<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-1 shrink-0">
+				<h3 class="font-mono text-sm text-gray-300">{blobPath}</h3>
+				<button
+					class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+					onclick={() => openBlame(blobPath!)}
+				>
+					Blame
+				</button>
+			</div>
+		{/if}
 
-	<div class="relative flex-1 flex flex-col overflow-hidden bg-gray-900">
-		{#if loadingDiff}
-			<div class="flex items-center justify-center py-8 text-sm text-gray-500">Loading diff...</div>
-		{:else if diffError}
-			<div class="flex items-center justify-center py-8 text-sm text-red-400">
-				{diffError}
-			</div>
-		{:else if fileDiff}
-			<div class="flex items-center gap-2 border-b border-gray-700 px-4 py-2">
-				<h3 class="font-mono text-sm text-gray-300">{fileDiff.path}</h3>
-				<div class="ml-auto flex items-center gap-2">
-					{#if selectedFile}
-						<button
-							class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
-							onclick={() => (blameFilePath = selectedFile)}
-							title="View blame"
-						>
-							Blame
-						</button>
-					{/if}
-					<button
-						class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
-						onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
-						title={viewMode === 'unified' ? 'Switch to side-by-side' : 'Switch to unified'}
-					>
-						{viewMode === 'unified' ? 'Unified' : 'Side by Side'}
-					</button>
-					<select
-						class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-						bind:value={diffMode}
-						onchange={refreshDiff}
-					>
-						<option value="normal">Normal</option>
-						<option value="word-diff">Word Diff</option>
-						<option value="stat-only">Stat Only</option>
-					</select>
-					{#if diffMode !== 'stat-only'}
-						<select
-							class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-							bind:value={whitespaceMode}
-							onchange={refreshDiff}
-						>
-							<option value="none">Show Whitespace</option>
-							<option value="ignore-space-change">Ignore Space Change</option>
-							<option value="ignore-all-space">Ignore All Space</option>
-							<option value="ignore-blank-lines">Ignore Blank Lines</option>
-						</select>
-					{/if}
+		<div class="flex-1 overflow-y-auto" bind:this={scrollContainer}>
+			{#if activeTab === 'tree' && blobLoading}
+				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
+					Loading file content...
 				</div>
-			</div>
-			{#if fileDiff.is_submodule}
-				<div class="flex items-center justify-center py-8 text-sm text-orange-400">
-					{fileDiff.hunks
-						.flatMap((h) => h.lines)
-						.map((l) => ('Addition' in l ? l.Addition.content : ''))
-						.filter(Boolean)
-						.join(' ')}
-				</div>
-			{:else if fileDiff.is_binary}
+			{:else if activeTab === 'tree' && blobContent !== null}
+				<pre class="p-4 font-mono text-xs text-gray-300 whitespace-pre-wrap">{blobContent}</pre>
+			{:else if activeTab === 'tree' && blobPath && blobContent === null}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					Binary file (not displayed)
 				</div>
-			{:else if fileDiff.hunks.length === 0}
-				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
-					No content changes
-				</div>
 			{:else}
-				<div class="flex-1 overflow-auto p-2">
-					<DiffViewer hunks={fileDiff.hunks} {viewMode} />
-				</div>
-				{#if fileDiff.truncated_at != null}
-					<div class="flex items-center justify-center gap-3 border-t border-gray-700 py-2">
-						<span class="text-xs text-gray-500">
-							Diff truncated at {fileDiff.truncated_at} lines
-						</span>
-						<button
-							class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600"
-							onclick={loadFullDiff}
-						>
-							Show full diff
-						</button>
+				<div class="px-4 py-3 border-b border-gray-800">
+					<div class="flex items-baseline gap-3 text-sm">
+						<span class="font-mono text-gray-500">commit {details.info.oid.substring(0, 7)}</span>
+					{#each details.info.refs as r}
+						{#if r.Branch?.is_head}
+							<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
+								{r.Branch.name}
+							</span>
+						{/if}
+						{#if r.Tag}
+							<span class="rounded bg-yellow-700/50 px-1.5 py-0.5 text-xs text-yellow-300">
+								{r.Tag.name}
+							</span>
+						{/if}
+					{/each}
 					</div>
+					<div class="mt-1 text-xs text-gray-400">
+						Author: {details.info.author.name}
+						<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
+					</div>
+					<div class="text-xs text-gray-400">
+						Date: {formatTime(details.info.author_time)}
+					</div>
+					{#if details.info.committer.name !== details.info.author.name}
+						<div class="text-xs text-gray-400">
+							Committer: {details.info.committer.name}
+							<span class="text-gray-600">&lt;{details.info.committer.email}&gt;</span>
+						</div>
+					{/if}
+					{#if details.info.parent_oids.length > 0}
+						<div class="text-xs text-gray-500">
+							Parent{details.info.parent_oids.length > 1 ? 's' : ''}:
+							{#each details.info.parent_oids as p, i}
+								<span class="font-mono">{formatParent(p)}</span>{i <
+								details.info.parent_oids.length - 1
+									? ', '
+									: ''}
+							{/each}
+						</div>
+					{/if}
+					<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{details.info.summary}</div>
+					{#if details.body}
+						<pre class="mt-1 text-sm text-gray-400 whitespace-pre-wrap">{details.body}</pre>
+					{/if}
+				</div>
+
+				{#if diffsLoading}
+					<div class="flex items-center justify-center py-4 text-sm text-gray-500">
+						Loading diffs...
+					</div>
+				{:else if details.changed_files.length === 0}
+					<div class="flex items-center justify-center py-4 text-sm text-gray-500">
+						No changed files
+					</div>
+				{:else}
+					{#each details.changed_files as file, i (file.path)}
+						{@const diff = fileDiffs.get(file.path)}
+						<div id={fileHeaderId(i)} class="border-b border-gray-800">
+							<div class="flex items-center gap-2 bg-gray-800/60 px-4 py-1.5 sticky top-0 z-10">
+								<span class="font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
+									{CHANGE_LETTERS[file.change_type] ?? '?'}
+								</span>
+								<span class="font-mono text-xs text-gray-300">{file.path}</span>
+								{#if !file.is_binary && !file.is_submodule}
+									<span class="ml-1 font-mono text-[10px]">
+										<span class="text-green-500"
+											>{file.additions > 0 ? '+' + file.additions : ''}</span
+										>
+										<span class="text-red-500"
+											>{file.deletions > 0 ? '-' + file.deletions : ''}</span
+										>
+									</span>
+								{:else if file.is_binary}
+									<span class="text-[10px] text-gray-500">binary</span>
+								{:else if file.is_submodule}
+									<span class="text-[10px] text-orange-400">submodule</span>
+								{/if}
+								<button
+									class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+									onclick={() => openBlame(file.path)}
+								>
+									Blame
+								</button>
+							</div>
+							{#if diff}
+								{#if diff.is_submodule}
+									<div class="px-4 py-3 text-xs text-orange-400">
+										{diff.hunks
+											.flatMap((h) => h.lines)
+											.map((l) => ('Addition' in l ? l.Addition.content : ''))
+											.filter(Boolean)
+											.join(' ')}
+									</div>
+								{:else if diff.is_binary}
+									<div class="px-4 py-3 text-xs text-gray-500">Binary file (not displayed)</div>
+								{:else if diff.hunks.length > 0}
+									<div class="p-2">
+										<DiffViewer hunks={diff.hunks} {viewMode} />
+									</div>
+								{:else}
+									<div class="px-4 py-3 text-xs text-gray-500">No content changes</div>
+								{/if}
+								{#if diff.truncated_at != null}
+									<div
+										class="flex items-center justify-center gap-3 border-t border-gray-700 py-1.5"
+									>
+										<span class="text-xs text-gray-500">
+											Truncated at {diff.truncated_at} lines
+										</span>
+									</div>
+								{/if}
+							{:else if file.is_binary || file.is_submodule}
+								<div class="px-4 py-3 text-xs text-gray-500">
+									{file.is_submodule ? 'Submodule reference' : 'Binary file (not displayed)'}
+								</div>
+							{:else}
+								<div class="px-4 py-3 text-xs text-gray-500">Loading...</div>
+							{/if}
+						</div>
+					{/each}
 				{/if}
 			{/if}
-		{:else}
-			<div class="flex items-center justify-center py-8 text-sm text-gray-500">
-				Select a file to view diff
-			</div>
-		{/if}
+		</div>
 
 		{#if historyFilePath}
 			<div class="absolute inset-0 z-10 bg-gray-900">
@@ -318,5 +353,76 @@
 				/>
 			</div>
 		{/if}
+	</div>
+
+	<ResizeHandle direction="horizontal" bind:panelWidth={rightPanelWidth} />
+
+	<div
+		class="shrink-0 flex flex-col border-l border-gray-700 bg-gray-900/50 overflow-hidden"
+		style="width: {rightPanelWidth}px;"
+	>
+		<div class="flex border-b border-gray-700 shrink-0">
+			<button
+				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
+				'patch'
+					? 'text-gray-200 border-b-2 border-blue-500'
+					: 'text-gray-500 hover:text-gray-300'}"
+				onclick={() => switchTab('patch')}
+			>
+				Patch
+			</button>
+			<button
+				class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors {activeTab ===
+				'tree'
+					? 'text-gray-200 border-b-2 border-blue-500'
+					: 'text-gray-500 hover:text-gray-300'}"
+				onclick={() => switchTab('tree')}
+			>
+				Tree
+			</button>
+		</div>
+
+		<div class="flex-1 overflow-y-auto">
+			{#if activeTab === 'patch'}
+				<button
+					class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
+					onclick={scrollToComments}
+				>
+					<span class="flex-1 text-gray-400">Comments</span>
+				</button>
+				{#each details.changed_files as file, i (file.path)}
+					<button
+						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
+						onclick={() => scrollToId(fileHeaderId(i))}
+					>
+						<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
+							{CHANGE_LETTERS[file.change_type] ?? '?'}
+						</span>
+						<span class="flex-1 truncate font-mono text-gray-300">{file.path}</span>
+						{#if !file.is_binary && !file.is_submodule}
+							<span class="shrink-0 font-mono text-[10px]">
+								<span class="text-green-500">{file.additions > 0 ? '+' + file.additions : ''}</span>
+								<span class="text-red-500">{file.deletions > 0 ? '-' + file.deletions : ''}</span>
+							</span>
+						{:else if file.is_binary}
+							<span class="text-[10px] text-gray-500">bin</span>
+						{:else if file.is_submodule}
+							<span class="text-[10px] text-orange-400">sub</span>
+						{/if}
+					</button>
+				{/each}
+			{:else if loadingTree}
+				<div class="px-3 py-4 text-xs text-gray-500">Loading tree...</div>
+			{:else if fileTree}
+				<FileTree
+					node={fileTree}
+					{repoPath}
+					onhistoryfile={(p: string) => (historyFilePath = p)}
+					onselectfile={(p: string) => showBlob(p)}
+				/>
+			{:else}
+				<div class="px-3 py-4 text-xs text-gray-500">No file tree</div>
+			{/if}
+		</div>
 	</div>
 </div>
