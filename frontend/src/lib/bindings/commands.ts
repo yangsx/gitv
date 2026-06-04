@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
 import { invoke } from '@tauri-apps/api/core';
 import { recordIpcTiming } from '$lib/stores/debug';
 import type {

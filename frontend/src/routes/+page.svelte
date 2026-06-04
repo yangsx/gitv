@@ -44,12 +44,7 @@
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import { showToast } from '$lib/stores/toast';
-	import {
-		toggleDebug,
-		tickFps,
-		updateDebugGraphStats,
-		updateDebugCommitCounts
-	} from '$lib/stores/debug';
+	import { toggleDebug, tickFps, updateDebugGraphStats } from '$lib/stores/debug';
 	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
 	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
 	import { registerCommand } from '$lib/stores/commands';
@@ -545,6 +540,7 @@
 	class="flex h-screen flex-col bg-gray-900 text-gray-100 {isDragging
 		? 'ring-2 ring-blue-500 ring-inset'
 		: ''}"
+	role="application"
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}

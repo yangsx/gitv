@@ -22,8 +22,8 @@
 	let { x, y, items, onclose }: Props = $props();
 
 	let menuEl: HTMLDivElement | undefined = $state();
-	let adjustedX = $state(x);
-	let adjustedY = $state(y);
+	let adjustedX = $state(0);
+	let adjustedY = $state(0);
 
 	$effect(() => {
 		if (!menuEl) return;

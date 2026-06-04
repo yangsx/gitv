@@ -52,12 +52,14 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
 	style="background: rgba(0,0,0,0.5);"
 	onclick={onBackdropClick}
 	role="dialog"
 	aria-label="Command palette"
+	tabindex="-1"
 >
 	<div class="w-full max-w-lg rounded-lg border border-gray-700 bg-gray-900 shadow-2xl">
 		<div class="flex items-center border-b border-gray-800 px-3">
