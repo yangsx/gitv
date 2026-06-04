@@ -17,6 +17,7 @@
 	let fileDiff = $state<FileDiff | null>(null);
 	let loadingDiff = $state(false);
 	let fullDiff = $state(false);
+	let diffError = $state<string | null>(null);
 
 	const CHANGE_COLORS: Record<string, string> = {
 		Added: 'text-green-400',
@@ -52,11 +53,12 @@
 		}
 		selectedFile = path;
 		fullDiff = false;
+		diffError = null;
 		loadingDiff = true;
 		try {
 			fileDiff = await getFileDiff(repoPath, fromOid, toOid, path);
-		} catch {
-			fileDiff = null;
+		} catch (e: unknown) {
+			diffError = e instanceof Error ? e.message : String(e);
 		} finally {
 			loadingDiff = false;
 		}
@@ -65,6 +67,7 @@
 	async function loadFullDiff() {
 		fullDiff = true;
 		if (!selectedFile) return;
+		diffError = null;
 		loadingDiff = true;
 		try {
 			fileDiff = await getFileDiff(
@@ -76,8 +79,8 @@
 				undefined,
 				true
 			);
-		} catch {
-			fileDiff = null;
+		} catch (e: unknown) {
+			diffError = e instanceof Error ? e.message : String(e);
 		} finally {
 			loadingDiff = false;
 		}
@@ -126,6 +129,10 @@
 			{#if loadingDiff}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					Loading diff...
+				</div>
+			{:else if diffError}
+				<div class="flex items-center justify-center py-8 text-sm text-red-400">
+					{diffError}
 				</div>
 			{:else if fileDiff}
 				{#if fileDiff.is_submodule}

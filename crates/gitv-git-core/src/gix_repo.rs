@@ -997,7 +997,7 @@ fn change_to_file_change_parts(
     }
 }
 
-fn is_entry_mode_binary(mode: gix_object::tree::EntryMode) -> bool {
+fn is_entry_mode_submodule(mode: gix_object::tree::EntryMode) -> bool {
     matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
 }
 
@@ -1030,14 +1030,14 @@ fn count_lines_for_change(
 
     match change {
         gix::object::tree::diff::ChangeDetached::Addition { id, entry_mode, .. } => {
-            if is_entry_mode_binary(*entry_mode) {
+            if is_entry_mode_submodule(*entry_mode) {
                 return (0, 0);
             }
             let line_count = count_blob_lines(repo, id);
             (line_count, 0)
         }
         gix::object::tree::diff::ChangeDetached::Deletion { id, entry_mode, .. } => {
-            if is_entry_mode_binary(*entry_mode) {
+            if is_entry_mode_submodule(*entry_mode) {
                 return (0, 0);
             }
             let line_count = count_blob_lines(repo, id);
@@ -1050,7 +1050,8 @@ fn count_lines_for_change(
             entry_mode,
             ..
         } => {
-            if is_entry_mode_binary(*previous_entry_mode) || is_entry_mode_binary(*entry_mode) {
+            if is_entry_mode_submodule(*previous_entry_mode) || is_entry_mode_submodule(*entry_mode)
+            {
                 return (0, 0);
             }
             diff_line_counts(repo, location, previous_id, id)
@@ -1062,7 +1063,7 @@ fn count_lines_for_change(
             entry_mode,
             ..
         } => {
-            if is_entry_mode_binary(*source_entry_mode) || is_entry_mode_binary(*entry_mode) {
+            if is_entry_mode_submodule(*source_entry_mode) || is_entry_mode_submodule(*entry_mode) {
                 return (0, 0);
             }
             diff_line_counts(repo, location, source_id, id)
@@ -1884,12 +1885,18 @@ fn compute_stash_half_diff(
 
     let mut all_hunks = Vec::new();
     let mut is_any_binary = false;
+    let mut is_any_submodule = false;
 
     for change in &changes {
         let (path, old_path, _change_type, is_binary, is_submodule) =
             change_to_file_change_parts(change);
         if is_binary || is_submodule {
-            is_any_binary = true;
+            if is_binary {
+                is_any_binary = true;
+            }
+            if is_submodule {
+                is_any_submodule = true;
+            }
             continue;
         }
         let (hunks, blob_binary) = compute_hunks_for_change(repo, change)?;
@@ -1907,7 +1914,7 @@ fn compute_stash_half_diff(
         old_path: None,
         hunks: all_hunks,
         is_binary: is_any_binary,
-        is_submodule: false,
+        is_submodule: is_any_submodule,
         old_size: None,
         new_size: None,
         truncated_at: None,
