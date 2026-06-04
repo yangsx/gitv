@@ -216,9 +216,7 @@ impl GraphCalculator {
             graph_data.get_mut(&c.oid).unwrap().column = assigned_lane;
 
             for &(_, child_col) in &branch_children {
-                if child_col != assigned_lane
-                    && child_col < lanes.len()
-                {
+                if child_col != assigned_lane && child_col < lanes.len() {
                     lanes[child_col] = None;
                 }
             }
@@ -727,10 +725,14 @@ mod tests {
             .collect();
         assert!(
             edges_to_after.iter().any(|e| {
-                let other_oid = layout
-                    .nodes
-                    .iter()
-                    .find(|n| n.row == if e.from_row == after_merge.row { e.to_row } else { e.from_row });
+                let other_oid = layout.nodes.iter().find(|n| {
+                    n.row
+                        == if e.from_row == after_merge.row {
+                            e.to_row
+                        } else {
+                            e.from_row
+                        }
+                });
                 other_oid.map_or(false, |n| n.oid == make_oid(2))
             }),
             "child of merge should be connected to merge's first parent"
@@ -799,16 +801,8 @@ mod tests {
         let mut layout = calc.calculate_layout();
         let matching: HashSet<Oid> = [make_oid(2)].into_iter().collect();
         GraphCalculator::apply_dimming(&mut layout, None, Some(&matching));
-        let n1 = layout
-            .nodes
-            .iter()
-            .find(|n| n.oid == make_oid(1))
-            .unwrap();
-        let n2 = layout
-            .nodes
-            .iter()
-            .find(|n| n.oid == make_oid(2))
-            .unwrap();
+        let n1 = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+        let n2 = layout.nodes.iter().find(|n| n.oid == make_oid(2)).unwrap();
         assert!(n1.is_dimmed);
         assert!(!n1.is_highlighted);
         assert!(!n2.is_dimmed);

@@ -1,5 +1,5 @@
-use gitv_git_core::graph::{GraphCalculator, GraphColorMode, GraphOptions, GraphOrientation};
 use gitv_git_core::gix_repo::GixRepository;
+use gitv_git_core::graph::{GraphCalculator, GraphColorMode, GraphOptions, GraphOrientation};
 use gitv_git_core::repository::Repository;
 use std::collections::HashMap;
 use std::path::PathBuf;

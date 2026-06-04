@@ -31,15 +31,16 @@ impl CommitMessageIndex {
             let unique_terms: std::collections::HashSet<&str> = terms.into_iter().collect();
             for term in unique_terms {
                 self.postings
-                    .entry(term.to_string())
+                    .entry(term.to_lowercase())
                     .or_default()
                     .insert(idx);
             }
             let summary_terms = tokenize(&commit.summary);
-            let unique_summary: std::collections::HashSet<&str> = summary_terms.into_iter().collect();
+            let unique_summary: std::collections::HashSet<&str> =
+                summary_terms.into_iter().collect();
             for term in unique_summary {
                 self.postings
-                    .entry(term.to_string())
+                    .entry(term.to_lowercase())
                     .or_default()
                     .insert(idx);
             }
@@ -87,12 +88,15 @@ impl SearchEngine {
 
     pub fn search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         let mut result_bitmap: Option<RoaringBitmap> = None;
+        let mut compiled_regex: Option<Regex> = None;
 
         if let Some(ref text) = query.text
             && !text.is_empty()
         {
             let text_results = if query.use_regex {
-                self.search_regex(text)?
+                let re = Regex::new(text)?;
+                compiled_regex = Some(re.clone());
+                self.search_regex_with(&re)
             } else {
                 self.search_text(text)
             };
@@ -107,21 +111,31 @@ impl SearchEngine {
             && !prefix.is_empty()
         {
             let sha_results = self.search_sha(prefix);
-            result_bitmap = Some(Self::combine(result_bitmap, sha_results, query.combine_mode));
+            result_bitmap = Some(Self::combine(
+                result_bitmap,
+                sha_results,
+                query.combine_mode,
+            ));
         }
 
         if let Some(ref author) = query.author
             && !author.is_empty()
         {
             let author_results = self.search_author(author);
-            result_bitmap =
-                Some(Self::combine(result_bitmap, author_results, query.combine_mode));
+            result_bitmap = Some(Self::combine(
+                result_bitmap,
+                author_results,
+                query.combine_mode,
+            ));
         }
 
         if let Some(ref range) = query.date_range {
             let date_results = self.search_date_range(range);
-            result_bitmap =
-                Some(Self::combine(result_bitmap, date_results, query.combine_mode));
+            result_bitmap = Some(Self::combine(
+                result_bitmap,
+                date_results,
+                query.combine_mode,
+            ));
         }
 
         let bitmap = result_bitmap.unwrap_or_else(|| {
@@ -136,7 +150,7 @@ impl SearchEngine {
         for idx in bitmap {
             if let Some(commit) = self.commits.get(idx as usize) {
                 let match_type = self.determine_match_type(query, commit);
-                let highlights = self.compute_highlights(query, commit);
+                let highlights = self.compute_highlights(query, commit, compiled_regex.as_ref());
                 results.push(SearchResult {
                     commit_oid: commit.oid,
                     match_type,
@@ -148,6 +162,8 @@ impl SearchEngine {
         Ok(results)
     }
 
+    /// Add new commits to the index. Caller must ensure no duplicates
+    /// (commits already passed to `new()` or a previous `ensure_indexed` call).
     pub fn ensure_indexed(&mut self, new_commits: &[CommitInfo]) {
         let start_idx = self.commits.len() as u32;
         self.message_index.index_commits(new_commits, start_idx);
@@ -198,15 +214,14 @@ impl SearchEngine {
         result.unwrap_or_default()
     }
 
-    fn search_regex(&self, pattern: &str) -> Result<RoaringBitmap, SearchError> {
-        let re = Regex::new(pattern)?;
+    fn search_regex_with(&self, re: &Regex) -> RoaringBitmap {
         let mut result = RoaringBitmap::new();
         for (i, commit) in self.commits.iter().enumerate() {
             if re.is_match(&commit.message) || re.is_match(&commit.summary) {
                 result.insert(i as u32);
             }
         }
-        Ok(result)
+        result
     }
 
     fn search_sha(&self, prefix: &str) -> RoaringBitmap {
@@ -278,10 +293,11 @@ impl SearchEngine {
     fn determine_match_type(&self, query: &SearchQuery, commit: &CommitInfo) -> MatchType {
         if let Some(ref prefix) = query.sha_prefix
             && !prefix.is_empty()
-            && (commit.oid.to_hex().starts_with(prefix)
-                || commit.short_oid.starts_with(prefix))
         {
-            return MatchType::Sha;
+            let lower = prefix.to_lowercase();
+            if commit.oid.to_hex().starts_with(&lower) || commit.short_oid.starts_with(&lower) {
+                return MatchType::Sha;
+            }
         }
         if let Some(ref author) = query.author
             && !author.is_empty()
@@ -296,20 +312,23 @@ impl SearchEngine {
         MatchType::Message
     }
 
-    fn compute_highlights(&self, query: &SearchQuery, commit: &CommitInfo) -> Vec<Highlight> {
+    fn compute_highlights(
+        &self,
+        query: &SearchQuery,
+        commit: &CommitInfo,
+        compiled_regex: Option<&Regex>,
+    ) -> Vec<Highlight> {
         let mut highlights = Vec::new();
 
         if let Some(ref text) = query.text
             && !text.is_empty()
         {
-            if query.use_regex {
-                if let Ok(re) = Regex::new(text) {
-                    for mat in re.find_iter(&commit.message) {
-                        highlights.push(Highlight {
-                            start: mat.start(),
-                            length: mat.len(),
-                        });
-                    }
+            if let Some(re) = compiled_regex {
+                for mat in re.find_iter(&commit.message) {
+                    highlights.push(Highlight {
+                        start: mat.start(),
+                        length: mat.len(),
+                    });
                 }
             } else {
                 let lower_msg = commit.message.to_lowercase();
@@ -530,5 +549,31 @@ mod tests {
         };
         let results = engine.search(&query).unwrap();
         assert!(results.iter().any(|r| !r.highlights.is_empty()));
+    }
+
+    #[test]
+    fn mixed_case_messages_are_case_insensitive() {
+        let commits = vec![
+            make_commit(10, vec![], "Implement FeatureRequest module", "alice"),
+            make_commit(11, vec![10], "Fix EdgeCase in Parser", "bob"),
+            make_commit(12, vec![11], "update README", "charlie"),
+        ];
+        let engine = SearchEngine::new(commits);
+
+        let query = SearchQuery {
+            text: Some("featurerequest".to_string()),
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].commit_oid, make_oid(10));
+
+        let query = SearchQuery {
+            text: Some("edgecase".to_string()),
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].commit_oid, make_oid(11));
     }
 }

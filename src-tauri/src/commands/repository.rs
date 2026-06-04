@@ -10,7 +10,6 @@ pub fn open_repository(path: String) -> Result<RepositoryInfo, String> {
 }
 
 #[tauri::command]
-pub fn get_recent_repositories()
--> Result<Vec<gitv_git_core::models::RecentRepository>, String> {
+pub fn get_recent_repositories() -> Result<Vec<gitv_git_core::models::RecentRepository>, String> {
     Ok(Vec::new())
 }
