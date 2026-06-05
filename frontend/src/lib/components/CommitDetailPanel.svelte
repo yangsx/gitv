@@ -14,6 +14,7 @@
 	import { diffMode, diffWhitespace } from '$lib/stores/preferences';
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
+	import { untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 
 	interface Props {
@@ -90,7 +91,7 @@
 		fileDiffs.clear();
 		localDiffMode = $diffMode;
 		localDiffWhitespace = $diffWhitespace;
-		loadAllDiffs();
+		untrack(() => { loadAllDiffs(); });
 	});
 
 	async function loadAllDiffs() {
