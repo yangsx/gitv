@@ -412,7 +412,7 @@
 		void $autoRefreshEnabled;
 		if ($repoInfo && repoPath) {
 			if ($autoRefreshEnabled) {
-				startWatching(repoPath).catch(() => {});
+				startWatching(repoPath).catch((e) => console.error('startWatching failed', e));
 			} else {
 				stopWatching(repoPath).catch(() => {});
 			}
@@ -441,10 +441,21 @@
 		operationState.set('LoadingDetails');
 
 		if (VIRTUAL_OIDS.has(oid)) {
+			try {
+				workingChangesDiff = await getWorkingChanges(repoPath);
+			} catch {
+				workingChangesDiff = null;
+			}
 			const files: FileChange[] =
 				oid === STAGED_OID
 					? (workingChangesDiff?.staged ?? [])
 					: (workingChangesDiff?.unstaged ?? []);
+			if (files.length === 0) {
+				detailsLoading = false;
+				operationState.set('Idle');
+				if ($selectedOid === oid) selectedOid.set(null);
+				return;
+			}
 			const label = oid === STAGED_OID ? 'Staged changes' : 'Unstaged changes';
 			commitDetails = {
 				info: {
