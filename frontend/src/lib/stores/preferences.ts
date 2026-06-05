@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { getPreferences, setPreferences } from '$lib/bindings/commands';
 import type { AppPreferences } from '$lib/bindings/types';
 import { graphColorMode, graphHideMerges, graphOrientation, graphPalette } from './repository';
+import { locale, initLocale, setLocale } from './locale';
 
 const DEFAULTS: AppPreferences = {
 	graph_color_mode: 'by-branch',
@@ -10,7 +11,8 @@ const DEFAULTS: AppPreferences = {
 	graph_palette: 'default',
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
-	theme: 'dark'
+	theme: 'dark',
+	language: 'en'
 };
 
 export const theme = writable<'dark' | 'light'>(DEFAULTS.theme as 'dark' | 'light');
@@ -37,7 +39,8 @@ function toPreferences(): AppPreferences {
 		graph_palette: get(graphPalette),
 		diff_mode: get(diffMode),
 		diff_whitespace: get(diffWhitespace),
-		theme: get(theme)
+		theme: get(theme),
+		language: get(locale)
 	};
 }
 
@@ -62,6 +65,9 @@ function updateFromPreferences(p: AppPreferences) {
 	) {
 		graphPalette.set(p.graph_palette);
 	}
+	if (p.language === 'en' || p.language === 'zh-cn') {
+		setLocale(p.language);
+	}
 }
 
 function debouncedSave(prefs: AppPreferences) {
@@ -76,11 +82,12 @@ function debouncedSave(prefs: AppPreferences) {
 }
 
 export async function initPreferences() {
+	initLocale();
 	try {
 		const prefs = await getPreferences();
 		updateFromPreferences(prefs);
 	} catch {
-		// use defaults
+		// system locale already set above
 	}
 }
 

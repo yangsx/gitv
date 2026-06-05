@@ -52,6 +52,14 @@ pub enum Theme {
     Light,
 }
 
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Language {
+    #[default]
+    En,
+    ZhCn,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppPreferences {
     pub graph_color_mode: GraphColorMode,
@@ -61,6 +69,8 @@ pub struct AppPreferences {
     pub diff_mode: DiffMode,
     pub diff_whitespace: DiffWhitespace,
     pub theme: Theme,
+    #[serde(default)]
+    pub language: Language,
 }
 
 impl Default for AppPreferences {
@@ -73,6 +83,7 @@ impl Default for AppPreferences {
             diff_mode: DiffMode::Normal,
             diff_whitespace: DiffWhitespace::None,
             theme: Theme::Dark,
+            language: Language::En,
         }
     }
 }

@@ -53,6 +53,7 @@
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
 	import { initPreferences, theme } from '$lib/stores/preferences';
+	import { t, translate, locale } from '$lib/stores/locale';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -140,6 +141,11 @@
 
 	let loadError = $state<string | null>(null);
 
+	$effect(() => {
+		void $locale;
+		registerCommands();
+	});
+
 	async function loadRepo(path: string) {
 		operationState.set('LoadingRepo');
 		error.set(null);
@@ -150,7 +156,7 @@
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e);
 			error.set(msg);
-			showToast(`Failed to open repository: ${msg}`, 'error');
+			showToast(translate('page.failed_open_repo', { msg }), 'error');
 			operationState.set('Idle');
 			return;
 		}
@@ -162,7 +168,7 @@
 			commitCount = loadedCommits.length;
 		} catch (e: unknown) {
 			loadError = e instanceof Error ? e.message : String(e);
-			showToast('Partial load: commits failed', 'warning');
+			showToast(translate('page.partial_commits'), 'warning');
 		}
 
 		try {
@@ -176,7 +182,7 @@
 			layoutLoaded = true;
 		} catch (e: unknown) {
 			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
-			showToast('Partial load: graph failed', 'warning');
+			showToast(translate('page.partial_graph'), 'warning');
 		}
 
 		try {
@@ -192,7 +198,7 @@
 		}
 
 		if (!loadError) {
-			showToast(`${commitCount} commits loaded`, 'info');
+			showToast(translate('page.count_commits', { count: commitCount }), 'info');
 		}
 		operationState.set('Idle');
 	}
@@ -243,6 +249,7 @@
 	}
 
 	let displayCommits = $derived.by(() => {
+		void $locale;
 		if (!workingChangesDiff) return commits;
 		const hasStaged = workingChangesDiff.staged.length > 0;
 		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
@@ -250,11 +257,15 @@
 		const virtuals: CommitInfo[] = [];
 		if (hasUnstaged)
 			virtuals.push(
-				makeVirtualCommit(UNSTAGED_OID, 'Unstaged changes', workingChangesDiff.unstaged.length)
+				makeVirtualCommit(
+					UNSTAGED_OID,
+					translate('page.unstaged'),
+					workingChangesDiff.unstaged.length
+				)
 			);
 		if (hasStaged)
 			virtuals.push(
-				makeVirtualCommit(STAGED_OID, 'Staged changes', workingChangesDiff.staged.length)
+				makeVirtualCommit(STAGED_OID, translate('page.staged'), workingChangesDiff.staged.length)
 			);
 		return [...virtuals, ...commits];
 	});
@@ -361,7 +372,7 @@
 				if ($selectedOid === oid) selectedOid.set(null);
 				return;
 			}
-			const label = oid === STAGED_OID ? 'Staged changes' : 'Unstaged changes';
+			const label = oid === STAGED_OID ? translate('page.staged') : translate('page.unstaged');
 			commitDetails = {
 				info: {
 					oid,
@@ -456,21 +467,21 @@
 	function registerCommands() {
 		registerCommand({
 			id: 'toggle-merges',
-			label: 'Toggle merge commits',
+			label: translate('page.cmd_toggle_merges'),
 			shortcut: undefined,
 			category: 'Graph',
 			action: () => graphHideMerges.update((v) => !v)
 		});
 		registerCommand({
 			id: 'toggle-color-mode',
-			label: 'Toggle color by author',
+			label: translate('page.cmd_color_author'),
 			shortcut: undefined,
 			category: 'Graph',
 			action: () => graphColorMode.update((v) => (v === 'by-branch' ? 'by-author' : 'by-branch'))
 		});
 		registerCommand({
 			id: 'toggle-orientation',
-			label: 'Toggle graph orientation',
+			label: translate('page.cmd_orientation'),
 			shortcut: undefined,
 			category: 'Graph',
 			action: () =>
@@ -478,38 +489,38 @@
 		});
 		registerCommand({
 			id: 'toggle-debug',
-			label: 'Toggle debug overlay',
+			label: translate('page.cmd_debug'),
 			shortcut: 'F12',
 			category: 'Debug',
 			action: toggleDebug
 		});
 		registerCommand({
 			id: 'palette-default',
-			label: 'Graph palette: Default',
+			label: translate('page.cmd_palette_default'),
 			category: 'Palette',
 			action: () => graphPalette.set('default')
 		});
 		registerCommand({
 			id: 'palette-deuteranopia',
-			label: 'Graph palette: Deuteranopia-safe',
+			label: translate('page.cmd_palette_deuteranopia'),
 			category: 'Palette',
 			action: () => graphPalette.set('deuteranopia')
 		});
 		registerCommand({
 			id: 'palette-protanopia',
-			label: 'Graph palette: Protanopia-safe',
+			label: translate('page.cmd_palette_protanopia'),
 			category: 'Palette',
 			action: () => graphPalette.set('protanopia')
 		});
 		registerCommand({
 			id: 'palette-tritanopia',
-			label: 'Graph palette: Tritanopia-safe',
+			label: translate('page.cmd_palette_tritanopia'),
 			category: 'Palette',
 			action: () => graphPalette.set('tritanopia')
 		});
 		registerCommand({
 			id: 'toggle-fullscreen',
-			label: 'Toggle fullscreen mode',
+			label: translate('page.cmd_fullscreen'),
 			shortcut: 'Ctrl+M',
 			category: 'View',
 			action: () => {
@@ -522,17 +533,20 @@
 		e.preventDefault();
 		const commit = commits.find((c) => c.oid === oid);
 		const items: ContextMenuItem[] = [
-			{ label: 'Copy SHA', action: () => navigator.clipboard.writeText(oid) },
-			{ label: 'Copy short SHA', action: () => navigator.clipboard.writeText(oid.substring(0, 7)) }
+			{ label: translate('page.ctx_copy_sha'), action: () => navigator.clipboard.writeText(oid) },
+			{
+				label: translate('page.ctx_copy_short_sha'),
+				action: () => navigator.clipboard.writeText(oid.substring(0, 7))
+			}
 		];
 		if (commit) {
 			items.push({
-				label: 'Copy commit message',
+				label: translate('page.ctx_copy_message'),
 				action: () => navigator.clipboard.writeText(commit.message)
 			});
 			items.push({ separator: true });
 			if ($selectedOid && $selectedOid !== oid) {
-				items.push({ label: 'Compare with selected', action: () => comparisonOid.set(oid) });
+				items.push({ label: translate('page.ctx_compare'), action: () => comparisonOid.set(oid) });
 			}
 		}
 		contextMenu = { x: e.clientX, y: e.clientY, items };
@@ -540,7 +554,10 @@
 
 	function handleBranchContextMenu(e: MouseEvent, name: string) {
 		const items: ContextMenuItem[] = [
-			{ label: 'Copy branch name', action: () => navigator.clipboard.writeText(name) }
+			{
+				label: translate('page.ctx_copy_branch'),
+				action: () => navigator.clipboard.writeText(name)
+			}
 		];
 		contextMenu = { x: e.clientX, y: e.clientY, items };
 	}
@@ -590,23 +607,23 @@
 	{#if !$repoInfo}
 		<div class="flex flex-1 items-center justify-center" role="main">
 			<div class="w-full max-w-md space-y-4 p-8">
-				<h1 class="text-2xl font-bold">gitv</h1>
-				<p class="text-gray-400">Modern Git repository visualizer</p>
+				<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
+				<p class="text-gray-400">{$t('page.subtitle')}</p>
 				<div class="flex gap-2">
 					<input
 						type="text"
 						class="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
-						placeholder="/path/to/repository"
-						aria-label="Repository path"
+						placeholder={$t('page.repo_placeholder')}
+						aria-label={$t('page.open')}
 						bind:value={repoPath}
 						onkeydown={(e) => e.key === 'Enter' && handleOpen()}
 					/>
 					<button
 						class="rounded bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700"
 						onclick={handleOpen}
-						aria-label="Open repository"
+						aria-label={$t('page.open')}
 					>
-						Open
+						{$t('page.open')}
 					</button>
 				</div>
 				{#if $error}
@@ -629,12 +646,12 @@
 				{/if}
 				{#if $repoInfo.is_bare}
 					<span class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-400">
-						bare repository
+						{$t('page.bare_repo')}
 					</span>
 				{/if}
 				{#if $graphHideMerges}
 					<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-xs text-yellow-300">
-						Merges hidden
+						{$t('page.merges_hidden')}
 					</span>
 				{/if}
 				<Toolbar onrefresh={manualRefresh} onopensettings={() => (showPreferences = true)} />
@@ -646,29 +663,31 @@
 				</div>
 				{#if loadError}
 					<span class="flex items-center gap-2 text-xs text-amber-400">
-						Loading incomplete
+						{$t('page.loading_incomplete')}
 						<button
 							class="rounded bg-amber-700/50 px-2 py-0.5 text-xs hover:bg-amber-700"
 							onclick={() => loadRepo(repoPath)}
-							aria-label="Retry loading repository"
+							aria-label={$t('page.retry')}
 						>
-							Retry
+							{$t('page.retry')}
 						</button>
 					</span>
 				{/if}
 				{#if $operationState === 'LoadingRepo'}
 					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>Loading repository...</span
+						>{$t('page.loading_repo')}</span
 					>
 				{:else if $operationState === 'LoadingDetails'}
 					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>Loading details...</span
+						>{$t('page.loading_details')}</span
 					>
 				{:else if $operationState === 'Searching'}
-					<span class="text-xs text-gray-500" role="status" aria-live="polite">Searching...</span>
+					<span class="text-xs text-gray-500" role="status" aria-live="polite"
+						>{$t('page.searching')}</span
+					>
 				{:else if $operationState === 'ApplyingFilter'}
 					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>Applying filter...</span
+						>{$t('page.applying_filter')}</span
 					>
 				{/if}
 			</header>
@@ -698,12 +717,16 @@
 								onenterselect={(oid: string) => onSelectCommit(oid)}
 							/>
 						{:else}
-							<div class="text-gray-500 italic">No file selected</div>
+							<div class="text-gray-500 italic">{$t('page.no_file_selected')}</div>
 						{/if}
 					{/snippet}
 				</Sidebar>
 			{/if}
-			<div class="flex-1 overflow-hidden flex flex-col" role="main" aria-label="Commit history">
+			<div
+				class="flex-1 overflow-hidden flex flex-col"
+				role="main"
+				aria-label={$t('commit_list.aria')}
+			>
 				<div class="flex-1 overflow-hidden">
 					{#if displayLayout}
 						<CommitList
@@ -728,7 +751,7 @@
 						class="overflow-hidden bg-gray-900 border-t border-gray-700"
 						style="height: {detailPanelHeight}px;"
 						role="region"
-						aria-label="Commit details"
+						aria-label={$t('commit_detail.diff_viewer')}
 					>
 						{#if $comparisonOid}
 							<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
@@ -738,7 +761,7 @@
 								role="status"
 								aria-live="polite"
 							>
-								Loading details...
+								{$t('page.loading_details')}
 							</div>
 						{:else if commitDetails}
 							<CommitDetailPanel
@@ -755,7 +778,7 @@
 								class="flex items-center justify-center h-full text-sm text-gray-500"
 								role="alert"
 							>
-								Failed to load commit details
+								{$t('page.failed_details')}
 							</div>
 						{/if}
 					</div>

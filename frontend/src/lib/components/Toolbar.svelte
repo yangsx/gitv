@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
+
 	interface Props {
 		onopensettings?: () => void;
 		onrefresh?: () => void;
@@ -7,12 +9,12 @@
 	let { onopensettings, onrefresh }: Props = $props();
 </script>
 
-<div class="flex items-center gap-1" role="toolbar" aria-label="Graph controls">
+<div class="flex items-center gap-1" role="toolbar" aria-label={$t('toolbar.aria')}>
 	<button
 		class="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
 		onclick={onrefresh}
-		title="Refresh"
-		aria-label="Refresh"
+		title={$t('toolbar.refresh')}
+		aria-label={$t('toolbar.refresh_aria')}
 	>
 		<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
 			<path
@@ -26,8 +28,8 @@
 	<button
 		class="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
 		onclick={onopensettings}
-		title="Open preferences"
-		aria-label="Open preferences"
+		title={$t('toolbar.preferences')}
+		aria-label={$t('toolbar.preferences_aria')}
 	>
 		<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
 			<path

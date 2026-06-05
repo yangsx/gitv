@@ -2,6 +2,7 @@
 	import { searchCommits } from '$lib/bindings/commands';
 	import { searchQuery, searchResults, operationState } from '$lib/stores/repository';
 	import { showToast } from '$lib/stores/toast';
+	import { t, translate } from '$lib/stores/locale';
 
 	interface Props {
 		repoPath: string;
@@ -56,10 +57,15 @@
 		try {
 			const results = await searchCommits(repoPath, query);
 			searchResults.set(results);
-			showToast(`Search: ${results.length} match${results.length !== 1 ? 'es' : ''}`, 'info');
+			showToast(
+				translate(results.length === 1 ? 'search.matches' : 'search.matches_plural', {
+					count: results.length
+				}),
+				'info'
+			);
 		} catch {
 			searchResults.set([]);
-			showToast('Search failed', 'error');
+			showToast(translate('page.search_failed'), 'error');
 		} finally {
 			operationState.set('Idle');
 		}
@@ -73,13 +79,13 @@
 	}
 </script>
 
-<div class="flex items-center gap-2" role="search" aria-label="Search commits">
+<div class="flex items-center gap-2" role="search" aria-label={$t('search.search_aria')}>
 	<div class="relative flex-1">
 		<input
 			type="text"
 			class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-			placeholder="Search commits... (Esc to clear)"
-			aria-label="Search commits"
+			placeholder={$t('search.placeholder')}
+			aria-label={$t('search.search_aria')}
 			bind:value={inputText}
 			oninput={handleInput}
 			onkeydown={handleKeydown}
@@ -88,7 +94,7 @@
 			<button
 				class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
 				onclick={clearSearch}
-				aria-label="Clear search"
+				aria-label={$t('search.clear')}
 			>
 				✕
 			</button>
@@ -100,30 +106,32 @@
 			? 'bg-gray-600 text-gray-200'
 			: 'bg-gray-800 text-gray-400 hover:text-gray-200'} border border-gray-700"
 		onclick={() => (showOptions = !showOptions)}
-		aria-label="Search options"
+		aria-label={$t('search.options_aria')}
 		aria-expanded={showOptions}
 	>
-		Opts
+		{$t('search.opts')}
 	</button>
 
 	{#if $searchQuery}
 		<span class="shrink-0 text-xs text-gray-500" role="status" aria-live="polite">
-			{$searchResults.length} match{$searchResults.length !== 1 ? 'es' : ''}
+			{$t($searchResults.length === 1 ? 'search.matches' : 'search.matches_plural', {
+				count: $searchResults.length
+			})}
 		</span>
 	{/if}
 </div>
 
 {#if showOptions}
-	<div class="mt-1 flex items-center gap-3" role="group" aria-label="Search options">
+	<div class="mt-1 flex items-center gap-3" role="group" aria-label={$t('search.options_aria')}>
 		<label class="flex items-center gap-1 text-xs text-gray-400">
 			<input type="checkbox" bind:checked={useRegex} onchange={executeSearch} />
-			Regex
+			{$t('search.regex')}
 		</label>
 		<input
 			type="text"
 			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
-			placeholder="Author filter"
-			aria-label="Author filter"
+			placeholder={$t('search.author_filter')}
+			aria-label={$t('search.author_filter')}
 			bind:value={authorFilter}
 			oninput={handleInput}
 		/>

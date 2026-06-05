@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, Ref } from '$lib/bindings/types';
 
 	interface Props {
@@ -47,7 +48,10 @@
 		class="flex w-full items-center gap-3 px-3 py-1 text-left text-sm hover:bg-gray-700 {isSelected
 			? 'bg-blue-900/40 text-blue-200'
 			: 'text-gray-300'}"
-		aria-label="{commit.summary}, {isStaged ? 'staged' : 'unstaged'} changes"
+		aria-label={$t('commit_row.staged_aria', {
+			summary: commit.summary,
+			type: isStaged ? 'staged' : 'unstaged'
+		})}
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
 			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 	>
@@ -71,10 +75,12 @@
 			: isDimmed
 				? 'text-gray-600'
 				: 'text-gray-300'}"
-		aria-label="{commit.summary} by {commit.author.name}, {formatTime(commit.commit_time)}{commit
-			.refs.length > 0
-			? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ')
-			: ''}"
+		aria-label={$t('commit_row.aria_label', {
+			summary: commit.summary,
+			author: commit.author.name,
+			date: formatTime(commit.commit_time)
+		}) +
+			(commit.refs.length > 0 ? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ') : '')}
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
 			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 		oncontextmenu={(e: MouseEvent) => oncontextmenu?.(e, commit.oid)}

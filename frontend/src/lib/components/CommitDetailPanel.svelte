@@ -15,7 +15,9 @@
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import { untrack } from 'svelte';
+	import { get } from 'svelte/store';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { t, translate, locale } from '$lib/stores/locale';
 
 	interface Props {
 		details: CommitDetails;
@@ -51,11 +53,18 @@
 
 	function handleFileContextMenu(e: MouseEvent, path: string) {
 		const items: ContextMenuItem[] = [
-			{ label: 'Copy file path', action: () => navigator.clipboard.writeText(path) },
-			{ separator: true },
-			{ label: 'View file history', shortcut: 'h', action: () => onhistoryfile?.(path) },
 			{
-				label: 'View blame',
+				label: translate('commit_detail.copy_path'),
+				action: () => navigator.clipboard.writeText(path)
+			},
+			{ separator: true },
+			{
+				label: translate('commit_detail.view_history'),
+				shortcut: 'h',
+				action: () => onhistoryfile?.(path)
+			},
+			{
+				label: translate('commit_detail.view_blame'),
 				action: () => {
 					blameFilePath = path;
 				}
@@ -196,7 +205,7 @@
 	}
 
 	function formatTime(iso: string): string {
-		return new Date(iso).toLocaleString();
+		return new Date(iso).toLocaleString(get(locale));
 	}
 
 	function fileHeaderId(index: number): string {
@@ -208,22 +217,25 @@
 	<div
 		class="flex-1 flex flex-col overflow-hidden bg-gray-900"
 		role="region"
-		aria-label="Diff viewer"
+		aria-label={$t('commit_detail.diff_viewer')}
 	>
 		<div
 			class="flex items-center gap-2 border-b border-gray-700 px-4 py-1.5 shrink-0"
 			role="toolbar"
-			aria-label="Diff controls"
+			aria-label={$t('commit_detail.diff_controls')}
 		>
 			<button
 				class="whitespace-nowrap rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
 				onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
-				aria-label="Toggle diff view mode: {viewMode === 'unified' ? 'unified' : 'side by side'}"
+				aria-label={$t('commit_detail.toggle_view_mode', {
+					mode:
+						viewMode === 'unified' ? $t('commit_detail.unified') : $t('commit_detail.side_by_side')
+				})}
 			>
-				{viewMode === 'unified' ? 'Unified' : 'Side by Side'}
+				{viewMode === 'unified' ? $t('commit_detail.unified') : $t('commit_detail.side_by_side')}
 			</button>
 			<div class="flex items-center gap-1">
-				<span class="text-[10px] text-gray-500">Mode:</span>
+				<span class="text-[10px] text-gray-500">{$t('commit_detail.mode_label')}</span>
 				<button
 					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
 					'normal'
@@ -234,7 +246,7 @@
 						loadAllDiffs();
 					}}
 					role="radio"
-					aria-checked={localDiffMode === 'normal'}>Normal</button
+					aria-checked={localDiffMode === 'normal'}>{$t('preferences.mode_normal')}</button
 				>
 				<button
 					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
@@ -246,7 +258,7 @@
 						loadAllDiffs();
 					}}
 					role="radio"
-					aria-checked={localDiffMode === 'word-diff'}>Word</button
+					aria-checked={localDiffMode === 'word-diff'}>{$t('preferences.mode_word_diff')}</button
 				>
 				<button
 					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
@@ -258,12 +270,12 @@
 						loadAllDiffs();
 					}}
 					role="radio"
-					aria-checked={localDiffMode === 'stat-only'}>Stats</button
+					aria-checked={localDiffMode === 'stat-only'}>{$t('preferences.mode_stat_only')}</button
 				>
 			</div>
 			{#if localDiffMode !== 'stat-only'}
 				<div class="flex items-center gap-1">
-					<span class="text-[10px] text-gray-500">WS:</span>
+					<span class="text-[10px] text-gray-500">{$t('commit_detail.ws_label')}</span>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
 						'none'
@@ -274,7 +286,7 @@
 							loadAllDiffs();
 						}}
 						role="radio"
-						aria-checked={localDiffWhitespace === 'none'}>Show</button
+						aria-checked={localDiffWhitespace === 'none'}>{$t('preferences.ws_show')}</button
 					>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
@@ -286,7 +298,8 @@
 							loadAllDiffs();
 						}}
 						role="radio"
-						aria-checked={localDiffWhitespace === 'ignore-space-change'}>Space</button
+						aria-checked={localDiffWhitespace === 'ignore-space-change'}
+						>{$t('preferences.ws_space')}</button
 					>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
@@ -298,7 +311,8 @@
 							loadAllDiffs();
 						}}
 						role="radio"
-						aria-checked={localDiffWhitespace === 'ignore-all-space'}>All</button
+						aria-checked={localDiffWhitespace === 'ignore-all-space'}
+						>{$t('preferences.ws_all')}</button
 					>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
@@ -310,13 +324,19 @@
 							loadAllDiffs();
 						}}
 						role="radio"
-						aria-checked={localDiffWhitespace === 'ignore-blank-lines'}>Blanks</button
+						aria-checked={localDiffWhitespace === 'ignore-blank-lines'}
+						>{$t('preferences.ws_blanks')}</button
 					>
 				</div>
 			{/if}
 			{#if activeTab === 'patch'}
 				<span class="ml-auto text-xs text-gray-500" role="status">
-					{details.changed_files.length} file{details.changed_files.length !== 1 ? 's' : ''} changed
+					{$t(
+						details.changed_files.length === 1
+							? 'commit_detail.file_count'
+							: 'commit_detail.file_count_plural',
+						{ count: details.changed_files.length }
+					)}
 				</span>
 			{/if}
 		</div>
@@ -326,10 +346,10 @@
 				<h3 class="font-mono text-sm text-gray-300">{blobPath}</h3>
 				<button
 					class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
-					aria-label="Open blame view for {blobPath}"
+					aria-label={$t('commit_detail.view_blame') + ': ' + blobPath}
 					onclick={() => openBlame(blobPath!)}
 				>
-					Blame
+					{$t('commit_detail.blame')}
 				</button>
 			</div>
 		{/if}
@@ -337,13 +357,13 @@
 		<div class="flex-1 overflow-y-auto" bind:this={scrollContainer}>
 			{#if activeTab === 'tree' && blobLoading}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
-					Loading file content...
+					{$t('commit_detail.loading_content')}
 				</div>
 			{:else if activeTab === 'tree' && blobContent !== null}
 				<pre class="p-4 font-mono text-xs text-gray-300 whitespace-pre-wrap">{blobContent}</pre>
 			{:else if activeTab === 'tree' && blobPath && blobContent === null}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
-					Binary file (not displayed)
+					{$t('commit_detail.binary_not_displayed')}
 				</div>
 			{:else}
 				{#if details.info.oid === '__staged__' || details.info.oid === '__unstaged__'}
@@ -362,14 +382,23 @@
 								{details.info.summary}
 							</span>
 							<span class="text-xs text-gray-500">
-								{details.changed_files.length} file{details.changed_files.length !== 1 ? 's' : ''} changed
+								{$t(
+									details.changed_files.length === 1
+										? 'commit_detail.file_count'
+										: 'commit_detail.file_count_plural',
+									{ count: details.changed_files.length }
+								)}
 							</span>
 						</div>
 					</div>
 				{:else}
 					<div class="px-4 py-3 border-b border-gray-800">
 						<div class="flex items-baseline gap-3 text-sm">
-							<span class="font-mono text-gray-500">commit {details.info.oid.substring(0, 7)}</span>
+							<span class="font-mono text-gray-500"
+								>{$t('commit_detail.commit_prefix', {
+									oid: details.info.oid.substring(0, 7)
+								})}</span
+							>
 							{#each details.info.refs as r (r.Branch?.name ?? r.Tag?.name ?? r.Remote?.name ?? '')}
 								{#if r.Branch?.is_head}
 									<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
@@ -384,21 +413,24 @@
 							{/each}
 						</div>
 						<div class="mt-1 text-xs text-gray-400">
-							Author: {details.info.author.name}
+							{$t('commit_detail.author')}
+							{details.info.author.name}
 							<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
 						</div>
 						<div class="text-xs text-gray-400">
-							Date: {formatTime(details.info.author_time)}
+							{$t('commit_detail.date')}
+							{formatTime(details.info.author_time)}
 						</div>
 						{#if details.info.committer.name !== details.info.author.name}
 							<div class="text-xs text-gray-400">
-								Committer: {details.info.committer.name}
+								{$t('commit_detail.committer')}
+								{details.info.committer.name}
 								<span class="text-gray-600">&lt;{details.info.committer.email}&gt;</span>
 							</div>
 						{/if}
 						{#if details.info.parent_oids.length > 0}
 							<div class="text-xs text-gray-500">
-								Parent{details.info.parent_oids.length > 1 ? 's' : ''}:
+								{$t('commit_detail.parents')}
 								{#each details.info.parent_oids as p, i (i)}
 									<span class="font-mono">{formatParent(p)}</span>{i <
 									details.info.parent_oids.length - 1
@@ -416,11 +448,11 @@
 
 				{#if diffsLoading}
 					<div class="flex items-center justify-center py-4 text-sm text-gray-500">
-						Loading diffs...
+						{$t('commit_detail.loading')}
 					</div>
 				{:else if details.changed_files.length === 0}
 					<div class="flex items-center justify-center py-4 text-sm text-gray-500">
-						No changed files
+						{$t('commit_detail.no_changed_files')}
 					</div>
 				{:else}
 					{#each details.changed_files as file, i (file.path)}
@@ -441,16 +473,16 @@
 										>
 									</span>
 								{:else if file.is_binary}
-									<span class="text-[10px] text-gray-500">binary</span>
+									<span class="text-[10px] text-gray-500">{$t('comparison.binary_label')}</span>
 								{:else if file.is_submodule}
-									<span class="text-[10px] text-orange-400">submodule</span>
+									<span class="text-[10px] text-orange-400">{$t('commit_detail.submodule')}</span>
 								{/if}
 								<button
 									class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
-									aria-label="Open blame view for {file.path}"
+									aria-label={$t('commit_detail.view_blame') + ': ' + file.path}
 									onclick={() => openBlame(file.path)}
 								>
-									Blame
+									{$t('commit_detail.blame')}
 								</button>
 							</div>
 							{#if diff}
@@ -463,29 +495,35 @@
 											.join(' ')}
 									</div>
 								{:else if diff.is_binary}
-									<div class="px-4 py-3 text-xs text-gray-500">Binary file (not displayed)</div>
+									<div class="px-4 py-3 text-xs text-gray-500">
+										{$t('commit_detail.binary_not_displayed')}
+									</div>
 								{:else if diff.hunks.length > 0}
 									<div class="p-2">
 										<DiffViewer hunks={diff.hunks} {viewMode} />
 									</div>
 								{:else}
-									<div class="px-4 py-3 text-xs text-gray-500">No content changes</div>
+									<div class="px-4 py-3 text-xs text-gray-500">
+										{$t('commit_detail.no_content_changes')}
+									</div>
 								{/if}
 								{#if diff.truncated_at != null}
 									<div
 										class="flex items-center justify-center gap-3 border-t border-gray-700 py-1.5"
 									>
 										<span class="text-xs text-gray-500">
-											Truncated at {diff.truncated_at} lines
+											{$t('commit_detail.truncated', { count: diff.truncated_at })}
 										</span>
 									</div>
 								{/if}
 							{:else if file.is_binary || file.is_submodule}
 								<div class="px-4 py-3 text-xs text-gray-500">
-									{file.is_submodule ? 'Submodule reference' : 'Binary file (not displayed)'}
+									{file.is_submodule
+										? $t('commit_detail.submodule')
+										: $t('commit_detail.binary_not_displayed')}
 								</div>
 							{:else}
-								<div class="px-4 py-3 text-xs text-gray-500">Loading...</div>
+								<div class="px-4 py-3 text-xs text-gray-500">{$t('common.loading')}</div>
 							{/if}
 						</div>
 					{/each}
@@ -515,9 +553,13 @@
 		class="shrink-0 flex flex-col border-l border-gray-700 bg-gray-900/50 overflow-hidden"
 		style="width: {rightPanelWidth}px;"
 		role="region"
-		aria-label="File list"
+		aria-label={$t('commit_detail.file_list_aria')}
 	>
-		<div class="flex border-b border-gray-700 shrink-0" role="tablist" aria-label="File list tabs">
+		<div
+			class="flex border-b border-gray-700 shrink-0"
+			role="tablist"
+			aria-label={$t('commit_detail.file_list_aria')}
+		>
 			<button
 				role="tab"
 				aria-selected={activeTab === 'patch'}
@@ -528,7 +570,7 @@
 					: 'text-gray-500 hover:text-gray-300'}"
 				onclick={() => switchTab('patch')}
 			>
-				Patch
+				{$t('commit_detail.patch')}
 			</button>
 			<button
 				role="tab"
@@ -540,7 +582,7 @@
 					: 'text-gray-500 hover:text-gray-300'}"
 				onclick={() => switchTab('tree')}
 			>
-				Tree
+				{$t('commit_detail.tree')}
 			</button>
 		</div>
 
@@ -548,16 +590,21 @@
 			{#if activeTab === 'patch'}
 				<button
 					class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
-					aria-label="Scroll to commit comments"
+					aria-label={$t('commit_detail.scroll_to_comments')}
 					onclick={scrollToComments}
 				>
-					<span class="flex-1 text-gray-400">Comments</span>
+					<span class="flex-1 text-gray-400">{$t('commit_detail.comments')}</span>
 				</button>
 				{#each details.changed_files as file, i (file.path)}
 					<button
 						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
-						aria-label="{file.path}, {CHANGE_LETTERS[file.change_type] ??
-							'?'}, {file.additions} additions, {file.deletions} deletions"
+						aria-label={file.path +
+							', ' +
+							(CHANGE_LETTERS[file.change_type] ?? '?') +
+							', ' +
+							$t('commit_detail.changes_added_plural', { count: file.additions }) +
+							', ' +
+							$t('commit_detail.changes_deleted_plural', { count: file.deletions })}
 						onclick={() => scrollToId(fileHeaderId(i))}
 					>
 						<span class="w-4 text-center font-bold {CHANGE_COLORS[file.change_type] ?? ''}">
@@ -570,22 +617,22 @@
 								<span class="text-red-500">{file.deletions > 0 ? '-' + file.deletions : ''}</span>
 							</span>
 						{:else if file.is_binary}
-							<span class="text-[10px] text-gray-500">bin</span>
+							<span class="text-[10px] text-gray-500">{$t('comparison.binary_label')}</span>
 						{:else if file.is_submodule}
-							<span class="text-[10px] text-orange-400">sub</span>
+							<span class="text-[10px] text-orange-400">{$t('commit_detail.submodule')}</span>
 						{/if}
 					</button>
 				{/each}
 			{:else if loadingTree}
-				<div class="px-3 py-4 text-xs text-gray-500">Loading tree...</div>
+				<div class="px-3 py-4 text-xs text-gray-500">{$t('commit_detail.loading_tree')}</div>
 			{:else if fileTree}
 				<div class="border-b border-gray-800 px-2 py-1">
 					<input
 						type="text"
 						class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500 outline-none focus:border-blue-500"
-						placeholder="Search files..."
+						placeholder={$t('commit_detail.search_files')}
 						bind:value={treeSearchQuery}
-						aria-label="Search file tree"
+						aria-label={$t('commit_detail.search_files')}
 					/>
 				</div>
 				<FileTree
@@ -597,7 +644,7 @@
 					filter={treeSearchQuery}
 				/>
 			{:else}
-				<div class="px-3 py-4 text-xs text-gray-500">No file tree</div>
+				<div class="px-3 py-4 text-xs text-gray-500">{$t('commit_detail.no_file_tree')}</div>
 			{/if}
 		</div>
 	</div>

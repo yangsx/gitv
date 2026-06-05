@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
 	import CommitGraph from './CommitGraph.svelte';
 	import CommitRow from './CommitRow.svelte';
@@ -129,7 +130,7 @@
 	}
 </script>
 
-<div class="flex h-full" role="listbox" aria-label="Commit list">
+<div class="flex h-full" role="listbox" aria-label={$t('commit_list.aria')}>
 	<div
 		bind:this={containerEl}
 		class="flex-1 overflow-y-auto"
@@ -137,7 +138,7 @@
 		onkeydown={handleKeydown}
 		tabindex="0"
 		role="listbox"
-		aria-label="Commits"
+		aria-label={$t('commit_list.commits_aria')}
 		aria-activedescendant={selectedOid ? `commit-${selectedOid}` : undefined}
 	>
 		<div style="height: {totalHeight}px; position: relative;">

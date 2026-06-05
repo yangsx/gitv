@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { StashEntry } from '$lib/bindings/types';
 	import { getStashList } from '$lib/bindings/commands';
 
@@ -40,15 +41,15 @@
 </script>
 
 {#if loading}
-	<div class="text-gray-500">Loading stashes...</div>
+	<div class="text-gray-500">{$t('sidebar.loading_stashes')}</div>
 {:else if stashes.length === 0}
-	<div class="text-gray-500 italic">No stashes</div>
+	<div class="text-gray-500 italic">{$t('sidebar.no_stashes')}</div>
 {:else}
 	<div class="space-y-1">
 		{#each stashes as stash (stash.index)}
 			<button
 				class="w-full rounded px-2 py-1.5 text-left hover:bg-gray-800"
-				aria-label="stash@{stash.index}: {stash.message}"
+				aria-label={$t('sidebar.stash_aria', { n: stash.index, message: stash.message })}
 				onclick={() => onstashselect?.(stash.index)}
 			>
 				<div class="flex items-center gap-1">
@@ -63,7 +64,10 @@
 				<div class="mt-0.5 truncate text-gray-400">{stash.message}</div>
 				{#if stash.file_summary.length > 0}
 					<div class="mt-0.5 text-gray-500">
-						{stash.file_summary.length} file{stash.file_summary.length !== 1 ? 's' : ''}
+						{$t(
+							stash.file_summary.length === 1 ? 'sidebar.file_count' : 'sidebar.file_count_plural',
+							{ count: stash.file_summary.length }
+						)}
 					</div>
 				{/if}
 			</button>

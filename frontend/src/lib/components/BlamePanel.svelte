@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { Blame } from '$lib/bindings/types';
 	import { getBlame } from '$lib/bindings/commands';
 
@@ -75,13 +76,13 @@
 <div class="absolute inset-0 z-50 flex flex-col bg-gray-900">
 	<div class="flex items-center justify-between border-b border-gray-700 px-3 py-1.5">
 		<div class="flex items-center gap-2">
-			<span class="text-xs font-medium text-gray-300">Blame:</span>
+			<span class="text-xs font-medium text-gray-300">{$t('blame.title')}</span>
 			<span class="font-mono text-xs text-gray-400">{filePath}</span>
 		</div>
 		<button
 			class="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
 			onclick={onclose}
-			aria-label="Close"
+			aria-label={$t('blame.close')}
 		>
 			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path
@@ -95,17 +96,22 @@
 	</div>
 
 	{#if loading}
-		<div class="flex items-center justify-center py-8 text-sm text-gray-500">Loading blame...</div>
+		<div class="flex items-center justify-center py-8 text-sm text-gray-500">
+			{$t('blame.loading')}
+		</div>
 	{:else if error}
 		<div class="p-4 text-sm text-red-400">{error}</div>
 	{:else if blame}
 		<div class="flex-1 overflow-auto">
-			<table class="w-full border-collapse text-xs" aria-label="Blame for {filePath}">
+			<table
+				class="w-full border-collapse text-xs"
+				aria-label={$t('blame.aria', { file: filePath })}
+			>
 				<thead class="sr-only">
 					<tr>
-						<th scope="col">Line number</th>
-						<th scope="col">Author and date</th>
-						<th scope="col">Content</th>
+						<th scope="col">{$t('blame.line_number')}</th>
+						<th scope="col">{$t('blame.author_date')}</th>
+						<th scope="col">{$t('blame.content')}</th>
 					</tr>
 				</thead>
 				<tbody>

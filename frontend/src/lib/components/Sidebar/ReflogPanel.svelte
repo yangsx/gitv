@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ReflogEntry } from '$lib/bindings/types';
 	import { getReflog } from '$lib/bindings/commands';
+	import { t } from '$lib/stores/locale';
 
 	let {
 		repoPath,
@@ -13,21 +14,16 @@
 	let entries = $state<ReflogEntry[]>([]);
 	let loading = $state(true);
 	let filterOp = $state('');
-	let selectedRef = $state('HEAD');
 
 	$effect(() => {
 		void repoPath;
-		void selectedRef;
 		loadReflog();
 	});
 
 	async function loadReflog() {
 		loading = true;
 		try {
-			entries = await getReflog(
-				repoPath,
-				selectedRef === 'HEAD' ? undefined : `refs/heads/${selectedRef}`
-			);
+			entries = await getReflog(repoPath);
 		} catch {
 			entries = [];
 		} finally {
@@ -48,6 +44,13 @@
 		}
 	}
 
+	function stripReflogPrefix(msg: string): string {
+		return msg.replace(
+			/^(commit(?: \([^)]+\))?|checkout|pull|merge|rebase|reset|revert|cherry-pick|bisect|am|replace|rebase -i(?: \([^)]+\))?):\s*/i,
+			''
+		);
+	}
+
 	let filteredEntries = $derived(
 		filterOp
 			? entries.filter((e) => e.message.toLowerCase().includes(filterOp.toLowerCase()))
@@ -56,38 +59,40 @@
 </script>
 
 <div class="space-y-2">
-	<div class="flex gap-1">
-		<select
-			class="rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-xs text-gray-300"
-			aria-label="Select ref for reflog"
-			bind:value={selectedRef}
-		>
-			<option value="HEAD">HEAD</option>
-		</select>
+	<div class="flex items-center gap-1">
+		<span class="rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-xs text-gray-300">
+			{$t('sidebar.reflog_select')}
+		</span>
 		<input
 			type="text"
 			class="flex-1 rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-xs text-gray-300 placeholder-gray-500"
-			placeholder="Filter operations..."
-			aria-label="Filter reflog operations"
+			placeholder={$t('sidebar.reflog_filter')}
+			aria-label={$t('sidebar.reflog_filter')}
 			bind:value={filterOp}
 		/>
 	</div>
 
 	{#if loading}
-		<div class="text-gray-500">Loading reflog...</div>
+		<div class="text-gray-500">{$t('sidebar.loading_reflog')}</div>
 	{:else if filteredEntries.length === 0}
-		<div class="text-gray-500 italic">No reflog entries</div>
+		<div class="text-gray-500 italic">{$t('sidebar.no_reflog')}</div>
 	{:else}
 		<div class="space-y-0.5">
 			{#each filteredEntries.slice(0, 100) as entry, i (entry.oid + '-' + i)}
 				<button
 					class="w-full rounded px-1.5 py-1 text-left hover:bg-gray-800"
-					aria-label="{entry.message.slice(0, 50)}, {entry.oid.slice(0, 7)}, {entry.author.name}"
+					aria-label={$t('sidebar.reflog_aria', {
+						message: stripReflogPrefix(entry.message).slice(0, 50),
+						oid: entry.oid.slice(0, 7),
+						author: entry.author.name
+					})}
 					onclick={() => onentryselect?.(entry.oid)}
 				>
 					<div class="flex items-center gap-1">
 						<span class="font-mono text-gray-400">{entry.oid.slice(0, 7)}</span>
-						<span class="truncate text-gray-300">{entry.message.slice(0, 50)}</span>
+						<span class="truncate text-gray-300"
+							>{stripReflogPrefix(entry.message).slice(0, 50)}</span
+						>
 					</div>
 					<div class="mt-0.5 text-gray-500">{entry.author.name} · {formatTime(entry.time)}</div>
 				</button>

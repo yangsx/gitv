@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { GraphLayout } from '$lib/bindings/types';
 	import { graphColorMode } from '$lib/stores/repository';
 
@@ -20,13 +21,13 @@
 
 {#if $graphColorMode === 'by-author' && authorColors.length > 0}
 	<div class="flex items-center gap-1 text-[10px] text-gray-400">
-		<span>Authors:</span>
+		<span>{$t('author_legend.label')}</span>
 		<div class="flex gap-0.5">
 			{#each authorColors as color (color)}
 				<span
 					class="inline-block h-2.5 w-2.5 rounded-full"
 					style="background-color: {color}"
-					title="Author"
+					title={$t('author_legend.title')}
 				></span>
 			{/each}
 		</div>

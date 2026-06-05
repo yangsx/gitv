@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Ref } from '$lib/bindings/types';
+	import { t } from '$lib/stores/locale';
 
 	let {
 		refs,
@@ -37,13 +38,15 @@
 	{#if branches.length > 0}
 		<div>
 			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-				Branches
+				{$t('sidebar.branches')}
 			</div>
 			<div class="space-y-0.5">
 				{#each branches as branch (branch.name)}
 					<button
 						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800"
-						aria-label="Branch {branch.name}{branch.is_head ? ' (current)' : ''}"
+						aria-label={branch.is_head
+							? $t('sidebar.branch_aria', { name: branch.name })
+							: $t('sidebar.branch_aria_default', { name: branch.name })}
 						onclick={() => onbranchselect?.(branch.name)}
 						oncontextmenu={(e: MouseEvent) => {
 							e.preventDefault();
@@ -77,7 +80,9 @@
 
 	{#if tags.length > 0}
 		<div>
-			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Tags</div>
+			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+				{$t('sidebar.tags')}
+			</div>
 			<div class="space-y-0.5">
 				{#each tags as tag (tag.name)}
 					<div class="flex items-center gap-1 px-1.5 py-0.5">
@@ -104,7 +109,7 @@
 	{#if remotes.length > 0}
 		<div>
 			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-				Remotes
+				{$t('sidebar.remotes')}
 			</div>
 			<div class="space-y-0.5">
 				{#each remotes as remote (remote.remote + '/' + remote.name)}
