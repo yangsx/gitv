@@ -300,18 +300,16 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 9. THE gitv_Application SHALL display language-specific keyboard shortcuts where applicable
 10. THE gitv_Application SHALL allow the community to contribute additional language translations
 
-### Requirement 22: Filesystem Watching and Auto-Refresh
+### Requirement 22: Manual Refresh
 
-**User Story:** As a developer, I want the UI to update automatically when the repository changes, so that I don't have to manually refresh to see the latest state.
+**User Story:** As a developer, I want to refresh the displayed data when I choose, so that I can see the latest repository state on demand.
 
 #### Acceptance Criteria
 
-1. THE gitv_Application SHALL monitor the repository's `.git` directory for filesystem changes
-2. WHEN filesystem watching is enabled and changes are detected, THE gitv_Application SHALL automatically refresh the displayed data
-3. THE gitv_Application SHALL allow users to disable auto-refresh if desired
-4. THE gitv_Application SHALL debounce rapid filesystem events to avoid excessive refresh operations
-5. WHEN auto-refresh is triggered, THE gitv_Application SHALL maintain the user's current selection and scroll position where possible
-6. THE gitv_Application SHALL indicate visually when data has been auto-refreshed
+1. THE gitv_Application SHALL provide a refresh button in the toolbar
+2. WHEN the refresh button is clicked, THE gitv_Application SHALL reload commits, the graph layout, refs, and working changes
+3. THE gitv_Application SHALL display a loading indicator while the refresh is in progress
+4. THE gitv_Application SHALL show a toast with the commit count after refresh completes
 
 ### Requirement 23: Architecture - Git Logic Decoupling
 
@@ -807,14 +805,13 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 ### Requirement 62: Concurrent Operation Handling
 
-**User Story:** As a developer, I want gitv to handle concurrent operations gracefully (searching while streaming, filtering while loading, auto-refresh during interaction), so that the application never shows inconsistent state or becomes unresponsive.
+**User Story:** As a developer, I want gitv to handle concurrent operations gracefully (searching while streaming, filtering while loading), so that the application never shows inconsistent state or becomes unresponsive.
 
 #### Acceptance Criteria
 
 1. THE gitv_Application SHALL maintain an operation state per tab that tracks the current loading/filtering state: `Idle`, `StreamingCommits`, `Searching`, `ApplyingFilter`
 2. WHEN a user applies a new filter while commit streaming is in progress, THE gitv_Application SHALL cancel the current stream and start a new stream with the updated filter
 3. WHEN a user selects a commit while streaming is in progress, THE gitv_Application SHALL allow the selection and load the commit details concurrently without interrupting the stream
-4. WHEN an auto-refresh is triggered during user interaction, THE gitv_Application SHALL defer the refresh until the current user-initiated operation completes (e.g., filter application finishes)
 5. THE gitv_Application SHALL NOT queue multiple conflicting operations — only the most recent operation SHALL execute, prior conflicting operations SHALL be canceled
 6. THE status bar SHALL indicate the current operation state (e.g., "Loading commits...", "Searching...", "Applying filter...")
 
@@ -850,7 +847,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 1. THE gitv_Application SHALL open bare repositories and display commit history, branches, tags, and the commit graph normally
 2. WHEN a bare repository is opened, THE gitv_Application SHALL disable the "Working Changes" entry (Req 43) since there is no working tree
-3. WHEN a bare repository is opened, THE gitv_Application SHALL disable filesystem watching of the working tree (Req 22) while retaining watching of `.git` objects/refs for external push updates
+3. WHEN a bare repository is opened, THE gitv_Application SHALL disable the "Working Changes" entry — there is no working tree to watch if applicable
 4. THE status bar SHALL indicate when a bare repository is open (e.g., "bare repository" label)
 5. THE file tree browser (Req 44) SHALL display files at HEAD commit only — there is no working directory to browse
 6. WHEN a non-bare repository's `.git` directory is opened directly, THE gitv_Application SHALL treat it as a bare repository
@@ -864,7 +861,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 1. THE gitv_Application SHALL display notifications as transient toast messages that appear and auto-dismiss
 2. THE notification system SHALL support three severity levels: info (auto-dismiss after 3s), warning (auto-dismiss after 5s, amber color), error (manual dismiss only, red color)
 3. WHEN multiple notifications are active simultaneously, THE gitv_Application SHALL stack them vertically without overlapping
-4. THE gitv_Application SHALL use notifications for: auto-refresh events (Req 22.6), clipboard copy confirmations, cache load timing, search completion with match count, and mid-stream errors (Req 63)
+4. THE gitv_Application SHALL use notifications for: refresh completion events (Req 22.2), clipboard copy confirmations, cache load timing, search completion with match count, and mid-stream errors (Req 63)
 5. THE notification area SHALL be positioned in the bottom-right corner of the window, above the status bar
 6. THE notification component SHALL respect reduced-motion preferences (Req 67) — using instant appearance instead of slide-in animations
 
@@ -878,7 +875,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. WHEN `prefers-reduced-motion` is active, THE gitv_Application SHALL use instant transitions instead of animated ones for all state changes
 3. WHEN a modal dialog opens, THE focus SHALL be trapped within the modal; WHEN the modal closes, THE focus SHALL return to the element that opened it
 4. WHEN a programmatic navigation occurs (e.g., clicking a reflog entry navigates to a commit, clicking a stash entry scrolls the graph), THE focus SHALL move to the target element
-5. THE gitv_Application SHALL provide an `aria-live` region for announcing dynamic content changes (commit count updates, search results, auto-refresh events) to screen readers
+5. THE gitv_Application SHALL provide an `aria-live` region for announcing dynamic content changes (commit count updates, search results, refresh events) to screen readers
 6. WHEN a tab is switched, THE focus SHALL move to the commit list in the new tab
 7. WHEN the command palette opens, THE focus SHALL move to the search input; WHEN it closes, THE focus SHALL return to the previously focused element
 

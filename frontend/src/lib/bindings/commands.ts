@@ -19,7 +19,6 @@ import type {
 	Blame,
 	SavedSearch,
 	WorkingChangesDiff,
-	NewCommitsResult,
 	AppPreferences
 } from './types';
 
@@ -192,16 +191,4 @@ export async function getPreferences(): Promise<AppPreferences> {
 
 export async function setPreferences(prefs: AppPreferences): Promise<void> {
 	return timedInvoke<void>('set_preferences', { prefs });
-}
-
-export async function startWatching(path: string): Promise<void> {
-	return timedInvoke<void>('start_watching', { path });
-}
-
-export async function stopWatching(path: string): Promise<void> {
-	return timedInvoke<void>('stop_watching', { path });
-}
-
-export async function getNewCommits(path: string, sinceOid: string): Promise<NewCommitsResult> {
-	return timedInvoke<NewCommitsResult>('get_new_commits', { path, sinceOid });
 }

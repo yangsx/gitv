@@ -10,7 +10,6 @@ const DEFAULTS: AppPreferences = {
 	graph_palette: 'default',
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
-	auto_refresh_enabled: true,
 	theme: 'dark'
 };
 
@@ -27,8 +26,6 @@ export const diffWhitespace = writable<
 		| 'ignore-all-space'
 		| 'ignore-blank-lines'
 );
-export const autoRefreshEnabled = writable<boolean>(DEFAULTS.auto_refresh_enabled);
-
 let loadedPrefs: AppPreferences | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -40,7 +37,6 @@ function toPreferences(): AppPreferences {
 		graph_palette: get(graphPalette),
 		diff_mode: get(diffMode),
 		diff_whitespace: get(diffWhitespace),
-		auto_refresh_enabled: get(autoRefreshEnabled),
 		theme: get(theme)
 	};
 }
@@ -51,8 +47,6 @@ function updateFromPreferences(p: AppPreferences) {
 	theme.set(p.theme);
 	diffMode.set(p.diff_mode);
 	diffWhitespace.set(p.diff_whitespace);
-	autoRefreshEnabled.set(p.auto_refresh_enabled);
-
 	if (p.graph_color_mode === 'by-branch' || p.graph_color_mode === 'by-author') {
 		graphColorMode.set(p.graph_color_mode);
 	}

@@ -17,7 +17,6 @@ roaring = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-notify-debouncer-full = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

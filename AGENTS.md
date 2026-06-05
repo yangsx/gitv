@@ -53,7 +53,7 @@ benches/              # criterion benchmarks
 | App framework | Tauri 2.0 |
 | Git library | gix (gitoxide) |
 | GPU rendering | wgpu |
-| FS watching | notify + notify-debouncer-full |
+| Refresh | Manual (toolbar button) |
 | Frontend | SvelteKit, Svelte 5, TypeScript, Svelte stores |
 | Virtual list | svelte-virtual-scroll-list |
 | Styling | Tailwind CSS |

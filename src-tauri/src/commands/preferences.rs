@@ -60,7 +60,6 @@ pub struct AppPreferences {
     pub graph_palette: ColorPalette,
     pub diff_mode: DiffMode,
     pub diff_whitespace: DiffWhitespace,
-    pub auto_refresh_enabled: bool,
     pub theme: Theme,
 }
 
@@ -73,7 +72,6 @@ impl Default for AppPreferences {
             graph_palette: ColorPalette::Default,
             diff_mode: DiffMode::Normal,
             diff_whitespace: DiffWhitespace::None,
-            auto_refresh_enabled: true,
             theme: Theme::Dark,
         }
     }

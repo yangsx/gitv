@@ -5,8 +5,6 @@ mod state;
 use std::path::PathBuf;
 use tauri::Emitter;
 
-use commands::watch::RepoWatchers;
-
 fn init_tracing() {
     let log_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -76,7 +74,6 @@ pub fn run() {
             }
         }))
         .manage(state::AppState::new())
-        .manage(RepoWatchers::new())
         .invoke_handler(tauri::generate_handler![
             commands::args::get_startup_info,
             commands::repository::open_repository,
@@ -106,9 +103,6 @@ pub fn run() {
             commands::diagnostics::log_frontend_message,
             commands::preferences::get_preferences,
             commands::preferences::set_preferences,
-            commands::watch::start_watching,
-            commands::watch::stop_watching,
-            commands::watch::get_new_commits,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

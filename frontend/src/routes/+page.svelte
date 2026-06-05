@@ -8,10 +8,7 @@
 		getCommitDetails,
 		getRefs,
 		getWorkingChanges,
-		getStartupInfo,
-		startWatching,
-		stopWatching,
-		getNewCommits
+		getStartupInfo
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -19,8 +16,7 @@
 		CommitDetails,
 		Ref,
 		WorkingChangesDiff,
-		FileChange,
-		RepoChangedPayload
+		FileChange
 	} from '$lib/bindings/types';
 	import {
 		repoInfo,
@@ -56,7 +52,7 @@
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
-	import { initPreferences, autoRefreshEnabled, theme } from '$lib/stores/preferences';
+	import { initPreferences, theme } from '$lib/stores/preferences';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -86,8 +82,6 @@
 
 	let unlistenNewRepo: (() => void) | null = null;
 	let unlistenFocus: (() => void) | null = null;
-	let unlistenRepoChanged: (() => void) | null = null;
-	let pendingPayload = $state<RepoChangedPayload | null>(null);
 
 	onMount(() => {
 		registerCommands();
@@ -122,15 +116,6 @@
 			window.focus();
 		}).then((fn) => (unlistenFocus = fn));
 
-		listen<RepoChangedPayload>('repo-changed', (event) => {
-			if (!repoPath) return;
-			if ($operationState !== 'Idle') {
-				pendingPayload = event.payload;
-				return;
-			}
-			refreshRepo(event.payload);
-		}).then((fn) => (unlistenRepoChanged = fn));
-
 		function onResize() {
 			viewportHeight = window.innerHeight;
 		}
@@ -150,15 +135,12 @@
 			cancelAnimationFrame(fpsRafId);
 			unlistenNewRepo?.();
 			unlistenFocus?.();
-			unlistenRepoChanged?.();
-			if (repoPath) stopWatching(repoPath);
 		};
 	});
 
 	let loadError = $state<string | null>(null);
 
 	async function loadRepo(path: string) {
-		pendingPayload = null;
 		operationState.set('LoadingRepo');
 		error.set(null);
 		loadError = null;
@@ -238,78 +220,12 @@
 		}
 	}
 
-	async function refreshRepo(payload: RepoChangedPayload) {
-		if (!repoPath) return;
-		if (payload.event_type === 'index_changed') {
-			try {
-				workingChangesDiff = await getWorkingChanges(repoPath);
-			} catch {
-				workingChangesDiff = null;
-			}
-			return;
-		}
-
-		const latestOid = commits[0]?.oid;
-		if (latestOid) {
-			try {
-				const result = await getNewCommits(repoPath, latestOid);
-				if (result.history_rewritten) {
-					loadRepo(repoPath);
-					return;
-				}
-				if (result.commits.length > 0) {
-					commits = [...result.commits, ...commits];
-					showToast(
-						`${result.commits.length} new commit${result.commits.length > 1 ? 's' : ''}`,
-						'info'
-					);
-
-					if ($selectedOid && !VIRTUAL_OIDS.has($selectedOid)) {
-						const stillExists = commits.some((c) => c.oid === $selectedOid);
-						if (!stillExists) selectedOid.set(null);
-					}
-				}
-			} catch {
-				loadRepo(repoPath);
-				return;
-			}
-		}
-
-		try {
-			allRefs = await getRefs(repoPath);
-		} catch {
-			// keep existing refs
-		}
-
-		try {
-			const layout = await getGraphLayout(repoPath, {
-				hide_merges: $graphHideMerges,
-				orientation: $graphOrientation,
-				color_mode: $graphColorMode,
-				palette: $graphPalette
-			});
-			graphLayout = layout;
-		} catch {
-			// keep existing layout
-		}
-
-		try {
-			workingChangesDiff = await getWorkingChanges(repoPath);
-		} catch {
-			workingChangesDiff = null;
-		}
-	}
-
 	let layoutLoaded = $state(false);
 
-	$effect(() => {
-		void $operationState;
-		if ($operationState === 'Idle' && pendingPayload) {
-			const p = pendingPayload;
-			pendingPayload = null;
-			refreshRepo(p);
-		}
-	});
+	async function manualRefresh() {
+		if (!repoPath) return;
+		loadRepo(repoPath);
+	}
 
 	function makeVirtualCommit(oid: string, summary: string, _fileCount: number): CommitInfo {
 		return {
@@ -405,17 +321,6 @@
 				graphLayout.stash_markers.length,
 				graphLayout.total_columns
 			);
-		}
-	});
-
-	$effect(() => {
-		void $autoRefreshEnabled;
-		if ($repoInfo && repoPath) {
-			if ($autoRefreshEnabled) {
-				startWatching(repoPath).catch((e) => console.error('startWatching failed', e));
-			} else {
-				stopWatching(repoPath).catch(() => {});
-			}
 		}
 	});
 
@@ -732,7 +637,7 @@
 						Merges hidden
 					</span>
 				{/if}
-				<Toolbar onopensettings={() => (showPreferences = true)} />
+				<Toolbar onrefresh={manualRefresh} onopensettings={() => (showPreferences = true)} />
 				{#if graphLayout}
 					<AuthorLegend layout={graphLayout} />
 				{/if}

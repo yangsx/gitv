@@ -5,12 +5,7 @@
 		graphOrientation,
 		graphPalette
 	} from '$lib/stores/repository';
-	import {
-		diffMode,
-		diffWhitespace,
-		autoRefreshEnabled,
-		savePreferences
-	} from '$lib/stores/preferences';
+	import { diffMode, diffWhitespace, savePreferences } from '$lib/stores/preferences';
 
 	interface Props {
 		onclose: () => void;
@@ -109,11 +104,6 @@
 		ws: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
 	) {
 		diffWhitespace.set(ws);
-		savePreferences();
-	}
-
-	function toggleAutoRefresh() {
-		autoRefreshEnabled.update((v) => !v);
 		savePreferences();
 	}
 
@@ -319,36 +309,6 @@
 								</button>
 							{/each}
 						</div>
-					</div>
-				</div>
-			</section>
-
-			<div class="border-t border-gray-800"></div>
-
-			<!-- Behavior Section -->
-			<section>
-				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">Behavior</h3>
-				<div class="space-y-2">
-					<div class="flex items-center justify-between">
-						<div>
-							<span class="text-gray-300">Auto-Refresh</span>
-							<p class="text-gray-500">Watch filesystem and reload on changes</p>
-						</div>
-						<button
-							class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$autoRefreshEnabled
-								? 'bg-blue-600'
-								: 'bg-gray-700'}"
-							onclick={toggleAutoRefresh}
-							role="switch"
-							aria-checked={$autoRefreshEnabled}
-							aria-label="Toggle auto-refresh"
-						>
-							<span
-								class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {$autoRefreshEnabled
-									? 'translate-x-4'
-									: 'translate-x-0'}"
-							></span>
-						</button>
 					</div>
 				</div>
 			</section>

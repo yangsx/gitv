@@ -296,16 +296,6 @@ export interface WorkingChangesDiff {
 	unstaged: FileChange[];
 }
 
-export interface RepoChangedPayload {
-	event_type: string;
-	timestamp: number;
-}
-
-export interface NewCommitsResult {
-	commits: CommitInfo[];
-	history_rewritten: boolean;
-}
-
 export interface AppPreferences {
 	graph_color_mode: 'by-branch' | 'by-author';
 	graph_hide_merges: boolean;
@@ -313,6 +303,5 @@ export interface AppPreferences {
 	graph_palette: 'default' | 'deuteranopia' | 'protanopia' | 'tritanopia';
 	diff_mode: 'normal' | 'word-diff' | 'stat-only';
 	diff_whitespace: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines';
-	auto_refresh_enabled: boolean;
 	theme: 'dark' | 'light';
 }

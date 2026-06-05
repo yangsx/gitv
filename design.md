@@ -792,7 +792,6 @@ pub struct AppSettings {
     pub font_size: u32,
     pub graph_orientation: String,
     pub graph_color_mode: String,
-    pub auto_refresh_enabled: bool,
     pub auto_update_enabled: bool,
     pub color_palette: String,
     pub language: String,
