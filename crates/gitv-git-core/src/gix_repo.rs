@@ -641,7 +641,7 @@ impl Repository for GixRepository {
                         continue;
                     }
                     if let Some(fd) =
-                        unstaged_item_to_file_diff(&repo, &self.path, &iw_item, &mode, &whitespace)?
+                        unstaged_item_to_file_diff(&repo, &iw_item, &mode, &whitespace)?
                     {
                         diffs.push(fd);
                     }
@@ -1606,11 +1606,13 @@ fn compute_hunks_for_deletion_from_data(data: &[u8]) -> Vec<Hunk> {
 
 fn unstaged_item_to_file_diff(
     repo: &gix::Repository,
-    repo_path: &Path,
     item: &gix::status::index_worktree::Item,
     mode: &DiffMode,
     whitespace: &WhitespaceMode,
 ) -> Result<Option<FileDiff>, DiffError> {
+    let repo_path = repo
+        .workdir()
+        .ok_or_else(|| DiffError::Gix("bare repository has no worktree".into()))?;
     match item {
         gix::status::index_worktree::Item::Modification {
             rela_path, entry, ..
