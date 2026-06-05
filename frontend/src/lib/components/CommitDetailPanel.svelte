@@ -11,6 +11,7 @@
 	import BlamePanel from './BlamePanel.svelte';
 	import ResizeHandle from './ResizeHandle.svelte';
 	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
+	import { diffMode, diffWhitespace } from '$lib/stores/preferences';
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -24,14 +25,12 @@
 	let { details, repoPath, onhistoryfile }: Props = $props();
 
 	let activeTab = $state<'patch' | 'tree'>('patch');
+	let localDiffMode = $state($diffMode);
+	let localDiffWhitespace = $state($diffWhitespace);
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
 	let blameFilePath = $state<string | null>(null);
 	let rightPanelWidth = $state(getClampedLayout().rightPanelWidth);
-	let diffMode = $state<'normal' | 'word-diff' | 'stat-only'>('normal');
-	let whitespaceMode = $state<
-		'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
-	>('none');
 	let viewMode = $state<'unified' | 'side-by-side'>('unified');
 
 	let fileDiffs = new SvelteMap<string, FileDiff>();
@@ -89,6 +88,8 @@
 		blobContent = null;
 		blobPath = null;
 		fileDiffs.clear();
+		localDiffMode = $diffMode;
+		localDiffWhitespace = $diffWhitespace;
 		loadAllDiffs();
 	});
 
@@ -101,8 +102,8 @@
 				const diffs = await getWorkingChangesDiffs(
 					repoPath,
 					details.info.oid === '__staged__',
-					diffMode,
-					whitespaceMode
+					localDiffMode,
+					localDiffWhitespace
 				);
 				const map = new SvelteMap<string, FileDiff>();
 				for (const diff of diffs) {
@@ -125,8 +126,8 @@
 					parentOid,
 					details.info.oid,
 					file.path,
-					diffMode,
-					whitespaceMode
+					localDiffMode,
+					localDiffWhitespace
 				);
 				return [file.path, diff] as const;
 			} catch {
@@ -212,34 +213,103 @@
 			aria-label="Diff controls"
 		>
 			<button
-				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
+				class="whitespace-nowrap rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
 				onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
 				aria-label="Toggle diff view mode: {viewMode === 'unified' ? 'unified' : 'side by side'}"
 			>
 				{viewMode === 'unified' ? 'Unified' : 'Side by Side'}
 			</button>
-			<select
-				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-				aria-label="Diff mode"
-				bind:value={diffMode}
-				onchange={loadAllDiffs}
-			>
-				<option value="normal">Normal</option>
-				<option value="word-diff">Word Diff</option>
-				<option value="stat-only">Stat Only</option>
-			</select>
-			{#if diffMode !== 'stat-only'}
-				<select
-					class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-					aria-label="Whitespace mode"
-					bind:value={whitespaceMode}
-					onchange={loadAllDiffs}
+			<div class="flex items-center gap-1">
+				<span class="text-[10px] text-gray-500">Mode:</span>
+				<button
+					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
+					'normal'
+						? 'bg-blue-700/50 text-blue-300'
+						: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+					onclick={() => {
+						localDiffMode = 'normal';
+						loadAllDiffs();
+					}}
+					role="radio"
+					aria-checked={localDiffMode === 'normal'}>Normal</button
 				>
-					<option value="none">Show Whitespace</option>
-					<option value="ignore-space-change">Ignore Space Change</option>
-					<option value="ignore-all-space">Ignore All Space</option>
-					<option value="ignore-blank-lines">Ignore Blank Lines</option>
-				</select>
+				<button
+					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
+					'word-diff'
+						? 'bg-blue-700/50 text-blue-300'
+						: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+					onclick={() => {
+						localDiffMode = 'word-diff';
+						loadAllDiffs();
+					}}
+					role="radio"
+					aria-checked={localDiffMode === 'word-diff'}>Word</button
+				>
+				<button
+					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
+					'stat-only'
+						? 'bg-blue-700/50 text-blue-300'
+						: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+					onclick={() => {
+						localDiffMode = 'stat-only';
+						loadAllDiffs();
+					}}
+					role="radio"
+					aria-checked={localDiffMode === 'stat-only'}>Stats</button
+				>
+			</div>
+			{#if localDiffMode !== 'stat-only'}
+				<div class="flex items-center gap-1">
+					<span class="text-[10px] text-gray-500">WS:</span>
+					<button
+						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
+						'none'
+							? 'bg-blue-700/50 text-blue-300'
+							: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+						onclick={() => {
+							localDiffWhitespace = 'none';
+							loadAllDiffs();
+						}}
+						role="radio"
+						aria-checked={localDiffWhitespace === 'none'}>Show</button
+					>
+					<button
+						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
+						'ignore-space-change'
+							? 'bg-blue-700/50 text-blue-300'
+							: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+						onclick={() => {
+							localDiffWhitespace = 'ignore-space-change';
+							loadAllDiffs();
+						}}
+						role="radio"
+						aria-checked={localDiffWhitespace === 'ignore-space-change'}>Space</button
+					>
+					<button
+						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
+						'ignore-all-space'
+							? 'bg-blue-700/50 text-blue-300'
+							: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+						onclick={() => {
+							localDiffWhitespace = 'ignore-all-space';
+							loadAllDiffs();
+						}}
+						role="radio"
+						aria-checked={localDiffWhitespace === 'ignore-all-space'}>All</button
+					>
+					<button
+						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
+						'ignore-blank-lines'
+							? 'bg-blue-700/50 text-blue-300'
+							: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+						onclick={() => {
+							localDiffWhitespace = 'ignore-blank-lines';
+							loadAllDiffs();
+						}}
+						role="radio"
+						aria-checked={localDiffWhitespace === 'ignore-blank-lines'}>Blanks</button
+					>
+				</div>
 			{/if}
 			{#if activeTab === 'patch'}
 				<span class="ml-auto text-xs text-gray-500" role="status">

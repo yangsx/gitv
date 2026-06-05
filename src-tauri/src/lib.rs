@@ -104,6 +104,8 @@ pub fn run() {
             commands::saved_searches::delete_saved_search,
             commands::diagnostics::log_frontend_error,
             commands::diagnostics::log_frontend_message,
+            commands::preferences::get_preferences,
+            commands::preferences::set_preferences,
             commands::watch::start_watching,
             commands::watch::stop_watching,
             commands::watch::get_new_commits,

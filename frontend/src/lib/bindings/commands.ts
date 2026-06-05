@@ -19,7 +19,8 @@ import type {
 	Blame,
 	SavedSearch,
 	WorkingChangesDiff,
-	NewCommitsResult
+	NewCommitsResult,
+	AppPreferences
 } from './types';
 
 async function timedInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -183,6 +184,14 @@ export interface StartupInfo {
 
 export async function getStartupInfo(): Promise<StartupInfo> {
 	return timedInvoke<StartupInfo>('get_startup_info');
+}
+
+export async function getPreferences(): Promise<AppPreferences> {
+	return timedInvoke<AppPreferences>('get_preferences');
+}
+
+export async function setPreferences(prefs: AppPreferences): Promise<void> {
+	return timedInvoke<void>('set_preferences', { prefs });
 }
 
 export async function startWatching(path: string): Promise<void> {

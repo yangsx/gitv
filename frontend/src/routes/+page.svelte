@@ -55,6 +55,8 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
+	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
+	import { initPreferences, autoRefreshEnabled, theme } from '$lib/stores/preferences';
 
 	let repoPath = $state('');
 	let commits = $state<CommitInfo[]>([]);
@@ -74,6 +76,7 @@
 	let isDragging = $state(false);
 	let isFullscreen = $state(false);
 	let selectedBranch = $state<string | null>(null);
+	let showPreferences = $state(false);
 
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
 
@@ -89,19 +92,23 @@
 	onMount(() => {
 		registerCommands();
 
-		const params = new URLSearchParams(window.location.search);
-		const pathParam = params.get('path');
-		if (pathParam) {
-			repoPath = pathParam;
-			loadRepo(pathParam);
-		} else {
-			getStartupInfo().then((info) => {
-				if (info.paths.length > 0) {
-					repoPath = info.paths[0];
-					loadRepo(info.paths[0]);
-				}
-			});
+		function doStartup() {
+			const params = new URLSearchParams(window.location.search);
+			const pathParam = params.get('path');
+			if (pathParam) {
+				repoPath = pathParam;
+				loadRepo(pathParam);
+			} else {
+				getStartupInfo().then((info) => {
+					if (info.paths.length > 0) {
+						repoPath = info.paths[0];
+						loadRepo(info.paths[0]);
+					}
+				});
+			}
 		}
+
+		initPreferences().then(doStartup, doStartup);
 
 		listen<string[]>('new-repo-request', (event) => {
 			const paths = event.payload;
@@ -206,8 +213,6 @@
 			showToast(`${commitCount} commits loaded`, 'info');
 		}
 		operationState.set('Idle');
-
-		startWatching(path).catch(() => {});
 	}
 
 	function handleOpen() {
@@ -400,6 +405,26 @@
 				graphLayout.stash_markers.length,
 				graphLayout.total_columns
 			);
+		}
+	});
+
+	$effect(() => {
+		void $autoRefreshEnabled;
+		if ($repoInfo && repoPath) {
+			if ($autoRefreshEnabled) {
+				startWatching(repoPath).catch(() => {});
+			} else {
+				stopWatching(repoPath).catch(() => {});
+			}
+		}
+	});
+
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		if ($theme === 'light') {
+			document.documentElement.classList.remove('dark');
+		} else {
+			document.documentElement.classList.add('dark');
 		}
 	});
 
@@ -696,7 +721,7 @@
 						Merges hidden
 					</span>
 				{/if}
-				<Toolbar />
+				<Toolbar onopensettings={() => (showPreferences = true)} />
 				{#if graphLayout}
 					<AuthorLegend layout={graphLayout} />
 				{/if}
@@ -824,6 +849,9 @@
 	{/if}
 	<ToastContainer />
 	<DebugOverlay />
+	{#if showPreferences}
+		<PreferencesModal onclose={() => (showPreferences = false)} />
+	{/if}
 	{#if showCommandPalette}
 		<CommandPalette onclose={() => (showCommandPalette = false)} />
 	{/if}

@@ -36,7 +36,10 @@
 	let commitsByOid = $derived(new Map(commits.map((c) => [c.oid, c])));
 
 	let orderedCommits = $derived(
-		layout.nodes.map((n) => commitsByOid.get(n.oid)).filter((c): c is CommitInfo => c !== undefined)
+		[...layout.nodes]
+			.sort((a, b) => a.row - b.row)
+			.map((n) => commitsByOid.get(n.oid))
+			.filter((c): c is CommitInfo => c !== undefined)
 	);
 
 	let visibleStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - BUFFER));
