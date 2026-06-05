@@ -295,3 +295,13 @@ export interface WorkingChangesDiff {
 	staged: FileChange[];
 	unstaged: FileChange[];
 }
+
+export interface RepoChangedPayload {
+	event_type: string;
+	timestamp: number;
+}
+
+export interface NewCommitsResult {
+	commits: CommitInfo[];
+	history_rewritten: boolean;
+}

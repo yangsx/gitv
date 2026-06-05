@@ -6,3 +6,4 @@ pub mod models;
 pub mod repository;
 pub mod search;
 pub mod stream;
+pub mod watcher;

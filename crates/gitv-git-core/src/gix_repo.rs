@@ -29,7 +29,7 @@ impl GixRepository {
         })
     }
 
-    fn thread_local(&self) -> gix::Repository {
+    pub fn thread_local(&self) -> gix::Repository {
         let mut repo = self.inner.to_thread_local();
         repo.object_cache_size(10 * 1024 * 1024);
         repo

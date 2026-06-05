@@ -18,7 +18,8 @@ import type {
 	StashSplitDiff,
 	Blame,
 	SavedSearch,
-	WorkingChangesDiff
+	WorkingChangesDiff,
+	NewCommitsResult
 } from './types';
 
 async function timedInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -182,4 +183,16 @@ export interface StartupInfo {
 
 export async function getStartupInfo(): Promise<StartupInfo> {
 	return timedInvoke<StartupInfo>('get_startup_info');
+}
+
+export async function startWatching(path: string): Promise<void> {
+	return timedInvoke<void>('start_watching', { path });
+}
+
+export async function stopWatching(path: string): Promise<void> {
+	return timedInvoke<void>('stop_watching', { path });
+}
+
+export async function getNewCommits(path: string, sinceOid: string): Promise<NewCommitsResult> {
+	return timedInvoke<NewCommitsResult>('get_new_commits', { path, sinceOid });
 }

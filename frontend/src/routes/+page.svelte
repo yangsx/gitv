@@ -8,7 +8,10 @@
 		getCommitDetails,
 		getRefs,
 		getWorkingChanges,
-		getStartupInfo
+		getStartupInfo,
+		startWatching,
+		stopWatching,
+		getNewCommits
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -16,7 +19,8 @@
 		CommitDetails,
 		Ref,
 		WorkingChangesDiff,
-		FileChange
+		FileChange,
+		RepoChangedPayload
 	} from '$lib/bindings/types';
 	import {
 		repoInfo,
@@ -79,6 +83,8 @@
 
 	let unlistenNewRepo: (() => void) | null = null;
 	let unlistenFocus: (() => void) | null = null;
+	let unlistenRepoChanged: (() => void) | null = null;
+	let pendingPayload = $state<RepoChangedPayload | null>(null);
 
 	onMount(() => {
 		registerCommands();
@@ -109,6 +115,15 @@
 			window.focus();
 		}).then((fn) => (unlistenFocus = fn));
 
+		listen<RepoChangedPayload>('repo-changed', (event) => {
+			if (!repoPath) return;
+			if ($operationState !== 'Idle') {
+				pendingPayload = event.payload;
+				return;
+			}
+			refreshRepo(event.payload);
+		}).then((fn) => (unlistenRepoChanged = fn));
+
 		function onResize() {
 			viewportHeight = window.innerHeight;
 		}
@@ -128,12 +143,15 @@
 			cancelAnimationFrame(fpsRafId);
 			unlistenNewRepo?.();
 			unlistenFocus?.();
+			unlistenRepoChanged?.();
+			if (repoPath) stopWatching(repoPath);
 		};
 	});
 
 	let loadError = $state<string | null>(null);
 
 	async function loadRepo(path: string) {
+		pendingPayload = null;
 		operationState.set('LoadingRepo');
 		error.set(null);
 		loadError = null;
@@ -188,6 +206,8 @@
 			showToast(`${commitCount} commits loaded`, 'info');
 		}
 		operationState.set('Idle');
+
+		startWatching(path).catch(() => {});
 	}
 
 	function handleOpen() {
@@ -213,7 +233,78 @@
 		}
 	}
 
+	async function refreshRepo(payload: RepoChangedPayload) {
+		if (!repoPath) return;
+		if (payload.event_type === 'index_changed') {
+			try {
+				workingChangesDiff = await getWorkingChanges(repoPath);
+			} catch {
+				workingChangesDiff = null;
+			}
+			return;
+		}
+
+		const latestOid = commits[0]?.oid;
+		if (latestOid) {
+			try {
+				const result = await getNewCommits(repoPath, latestOid);
+				if (result.history_rewritten) {
+					loadRepo(repoPath);
+					return;
+				}
+				if (result.commits.length > 0) {
+					commits = [...result.commits, ...commits];
+					showToast(
+						`${result.commits.length} new commit${result.commits.length > 1 ? 's' : ''}`,
+						'info'
+					);
+
+					if ($selectedOid && !VIRTUAL_OIDS.has($selectedOid)) {
+						const stillExists = commits.some((c) => c.oid === $selectedOid);
+						if (!stillExists) selectedOid.set(null);
+					}
+				}
+			} catch {
+				loadRepo(repoPath);
+				return;
+			}
+		}
+
+		try {
+			allRefs = await getRefs(repoPath);
+		} catch {
+			// keep existing refs
+		}
+
+		try {
+			const layout = await getGraphLayout(repoPath, {
+				hide_merges: $graphHideMerges,
+				orientation: $graphOrientation,
+				color_mode: $graphColorMode,
+				palette: $graphPalette
+			});
+			graphLayout = layout;
+		} catch {
+			// keep existing layout
+		}
+
+		try {
+			workingChangesDiff = await getWorkingChanges(repoPath);
+		} catch {
+			workingChangesDiff = null;
+		}
+	}
+
 	let layoutLoaded = $state(false);
+
+	$effect(() => {
+		void $operationState;
+		if ($operationState === 'Idle' && pendingPayload) {
+			const p = pendingPayload;
+			pendingPayload = null;
+			refreshRepo(p);
+		}
+	});
 
 	function makeVirtualCommit(oid: string, summary: string, _fileCount: number): CommitInfo {
 		return {

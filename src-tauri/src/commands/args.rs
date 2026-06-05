@@ -17,9 +17,6 @@ pub struct StartupInfo {
 #[instrument(fields(command = "get_startup_info"))]
 pub fn get_startup_info() -> StartupInfo {
     StartupInfo {
-        paths: STARTUP_PATHS
-            .get()
-            .cloned()
-            .unwrap_or_default(),
+        paths: STARTUP_PATHS.get().cloned().unwrap_or_default(),
     }
 }

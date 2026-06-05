@@ -7,3 +7,4 @@ pub mod reflog_stash;
 pub mod repository;
 pub mod saved_searches;
 pub mod search;
+pub mod watch;
