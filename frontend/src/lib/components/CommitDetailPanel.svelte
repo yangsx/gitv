@@ -91,7 +91,9 @@
 		fileDiffs.clear();
 		localDiffMode = $diffMode;
 		localDiffWhitespace = $diffWhitespace;
-		untrack(() => { loadAllDiffs(); });
+		untrack(() => {
+			loadAllDiffs();
+		});
 	});
 
 	async function loadAllDiffs() {

@@ -27,6 +27,7 @@
 
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
+	let scrollVersion = $state(0);
 	let containerHeight = $state(800);
 	let rafId = 0;
 	let pendingScrollTop = 0;
@@ -55,6 +56,7 @@
 		if (!rafId) {
 			rafId = requestAnimationFrame(() => {
 				scrollTop = pendingScrollTop;
+				scrollVersion++;
 				rafId = 0;
 			});
 		}
@@ -129,18 +131,6 @@
 
 <div class="flex h-full" role="listbox" aria-label="Commit list">
 	<div
-		class="shrink-0 overflow-hidden"
-		style="width: {graphWidth}px; height: 100%;"
-		aria-hidden="true"
-	>
-		<div style="height: {totalHeight}px; position: relative;">
-			<div style="transform: translateY({visibleStart * rowHeight}px);">
-				<CommitGraph {layout} {rowHeight} {visibleStart} {visibleEnd} />
-			</div>
-		</div>
-	</div>
-
-	<div
 		bind:this={containerEl}
 		class="flex-1 overflow-y-auto"
 		onscroll={onScroll}
@@ -151,17 +141,29 @@
 		aria-activedescendant={selectedOid ? `commit-${selectedOid}` : undefined}
 	>
 		<div style="height: {totalHeight}px; position: relative;">
-			<div style="transform: translateY({visibleStart * rowHeight}px);">
-				{#each visibleCommits as commit (commit.oid)}
-					<CommitRow
-						id="commit-{commit.oid}"
-						{commit}
-						isSelected={commit.oid === selectedOid}
-						isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
-						onclick={onSelect}
-						oncontextmenu={onContextMenu}
+			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
+				<div class="shrink-0 overflow-hidden" style="width: {graphWidth}px;" aria-hidden="true">
+					<CommitGraph
+						{layout}
+						{rowHeight}
+						{visibleStart}
+						{visibleEnd}
+						{scrollVersion}
+						{onSelect}
 					/>
-				{/each}
+				</div>
+				<div class="flex-1 min-w-0">
+					{#each visibleCommits as commit (commit.oid)}
+						<CommitRow
+							id="commit-{commit.oid}"
+							{commit}
+							isSelected={commit.oid === selectedOid}
+							isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
+							onclick={onSelect}
+							oncontextmenu={onContextMenu}
+						/>
+					{/each}
+				</div>
 			</div>
 		</div>
 	</div>

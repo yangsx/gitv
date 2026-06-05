@@ -8,6 +8,8 @@
 		nodeRadius?: number;
 		visibleStart: number;
 		visibleEnd: number;
+		scrollVersion: number;
+		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 	}
 
 	let {
@@ -16,7 +18,9 @@
 		laneWidth = 24,
 		nodeRadius = 4,
 		visibleStart,
-		visibleEnd
+		visibleEnd,
+		scrollVersion,
+		onSelect
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -62,8 +66,22 @@
 	}
 
 	$effect(() => {
+		void scrollVersion;
 		draw(layout);
 	});
+
+	function handleClick(e: MouseEvent) {
+		if (!onSelect) return;
+		const rect = canvas.getBoundingClientRect();
+		const y = e.clientY - rect.top;
+		const row = Math.floor(y / rowHeight) + visibleStart;
+		for (const node of layout.nodes) {
+			if (node.row === row) {
+				onSelect(node.oid, e.ctrlKey || e.metaKey);
+				return;
+			}
+		}
+	}
 
 	function rowY(row: number, startRow: number): number {
 		return (row - startRow) * rowHeight + rowHeight / 2;
@@ -128,4 +146,4 @@
 	}
 </script>
 
-<canvas bind:this={canvas} class="block"></canvas>
+<canvas bind:this={canvas} class="block cursor-pointer" onclick={handleClick}></canvas>
