@@ -1,7 +1,12 @@
 # Agent Instructions
 
 ## Project Status
-**Pre-implementation.** No source code yet. `design.md` (root) is the active design; `requirements.md` (root) has all requirements including new ones (35-41, 52-70) added during architecture review, gitk feature parity analysis, and robustness audit. `.kiro/specs/gitv/` holds the original spec for reference.
+**In development.** Core application has substantial source code in place:
+- **Backend** (`src-tauri/`): Tauri commands for preferences, graph layout, commits, diff, repo operations, saved searches, file watching, diagnostics
+- **Git core** (`crates/gitv-git-core/`): 77 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
+- **Frontend** (`frontend/`): Svelte 5 + TypeScript with CommitGraph (canvas-based), CommitList, CommitDetailPanel (diff/whitespace controls), PreferencesModal (draggable), Toolbar, SearchBar, Sidebar, FileTree, BlamePanel, CommandPalette, ContextMenu, DebugOverlay
+- **Preferences**: Persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with debounced auto-save, applies to graph/diff/view behavior
+- Architecture design in `design.md`; full requirements in `requirements.md`
 
 ## Architecture
 - **Rust + Tauri 2.0** desktop app: Git visualization tool (modern gitk)
@@ -37,6 +42,10 @@ benches/              # criterion benchmarks
 - Panel widths/heights are clamped on restore to min/max bounds — prevents unusable layouts from tiling WMs (Req 59)
 - Structured tracing via `tracing` crate with rolling file logs; debug overlay with FPS/memory/IPC timing (Reqs 68-69)
 - Crash diagnostics captured via panic hook with backtrace, retained as crash logs (Req 70)
+- Preferences persisted as JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with atomic writes; debounced frontend auto-save (300ms) avoids excessive I/O
+- Diff/whitespace controls in CommitDetailPanel use local `$state` overrides (not global preference saves); PreferencesModal sets global defaults
+- Preferences dialog is draggable (no backdrop) to allow flexible placement alongside the graph
+- Graph toolbar simplified — toggle buttons (color mode, hide merges, orientation) moved into Preferences dialog; only gear icon remains on toolbar
 
 ## Tech Stack
 | Layer | Tool |
