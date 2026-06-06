@@ -44,6 +44,10 @@ export async function getRecentRepositories(): Promise<RecentRepository[]> {
 	return timedInvoke<RecentRepository[]>('get_recent_repositories');
 }
 
+export async function saveRecentRepository(path: string): Promise<void> {
+	return timedInvoke<void>('save_recent_repository', { path });
+}
+
 export async function getCommits(path: string): Promise<CommitInfo[]> {
 	return timedInvoke<CommitInfo[]>('get_commits', { path, filter: null });
 }

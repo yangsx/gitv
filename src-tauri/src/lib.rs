@@ -80,6 +80,7 @@ pub fn run() {
             commands::repository::open_repository,
             commands::repository::get_refs,
             commands::repository::get_recent_repositories,
+            commands::repository::save_recent_repository,
             commands::commits::stream_commits,
             commands::commits::get_commits,
             commands::graph::get_graph_layout,

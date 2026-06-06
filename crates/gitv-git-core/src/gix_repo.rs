@@ -17,10 +17,16 @@ impl GixRepository {
         let repo = gix::discover(path).map_err(|e| {
             // gix doesn't expose a structured error kind for this; string match is fragile
             // but currently the only way to distinguish "not a git repo" from other errors
-            if e.to_string().contains("not a git repository") {
+            let err_msg = e.to_string();
+            let lower = err_msg.to_lowercase();
+            if lower.contains("not a git")
+                || lower.contains("could not find")
+                || lower.contains("no git repository")
+                || (lower.contains("repository") && lower.contains("not found"))
+            {
                 GitError::NotAGitRepository(path.display().to_string())
             } else {
-                GitError::Gix(e.to_string())
+                GitError::Gix(err_msg)
             }
         })?;
         Ok(Self {

@@ -25,14 +25,15 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 #### Acceptance Criteria
 
-1. WHEN the gitv application is launched, THE gitv_Application SHALL display a welcome screen with an option to open a repository
-2. WHEN a user selects "Open Repository", THE gitv_Application SHALL display a native file picker dialog
-3. WHEN a user selects a valid Git repository directory, THE gitv_Application SHALL load and display the repository
-4. WHEN a user selects a non-Git directory, THE gitv_Application SHALL display an error message indicating no Git repository was found
-5. THE gitv_Application SHALL remember the last 10 opened repositories for quick access
-6. WHEN a user selects a recently opened repository, THE gitv_Application SHALL load that repository directly
-7. WHEN the recent repositories list is non-empty, THE welcome screen SHALL display them prominently as clickable entries with repository name, path, and last-opened timestamp
-8. WHEN the recent repositories list is empty, THE welcome screen SHALL display only the "Open Repository" button with a message inviting the user to open their first repository
+1. WHEN the gitv application is launched and no repository path is provided via CLI or URL, THE gitv_Application SHALL display a welcome screen with an option to open a repository
+2. WHEN the welcome screen is shown and the recent repositories list is empty, THE native file picker dialog SHALL open automatically (no button click needed); if the dialog is cancelled, A "Browse for Repository…" button SHALL be shown as fallback
+3. WHEN the recent repositories list is non-empty, THE welcome screen SHALL display the list prominently; THE user MAY click a recent entry or the "Browse for Repository…" button
+4. WHEN a user selects a valid Git repository directory (via native dialog, drag-and-drop, CLI arg, or recent repo), THE gitv_Application SHALL load and display the repository
+5. WHEN a user selects a non-Git directory, THE gitv_Application SHALL display a localized, informative error message (e.g., "{path} is not a Git repository") without leaking implementation details (e.g., "gix error")
+6. THE gitv_Application SHALL remember the last 10 opened repositories, persisted to $XDG_CONFIG_HOME/gitv/recent_repos.json with canonicalized paths and atomic writes
+7. WHEN a user selects a recently opened repository, THE gitv_Application SHALL load that repository directly
+8. WHEN the recent repositories list is non-empty, THE welcome screen SHALL display them as clickable entries showing repository name, path, and last-opened timestamp
+9. WHEN the recent repositories list is empty, THE welcome screen SHALL display only the "Browse for Repository…" button with a message inviting the user to open their first repository
 
 ### Requirement 2: Commit History Visualization
 

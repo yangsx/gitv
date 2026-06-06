@@ -1,3 +1,4 @@
+use crate::commands::util;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -88,16 +89,8 @@ impl Default for AppPreferences {
     }
 }
 
-fn preferences_dir() -> Result<PathBuf, String> {
-    let dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("gitv");
-    fs::create_dir_all(&dir).map_err(|e| format!("failed to create config dir: {e}"))?;
-    Ok(dir)
-}
-
 fn preferences_path() -> Result<PathBuf, String> {
-    Ok(preferences_dir()?.join(PREFERENCES_FILENAME))
+    Ok(util::config_dir()?.join(PREFERENCES_FILENAME))
 }
 
 fn load_preferences() -> Result<AppPreferences, String> {

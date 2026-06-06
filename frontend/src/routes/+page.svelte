@@ -8,7 +8,9 @@
 		getCommitDetails,
 		getRefs,
 		getWorkingChanges,
-		getStartupInfo
+		getStartupInfo,
+		getRecentRepositories,
+		saveRecentRepository
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -16,7 +18,8 @@
 		CommitDetails,
 		Ref,
 		WorkingChangesDiff,
-		FileChange
+		FileChange,
+		RecentRepository
 	} from '$lib/bindings/types';
 	import {
 		repoInfo,
@@ -58,6 +61,7 @@
 	let repoPath = $state('');
 	let startupComplete = $state(false);
 	let autoDialogShown = $state(false);
+	let recentRepos = $state<RecentRepository[]>([]);
 	let commits = $state<CommitInfo[]>([]);
 	let graphLayout = $state<GraphLayout | null>(null);
 	let commitDetails = $state<CommitDetails | null>(null);
@@ -157,10 +161,13 @@
 		try {
 			const info = await openRepository(path);
 			repoInfo.set(info);
+			saveRecentRepository(path).catch(() => {});
 		} catch (e: unknown) {
-			const msg = e instanceof Error ? e.message : String(e);
+			const code = e instanceof Error ? e.message : String(e);
+			const msg = code === 'not_a_git_repository'
+				? translate('page.not_a_git_repo', { path })
+				: translate('page.open_failed', { path });
 			error.set(msg);
-			showToast(translate('page.failed_open_repo', { msg }), 'error');
 			operationState.set('Idle');
 			return;
 		}
@@ -239,7 +246,12 @@
 	$effect(() => {
 		if (startupComplete && !$repoInfo && !autoDialogShown) {
 			autoDialogShown = true;
-			browseForRepo();
+			getRecentRepositories().then((r) => {
+				recentRepos = r;
+				if (r.length === 0) {
+					browseForRepo();
+				}
+			});
 		}
 	});
 
@@ -597,6 +609,23 @@
 		isDragging = false;
 	}
 
+	function formatAbsoluteDate(iso: string): string {
+		if (!iso) return '';
+		try {
+			const d = new Date(iso);
+			if (isNaN(d.getTime())) return iso;
+			return d.toLocaleDateString(undefined, {
+				year: 'numeric',
+				month: 'short',
+				day: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit'
+			});
+		} catch {
+			return iso;
+		}
+	}
+
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
 		isDragging = false;
@@ -621,9 +650,11 @@
 >
 	{#if !$repoInfo}
 		<div class="flex flex-1 items-center justify-center" role="main">
-			<div class="w-full max-w-md space-y-4 p-8">
-				<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
-				<p class="text-gray-400">{$t('page.subtitle')}</p>
+			<div class="w-full max-w-md space-y-6 p-8">
+				<div class="space-y-2 text-center">
+					<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
+					<p class="text-gray-400">{$t('page.subtitle')}</p>
+				</div>
 				<div class="flex justify-center">
 					<button
 						class="rounded bg-blue-600 px-6 py-3 text-sm hover:bg-blue-700"
@@ -634,7 +665,34 @@
 					</button>
 				</div>
 				{#if $error}
-					<p class="text-sm text-red-400" role="alert">{$error}</p>
+					<p class="text-sm text-red-400 text-center" role="alert">{$error}</p>
+				{/if}
+				{#if recentRepos.length > 0}
+					<div class="space-y-2">
+						<h2 class="text-xs font-semibold uppercase tracking-wider text-gray-500">
+							{$t('page.recent_title')}
+						</h2>
+						<ul class="space-y-1">
+							{#each recentRepos as repo}
+								<li>
+									<button
+										class="w-full rounded px-3 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800"
+										onclick={() => {
+											repoPath = repo.path;
+											loadRepo(repo.path);
+										}}
+										aria-label={$t('page.recent_aria', { name: repo.name })}
+									>
+										<span class="font-medium">{repo.name}</span>
+										<span class="ml-2 font-mono text-xs text-gray-600">{repo.path}</span>
+										<span class="ml-auto text-xs text-gray-600">{formatAbsoluteDate(repo.last_opened)}</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{:else}
+					<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
 				{/if}
 			</div>
 		</div>
