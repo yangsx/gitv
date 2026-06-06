@@ -29,9 +29,13 @@ impl GixRepository {
                 GitError::Gix(err_msg)
             }
         })?;
+        let root = repo
+            .workdir()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| repo.path().to_path_buf());
         Ok(Self {
             inner: repo.into_sync(),
-            path: path.to_path_buf(),
+            path: root,
         })
     }
 

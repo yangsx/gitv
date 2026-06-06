@@ -8,6 +8,7 @@ use gitv_git_core::repository::Repository;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 use tracing::instrument;
 
@@ -77,6 +78,17 @@ pub fn get_refs(path: String) -> Result<Vec<gitv_git_core::models::Ref>, String>
 #[instrument(fields(command = "get_recent_repositories"))]
 pub fn get_recent_repositories() -> Result<Vec<RecentRepository>, String> {
     load_recent_repos()
+}
+
+#[tauri::command]
+#[instrument(fields(command = "open_in_new_window"))]
+pub fn open_in_new_window(path: String) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("failed to get executable path: {e}"))?;
+    Command::new(exe)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("failed to spawn new instance: {e}"))?;
+    Ok(())
 }
 
 #[tauri::command]

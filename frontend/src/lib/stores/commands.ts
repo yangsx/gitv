@@ -21,6 +21,14 @@ export function getCommands(): Command[] {
 	return [...commands];
 }
 
+export function unregisterCommandsByPrefix(prefix: string) {
+	for (let i = commands.length - 1; i >= 0; i--) {
+		if (commands[i].id.startsWith(prefix)) {
+			commands.splice(i, 1);
+		}
+	}
+}
+
 export function fuzzyMatch(query: string, text: string): number {
 	const q = query.toLowerCase();
 	const t = text.toLowerCase();

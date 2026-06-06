@@ -34,6 +34,10 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 7. WHEN a user selects a recently opened repository, THE gitv_Application SHALL load that repository directly
 8. WHEN the recent repositories list is non-empty, THE welcome screen SHALL display them as clickable entries showing repository name, path, and last-opened timestamp
 9. WHEN the recent repositories list is empty, THE welcome screen SHALL display only the "Browse for Repository…" button with a message inviting the user to open their first repository
+10. WHEN a repository is already open, THE toolbar SHALL display a "Browse for Repository…" button and clickable chips for each recent repository, allowing the user to open without navigating to the welcome screen
+11. WHEN a user selects a subdirectory within a Git repository (e.g., via native dialog or drag-and-drop), THE gitv_Application SHALL discover and use the repository root path, not the subdirectory
+12. THE gitv_Application SHALL support Ctrl+W / Cmd+W to close the current repository and return to the welcome screen, with all per-repository state cleared
+13. THE command palette SHALL list recent repositories under a "Recent" category, allowing the user to open any recent repo by name
 
 ### Requirement 2: Commit History Visualization
 
@@ -376,6 +380,8 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. Each window SHALL have isolated state — its own stores, scroll position, selected commit, filters, and sidebar state
 3. Multiple windows SHALL share the same persistent configuration (preferences, recent repositories cache)
 4. THE gitv_Application SHALL NOT enforce single-instance behavior
+5. THE gitv_Application SHALL provide a keyboard shortcut (Ctrl+Shift+O / Cmd+Shift+O) to open a repository in a new window
+6. THE command palette SHALL provide an "Open Repository in New Window" command
 
 ### Requirement 32: Focused Branch View
 
@@ -446,8 +452,8 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. THE command palette SHALL support fuzzy search for commands and actions
 3. THE command palette SHALL list all available actions with their keyboard shortcuts
 4. THE command palette SHALL support navigation to specific commits by SHA or message search
-5. THE command palette SHALL allow switching between recent repositories
-6. THE command palette SHALL support executing Git operations that would otherwise require menu navigation
+5. THE command palette SHALL allow opening recent repositories by name under a "Recent" category
+6. THE command palette SHALL provide commands for opening, closing, and opening-in-new-window repository operations
 
 ### Requirement 30: Pure Rust Implementation
 
@@ -561,7 +567,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 1. THE gitv_Application SHALL accept a repository path as a command-line argument (e.g., `gitv /path/to/repo`)
 2. WHEN a valid repository path is provided as a CLI argument, THE gitv_Application SHALL open that repository directly, bypassing the welcome screen
 3. WHEN an invalid or non-repository path is provided, THE gitv_Application SHALL display an error and fall back to the welcome screen
-4. THE gitv_Application SHALL support opening multiple paths as separate tabs (e.g., `gitv /repo1 /repo2`)
+4. THE gitv_Application SHALL support opening multiple paths as separate windows (e.g., `gitv /repo1 /repo2` spawns two independent windows)
 
 ### Requirement 43: Uncommitted Changes Diff
 
@@ -596,6 +602,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. Each window SHALL manage its own state independently (commits, graph, selected commit, scroll, filters, sidebar)
 3. Persistent data (preferences, recent repositories) SHALL be shared across instances via the filesystem
 4. THE gitv_Application SHALL NOT implement inter-instance communication or tab management
+5. THE gitv_Application SHALL support opening a repository in a new window via the native file dialog using Ctrl+Shift+O / Cmd+Shift+O or the command palette
 
 ### Requirement 46: Context Menu Actions
 
@@ -615,7 +622,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 #### Acceptance Criteria
 
 1. THE gitv_Application SHALL accept a folder dragged onto its window as a repository open request
-2. WHEN a valid Git repository folder is dropped, THE gitv_Application SHALL open it (in a new tab if a repo is already open)
+2. WHEN a valid Git repository folder is dropped, THE gitv_Application SHALL open it in the current window, replacing the current view
 3. WHEN a non-repository folder is dropped, THE gitv_Application SHALL display an error message
 
 ### Requirement 48: Commit Message Rendering

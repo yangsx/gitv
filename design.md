@@ -2614,6 +2614,14 @@ interface LayoutConfig {
 | Toggle Diff Fullscreen | Ctrl+Shift+M | Cmd+Shift+M |
 | Exit Fullscreen | Escape | Escape |
 
+### Repository Management Shortcuts
+
+| Action | Windows/Linux | macOS |
+|--------|---------------|-------|
+| Open Repository (current window) | Ctrl+O | Cmd+O |
+| Open Repository in New Window | Ctrl+Shift+O | Cmd+Shift+O |
+| Close Repository (back to welcome) | Ctrl+W | Cmd+W |
+
 ### Customizable Shortcuts
 
 ```rust

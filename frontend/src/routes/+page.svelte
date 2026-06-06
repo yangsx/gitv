@@ -9,7 +9,8 @@
 		getWorkingChanges,
 		getStartupInfo,
 		getRecentRepositories,
-		saveRecentRepository
+		saveRecentRepository,
+		openInNewWindow
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -49,7 +50,7 @@
 	import { toggleDebug, tickFps, updateDebugGraphStats } from '$lib/stores/debug';
 	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
 	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
-	import { registerCommand } from '$lib/stores/commands';
+	import { registerCommand, unregisterCommandsByPrefix } from '$lib/stores/commands';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
@@ -94,12 +95,16 @@
 			const pathParam = params.get('path');
 			if (pathParam) {
 				repoPath = pathParam;
-				loadRepo(pathParam).finally(() => { startupComplete = true; });
+				loadRepo(pathParam).finally(() => {
+					startupComplete = true;
+				});
 			} else {
 				getStartupInfo().then((info) => {
 					if (info.paths.length > 0) {
 						repoPath = info.paths[0];
-						loadRepo(info.paths[0]).finally(() => { startupComplete = true; });
+						loadRepo(info.paths[0]).finally(() => {
+							startupComplete = true;
+						});
 					} else {
 						startupComplete = true;
 					}
@@ -133,8 +138,26 @@
 
 	$effect(() => {
 		void $locale;
+		void recentRepos;
 		registerCommands();
 	});
+
+	function closeRepo() {
+		repoPath = '';
+		repoInfo.set(null);
+		selectedOid.set(null);
+		error.set(null);
+		loadError = null;
+		comparisonOid.set(null);
+		commits = [];
+		graphLayout = null;
+		allRefs = [];
+		workingChangesDiff = null;
+		commitDetails = null;
+		selectedBranch = null;
+		layoutLoaded = false;
+		getRecentRepositories().then((r) => (recentRepos = r));
+	}
 
 	async function loadRepo(path: string) {
 		operationState.set('LoadingRepo');
@@ -142,13 +165,17 @@
 		loadError = null;
 		try {
 			const info = await openRepository(path);
+			const repoRoot = info.path;
+			repoPath = repoRoot;
 			repoInfo.set(info);
-			saveRecentRepository(path).catch(() => {});
+			saveRecentRepository(repoRoot).catch(() => {});
+			getRecentRepositories().then((r) => (recentRepos = r));
 		} catch (e: unknown) {
 			const code = e instanceof Error ? e.message : String(e);
-			const msg = code === 'not_a_git_repository'
-				? translate('page.not_a_git_repo', { path })
-				: translate('page.open_failed', { path });
+			const msg =
+				code === 'not_a_git_repository'
+					? translate('page.not_a_git_repo', { path })
+					: translate('page.open_failed', { path });
 			error.set(msg);
 			operationState.set('Idle');
 			return;
@@ -156,7 +183,7 @@
 
 		let commitCount = 0;
 		try {
-			const loadedCommits = await getCommits(path);
+			const loadedCommits = await getCommits(repoPath);
 			commits = loadedCommits;
 			commitCount = loadedCommits.length;
 		} catch (e: unknown) {
@@ -165,7 +192,7 @@
 		}
 
 		try {
-			const layout = await getGraphLayout(path, {
+			const layout = await getGraphLayout(repoPath, {
 				hide_merges: $graphHideMerges,
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
@@ -179,13 +206,13 @@
 		}
 
 		try {
-			allRefs = await getRefs(path);
+			allRefs = await getRefs(repoPath);
 		} catch (e: unknown) {
 			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
 		}
 
 		try {
-			workingChangesDiff = await getWorkingChanges(path);
+			workingChangesDiff = await getWorkingChanges(repoPath);
 		} catch {
 			workingChangesDiff = null;
 		}
@@ -203,6 +230,15 @@
 		if (selected) {
 			repoPath = selected;
 			loadRepo(selected);
+		}
+	}
+
+	async function browseForRepoNewWindow() {
+		const { open } = await import('@tauri-apps/plugin-dialog');
+		const title = translate('page.select_repo_title');
+		const selected = await open({ directory: true, multiple: false, title });
+		if (selected) {
+			openInNewWindow(selected);
 		}
 	}
 
@@ -416,6 +452,16 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'o' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+			e.preventDefault();
+			browseForRepoNewWindow();
+			return;
+		}
+		if (e.key === 'o' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+			e.preventDefault();
+			browseForRepo();
+			return;
+		}
 		if (e.key === 'F12' || (e.key === 'D' && e.ctrlKey && e.shiftKey)) {
 			e.preventDefault();
 			toggleDebug();
@@ -429,6 +475,11 @@
 		if (e.key === 'm' && e.ctrlKey) {
 			e.preventDefault();
 			isFullscreen = !isFullscreen;
+			return;
+		}
+		if (e.key === 'w' && (e.ctrlKey || e.metaKey) && $repoInfo) {
+			e.preventDefault();
+			closeRepo();
 			return;
 		}
 		if (e.key === 'Escape') {
@@ -474,6 +525,41 @@
 	}
 
 	function registerCommands() {
+		registerCommand({
+			id: 'open-repo',
+			label: translate('page.cmd_open_repo'),
+			shortcut: 'Ctrl+O',
+			category: 'File',
+			action: browseForRepo
+		});
+		registerCommand({
+			id: 'open-repo-new-window',
+			label: translate('page.cmd_open_repo_new_window'),
+			shortcut: 'Ctrl+Shift+O',
+			category: 'File',
+			action: browseForRepoNewWindow
+		});
+		registerCommand({
+			id: 'close-repo',
+			label: translate('page.cmd_close_repo'),
+			shortcut: 'Ctrl+W',
+			category: 'File',
+			action: closeRepo
+		});
+
+		unregisterCommandsByPrefix('recent-repo-');
+		recentRepos.forEach((repo, i) => {
+			registerCommand({
+				id: `recent-repo-${i}`,
+				label: repo.name,
+				category: 'Recent',
+				action: () => {
+					repoPath = repo.path;
+					loadRepo(repo.path);
+				}
+			});
+		});
+
 		registerCommand({
 			id: 'toggle-merges',
 			label: translate('page.cmd_toggle_merges'),
@@ -655,7 +741,7 @@
 							{$t('page.recent_title')}
 						</h2>
 						<ul class="space-y-1">
-							{#each recentRepos as repo}
+							{#each recentRepos as repo (repo.path)}
 								<li>
 									<button
 										class="w-full rounded px-3 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800"
@@ -667,7 +753,9 @@
 									>
 										<span class="font-medium">{repo.name}</span>
 										<span class="ml-2 font-mono text-xs text-gray-600">{repo.path}</span>
-										<span class="ml-auto text-xs text-gray-600">{formatAbsoluteDate(repo.last_opened)}</span>
+										<span class="ml-auto text-xs text-gray-600"
+											>{formatAbsoluteDate(repo.last_opened)}</span
+										>
 									</button>
 								</li>
 							{/each}
@@ -701,6 +789,25 @@
 						{$t('page.merges_hidden')}
 					</span>
 				{/if}
+				<button
+					class="rounded bg-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-600 shrink-0"
+					onclick={browseForRepo}
+					aria-label={$t('page.browse_repo')}
+				>
+					{$t('page.browse_repo')}
+				</button>
+				{#each recentRepos as repo (repo.path)}
+					<button
+						class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-600 hover:text-gray-100 shrink-0"
+						onclick={() => {
+							repoPath = repo.path;
+							loadRepo(repo.path);
+						}}
+						title={repo.path}
+					>
+						{repo.name}
+					</button>
+				{/each}
 				<Toolbar onrefresh={manualRefresh} onopensettings={() => (showPreferences = true)} />
 				{#if graphLayout}
 					<AuthorLegend layout={graphLayout} />
