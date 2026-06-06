@@ -21,6 +21,10 @@
 	let showOptions = $state(false);
 	let useRegex = $state(false);
 	let authorFilter = $state('');
+	let shaPrefix = $state('');
+	let dateFrom = $state('');
+	let dateTo = $state('');
+	let filePath = $state('');
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function handleInput() {
@@ -42,19 +46,25 @@
 	}
 
 	async function executeSearch() {
-		if (!inputText && !authorFilter) {
+		if (!inputText && !authorFilter && !shaPrefix && !dateFrom && !dateTo && !filePath) {
 			searchQuery.set(null);
 			searchResults.set([]);
 			return;
 		}
+
+		const date_range =
+			dateFrom || dateTo
+				? { from: dateFrom || undefined, to: dateTo || undefined }
+				: undefined;
 
 		const query = {
 			text: inputText || undefined,
 			use_regex: useRegex,
 			author: authorFilter || undefined,
 			combine_mode: 'And' as const,
-			sha_prefix: undefined,
-			date_range: undefined
+			sha_prefix: shaPrefix || undefined,
+			date_range,
+			file_path: filePath || undefined
 		};
 
 		searchQuery.set(query);
@@ -81,6 +91,10 @@
 	function clearSearch() {
 		inputText = '';
 		authorFilter = '';
+		shaPrefix = '';
+		dateFrom = '';
+		dateTo = '';
+		filePath = '';
 		searchQuery.set(null);
 		searchResults.set([]);
 	}
@@ -140,6 +154,36 @@
 			placeholder={$t('search.author_filter')}
 			aria-label={$t('search.author_filter')}
 			bind:value={authorFilter}
+			oninput={handleInput}
+		/>
+		<input
+			type="text"
+			class="w-28 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
+			placeholder={$t('search.sha_prefix')}
+			aria-label={$t('search.sha_prefix')}
+			bind:value={shaPrefix}
+			oninput={handleInput}
+		/>
+		<input
+			type="date"
+			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+			aria-label={$t('search.date_from')}
+			bind:value={dateFrom}
+			oninput={handleInput}
+		/>
+		<input
+			type="date"
+			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+			aria-label={$t('search.date_to')}
+			bind:value={dateTo}
+			oninput={handleInput}
+		/>
+		<input
+			type="text"
+			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
+			placeholder={$t('search.file_path')}
+			aria-label={$t('search.file_path')}
+			bind:value={filePath}
 			oninput={handleInput}
 		/>
 		<span class="text-xs text-gray-500">{$t('search.sort_by')}</span>

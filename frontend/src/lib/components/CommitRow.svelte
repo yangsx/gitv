@@ -1,17 +1,47 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import type { CommitInfo, Ref } from '$lib/bindings/types';
+	import type { CommitInfo, Ref, Highlight } from '$lib/bindings/types';
 
 	interface Props {
 		commit: CommitInfo;
 		isSelected: boolean;
 		isDimmed?: boolean;
+		highlights?: Highlight[];
 		onclick: (_oid: string, _ctrlKey: boolean) => void;
 		oncontextmenu?: (_e: MouseEvent, _oid: string) => void;
 		id?: string;
 	}
 
-	let { commit, isSelected, isDimmed = false, onclick, oncontextmenu, id }: Props = $props();
+	let { commit, isSelected, isDimmed = false, highlights = [], onclick, oncontextmenu, id }: Props = $props();
+
+	function escapeHtml(s: string): string {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
+	function renderSummary(): string {
+		const summary = commit.summary;
+		if (!highlights || highlights.length === 0) return escapeHtml(summary);
+		const parts: string[] = [];
+		let lastEnd = 0;
+		const sorted = [...highlights].sort((a, b) => a.start - b.start);
+		for (const h of sorted) {
+			if (h.start >= summary.length) break;
+			if (h.start > lastEnd) {
+				parts.push(escapeHtml(summary.slice(lastEnd, h.start)));
+			}
+			const end = Math.min(h.start + h.length, summary.length);
+			if (end > h.start) {
+				parts.push('<mark class="bg-yellow-500/40 rounded px-0.5">');
+				parts.push(escapeHtml(summary.slice(h.start, end)));
+				parts.push('</mark>');
+			}
+			lastEnd = Math.max(lastEnd, end);
+		}
+		if (lastEnd < summary.length) {
+			parts.push(escapeHtml(summary.slice(lastEnd)));
+		}
+		return parts.join('');
+	}
 
 	const STAGED_OID = '__staged__';
 	const UNSTAGED_OID = '__unstaged__';
@@ -62,7 +92,7 @@
 			></span>
 		</span>
 		<span class="min-w-0 truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
-			{commit.summary}
+			{@html renderSummary()}
 		</span>
 	</button>
 {:else}
@@ -104,7 +134,7 @@
 				{/if}
 			{/each}
 		</span>
-		<span class="min-w-0 truncate">{commit.summary}</span>
+		<span class="min-w-0 truncate">{@html renderSummary()}</span>
 		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
 		<span class="shrink-0 text-xs text-gray-600">{formatTime(commit.commit_time)}</span>
 	</button>

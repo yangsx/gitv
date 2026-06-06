@@ -138,6 +138,17 @@ impl SearchEngine {
             ));
         }
 
+        if let Some(ref file_path) = query.file_path
+            && !file_path.is_empty()
+        {
+            let file_results = self.search_file_path(file_path);
+            result_bitmap = Some(Self::combine(
+                result_bitmap,
+                file_results,
+                query.combine_mode,
+            ));
+        }
+
         let bitmap = result_bitmap.unwrap_or_else(|| {
             let mut all = RoaringBitmap::new();
             for i in 0..self.commits.len() as u32 {
@@ -258,6 +269,19 @@ impl SearchEngine {
         }
 
         result.unwrap_or_default()
+    }
+
+    fn search_file_path(&self, path: &str) -> RoaringBitmap {
+        let lower = path.to_lowercase();
+        let mut result = RoaringBitmap::new();
+        for (i, commit) in self.commits.iter().enumerate() {
+            if commit.message.to_lowercase().contains(&lower)
+                || commit.summary.to_lowercase().contains(&lower)
+            {
+                result.insert(i as u32);
+            }
+        }
+        result
     }
 
     fn search_date_range(&self, range: &DateRange) -> RoaringBitmap {

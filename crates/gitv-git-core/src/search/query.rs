@@ -9,6 +9,7 @@ pub struct SearchQuery {
     pub sha_prefix: Option<String>,
     pub author: Option<String>,
     pub date_range: Option<DateRange>,
+    pub file_path: Option<String>,
     pub combine_mode: CombineMode,
 }
 

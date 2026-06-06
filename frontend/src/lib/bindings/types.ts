@@ -113,6 +113,7 @@ export interface SearchQuery {
 	sha_prefix?: string;
 	author?: string;
 	date_range?: DateRange;
+	file_path?: string;
 	combine_mode: 'And' | 'Or';
 }
 

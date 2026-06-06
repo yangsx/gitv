@@ -766,6 +766,13 @@
 		}
 	}
 
+	function handleTagSelect(name: string) {
+		const ref = allRefs.find((r) => 'Tag' in r && r.Tag?.name === name);
+		if (ref && 'Tag' in ref && ref.Tag) {
+			onSelectCommit(ref.Tag.oid);
+		}
+	}
+
 	function handleDragOver(e: DragEvent) {
 		if (e.dataTransfer?.types.includes('Files')) {
 			e.preventDefault();
@@ -939,6 +946,7 @@
 							{selectedBranch}
 							onbranchselect={handleBranchSelect}
 							onbranchcontextmenu={handleBranchContextMenu}
+							ontagselect={handleTagSelect}
 						/>
 					{/snippet}
 					{#snippet stash()}
@@ -1036,6 +1044,7 @@
 									historyRevision++;
 									sidebarGotoTab = 'history';
 								}}
+								oncommitselect={(oid) => onSelectCommit(oid)}
 							/>
 						{:else}
 							<div

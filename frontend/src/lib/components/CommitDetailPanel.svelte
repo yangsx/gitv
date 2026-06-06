@@ -23,9 +23,10 @@
 		details: CommitDetails;
 		repoPath: string;
 		onhistoryfile?: (_path: string) => void;
+		oncommitselect?: (_oid: string) => void;
 	}
 
-	let { details, repoPath, onhistoryfile }: Props = $props();
+	let { details, repoPath, onhistoryfile, oncommitselect }: Props = $props();
 
 	let activeTab = $state<'patch' | 'tree'>('patch');
 	let localDiffMode = $state($diffMode);
@@ -537,6 +538,10 @@
 					{repoPath}
 					filePath={blameFilePath}
 					atCommit={details.info.oid}
+					oncommitclick={(oid) => {
+						blameFilePath = null;
+						oncommitselect?.(oid);
+					}}
 					onclose={() => (blameFilePath = null)}
 				/>
 			</div>

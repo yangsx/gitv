@@ -122,6 +122,7 @@ proptest! {
             sha_prefix: None,
             author: None,
             date_range: None,
+            file_path: None,
             combine_mode: CombineMode::And,
         };
         if let Ok(results) = engine.search(&query) {

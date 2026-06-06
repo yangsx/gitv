@@ -216,16 +216,23 @@ impl Repository for GixRepository {
                 .as_ref()
                 .map(|hid| *hid == target_id)
                 .unwrap_or(false);
+            let annotation = if category.as_deref() == Some("refs/tags/") {
+                read_tag_annotation(&repo, &mut reference)
+            } else {
+                None
+            };
             if let Some(r#ref) = categorize_ref_from_parts(
                 category.as_deref(),
                 name_str,
                 oid,
+                annotation,
                 is_head,
                 &head_ancestors,
             ) {
                 result.push(r#ref);
             }
         }
+
         Ok(result)
     }
 
@@ -995,19 +1002,62 @@ fn build_ref_map(repo: &gix::Repository) -> Result<HashMap<Oid, Vec<Ref>>, GitEr
             .as_ref()
             .map(|hid| *hid == target_id)
             .unwrap_or(false);
-        if let Some(r#ref) =
-            categorize_ref_from_parts(category.as_deref(), name_str, oid, is_head, &HashSet::new())
-        {
+        let annotation = if category.as_deref() == Some("refs/tags/") {
+            read_tag_annotation(repo, &mut reference)
+        } else {
+            None
+        };
+        if let Some(r#ref) = categorize_ref_from_parts(
+            category.as_deref(),
+            name_str,
+            oid,
+            annotation,
+            is_head,
+            &HashSet::new(),
+        ) {
             map.entry(oid).or_default().push(r#ref);
         }
     }
     Ok(map)
 }
 
+fn read_tag_annotation(
+    repo: &gix::Repository,
+    reference: &mut gix::Reference<'_>,
+) -> Option<TagAnnotation> {
+    let direct_id = reference.id();
+    let peeled_id = reference.peel_to_id().ok()?;
+    if direct_id == peeled_id {
+        return None;
+    }
+    let obj = repo.find_object(direct_id).ok()?;
+    if obj.kind != gix::objs::Kind::Tag {
+        return None;
+    }
+    let data = obj.data.as_slice();
+    let tag_ref = gix_object::TagRef::from_bytes(data, gix::hash::Kind::Sha1).ok()?;
+    let tagger = tag_ref.tagger().ok()??;
+    let time_secs: i64 = tagger
+        .time
+        .split(' ')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    Some(TagAnnotation {
+        tagger: Author {
+            name: tagger.name.to_string(),
+            email: tagger.email.to_string(),
+        },
+        message: tag_ref.message.to_string(),
+        time: Utc.timestamp_opt(time_secs, 0).single().unwrap_or_default(),
+    })
+}
+
 fn categorize_ref_from_parts(
     category: Option<&str>,
     name_str: String,
     oid: Oid,
+    annotation: Option<TagAnnotation>,
     is_head: bool,
     head_ancestors: &HashSet<Oid>,
 ) -> Option<Ref> {
@@ -1037,7 +1087,7 @@ fn categorize_ref_from_parts(
         Some("refs/tags/") => Some(Ref::Tag(TagRef {
             name: name_str,
             oid,
-            annotation: None,
+            annotation,
         })),
         _ => None,
     }

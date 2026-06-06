@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
+	import type { CommitInfo, GraphLayout, Highlight } from '$lib/bindings/types';
+	import { searchResults } from '$lib/stores/repository';
 	import CommitGraph from './CommitGraph.svelte';
 	import CommitRow from './CommitRow.svelte';
 
@@ -27,6 +28,8 @@
 		rowHeight = 28,
 		graphWidth = 200
 	}: Props = $props();
+
+	let highlightsByOid = $derived(new Map($searchResults.map((r) => [r.commit_oid, r.highlights])));
 
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
@@ -173,6 +176,7 @@
 							{commit}
 							isSelected={commit.oid === selectedOid}
 							isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
+							highlights={highlightsByOid.get(commit.oid)}
 							onclick={onSelect}
 							oncontextmenu={onContextMenu}
 						/>
