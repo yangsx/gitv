@@ -28,6 +28,7 @@ export const diffWhitespace = writable<
 		| 'ignore-all-space'
 		| 'ignore-blank-lines'
 );
+export const showStashes = writable(true);
 let loadedPrefs: AppPreferences | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 

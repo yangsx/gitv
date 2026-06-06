@@ -8,7 +8,7 @@
 		onstashselect
 	}: {
 		repoPath: string;
-		onstashselect?: (_index: number) => void;
+		onstashselect?: (_stash: StashEntry) => void;
 	} = $props();
 
 	let stashes = $state<StashEntry[]>([]);
@@ -50,7 +50,7 @@
 			<button
 				class="w-full rounded px-2 py-1.5 text-left hover:bg-gray-800"
 				aria-label={$t('sidebar.stash_aria', { n: stash.index, message: stash.message })}
-				onclick={() => onstashselect?.(stash.index)}
+				onclick={() => onstashselect?.(stash)}
 			>
 				<div class="flex items-center gap-1">
 					<span class="text-yellow-400" aria-hidden="true">

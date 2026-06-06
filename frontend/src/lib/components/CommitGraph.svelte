@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { GraphLayout, Color, NodePosition, Edge, StashMarker } from '$lib/bindings/types';
+	import { showStashes } from '$lib/stores/preferences';
 
 	interface Props {
 		layout: GraphLayout;
@@ -10,6 +11,7 @@
 		visibleEnd: number;
 		scrollVersion: number;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
+		onStashSelect?: (_stashIndex: number) => void;
 	}
 
 	let {
@@ -20,10 +22,12 @@
 		visibleStart,
 		visibleEnd,
 		scrollVersion,
-		onSelect
+		onSelect,
+		onStashSelect
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
+	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 
 	const PADDING_LEFT = 12;
 
@@ -59,9 +63,11 @@
 			if (node.row < startRow || node.row > endRow) continue;
 			drawNode(ctx, node, startRow);
 		}
-		for (const stash of l.stash_markers) {
-			if (stash.row < startRow || stash.row > endRow) continue;
-			drawStashMarker(ctx, stash, startRow);
+		if ($showStashes) {
+			for (const stash of l.stash_markers) {
+				if (stash.row < startRow || stash.row > endRow) continue;
+				drawStashMarker(ctx, stash, startRow);
+			}
 		}
 	}
 
@@ -71,16 +77,58 @@
 	});
 
 	function handleClick(e: MouseEvent) {
-		if (!onSelect) return;
+		if (!onSelect && !onStashSelect) return;
 		const rect = canvas.getBoundingClientRect();
+		const x = e.clientX - rect.left;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
+
+		if (onStashSelect && $showStashes) {
+			for (const stash of layout.stash_markers) {
+				if (stash.row === row) {
+					const markerX = colX(stash.column) + nodeRadius + 4;
+					if (Math.abs(x - markerX) < 20) {
+						onStashSelect(stash.stash_index);
+						return;
+					}
+				}
+			}
+		}
+
 		for (const node of layout.nodes) {
 			if (node.row === row) {
-				onSelect(node.oid, e.ctrlKey || e.metaKey);
+				onSelect?.(node.oid, e.ctrlKey || e.metaKey);
 				return;
 			}
 		}
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		const rect = canvas.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		const y = e.clientY - rect.top;
+		const row = Math.floor(y / rowHeight) + visibleStart;
+
+		if ($showStashes) {
+			for (const stash of layout.stash_markers) {
+				if (stash.row === row) {
+					const markerX = colX(stash.column) + nodeRadius + 4;
+					if (Math.abs(x - markerX) < 20) {
+						tooltip = {
+							x: e.clientX - rect.left + 12,
+							y: e.clientY - rect.top - 8,
+							text: stash.message
+						};
+						return;
+					}
+				}
+			}
+		}
+		tooltip = null;
+	}
+
+	function handleMouseLeave() {
+		tooltip = null;
 	}
 
 	function rowY(row: number, startRow: number): number {
@@ -146,4 +194,19 @@
 	}
 </script>
 
-<canvas bind:this={canvas} class="block cursor-pointer" onclick={handleClick}></canvas>
+<canvas
+	bind:this={canvas}
+	class="block cursor-pointer"
+	onclick={handleClick}
+	onmousemove={handleMouseMove}
+	onmouseleave={handleMouseLeave}
+></canvas>
+
+{#if tooltip}
+	<div
+		class="pointer-events-none absolute z-50 max-w-[250px] rounded bg-gray-800 px-2 py-1 text-xs text-gray-200 shadow-lg border border-gray-700"
+		style="left: {tooltip.x}px; top: {tooltip.y}px;"
+	>
+		{tooltip.text}
+	</div>
+{/if}

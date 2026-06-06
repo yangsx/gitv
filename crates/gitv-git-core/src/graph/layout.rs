@@ -68,6 +68,7 @@ pub struct StashMarker {
     pub column: usize,
     pub stash_index: usize,
     pub stash_oid: Oid,
+    pub parent_oid: Oid,
     pub message: String,
 }
 

@@ -11,6 +11,7 @@
 		matchingOids?: Set<string>;
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
 		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
+		onStashSelect?: (_stashIndex: number) => void;
 		rowHeight?: number;
 		graphWidth?: number;
 	}
@@ -22,6 +23,7 @@
 		matchingOids,
 		onSelect,
 		onContextMenu,
+		onStashSelect,
 		rowHeight = 28,
 		graphWidth = 200
 	}: Props = $props();
@@ -146,7 +148,7 @@
 		<div style="height: {totalHeight}px; position: relative;">
 			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
 				{#if layout}
-					<div class="shrink-0 overflow-hidden" style="width: {graphWidth}px;" aria-hidden="true">
+					<div class="shrink-0 overflow-hidden relative" style="width: {graphWidth}px;" aria-hidden="true">
 						<CommitGraph
 							{layout}
 							{rowHeight}
@@ -154,6 +156,7 @@
 							{visibleEnd}
 							{scrollVersion}
 							{onSelect}
+							{onStashSelect}
 						/>
 					</div>
 				{/if}

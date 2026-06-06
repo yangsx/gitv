@@ -606,6 +606,7 @@ impl GraphCalculator {
                     column: gd.column,
                     stash_index: idx,
                     stash_oid: stash.oid,
+                    parent_oid: stash.parent_oid,
                     message: stash.message.clone(),
                 })
             })

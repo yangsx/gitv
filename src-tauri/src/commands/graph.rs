@@ -52,6 +52,7 @@ pub fn get_graph_layout(
         palette: graph_palette,
     };
 
-    let calc = GraphCalculator::new(commits, refs_map, Vec::new(), options);
+    let stashes = repo.stash_list().map_err(|e| e.to_string())?;
+    let calc = GraphCalculator::new(commits, refs_map, stashes, options);
     Ok(calc.calculate_layout())
 }

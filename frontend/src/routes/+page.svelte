@@ -10,7 +10,10 @@
 		getStartupInfo,
 		getRecentRepositories,
 		saveRecentRepository,
-		openInNewWindow
+		openInNewWindow,
+		getStashList,
+		getStashDiff,
+		getStashSplitDiff
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -19,7 +22,10 @@
 		Ref,
 		WorkingChangesDiff,
 		FileChange,
-		RecentRepository
+		RecentRepository,
+		StashEntry,
+		FileDiff,
+		StashSplitDiff
 	} from '$lib/bindings/types';
 	import {
 		repoInfo,
@@ -40,6 +46,7 @@
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
 	import ComparisonPanel from '$lib/components/ComparisonPanel.svelte';
+	import StashDetailPanel from '$lib/components/StashDetailPanel.svelte';
 	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
 	import Sidebar from '$lib/components/Sidebar/Sidebar.svelte';
 	import RefList from '$lib/components/Sidebar/RefList.svelte';
@@ -85,6 +92,11 @@
 	let showPreferences = $state(false);
 
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
+
+	let selectedStash = $state<StashEntry | null>(null);
+	let stashDiff = $state<FileDiff | null>(null);
+	let stashSplitDiff = $state<StashSplitDiff | null>(null);
+	let stashSplitMode = $state(false);
 
 	const STAGED_OID = '__staged__';
 	const UNSTAGED_OID = '__unstaged__';
@@ -158,6 +170,10 @@
 		workingChangesDiff = null;
 		commitDetails = null;
 		selectedBranch = null;
+		selectedStash = null;
+		stashDiff = null;
+		stashSplitDiff = null;
+		stashSplitMode = false;
 		layoutLoaded = false;
 		getRecentRepositories().then((r) => (recentRepos = r));
 	}
@@ -425,6 +441,10 @@
 
 	async function onSelectCommit(oid: string, ctrlKey = false) {
 		selectedBranch = null;
+		selectedStash = null;
+		stashDiff = null;
+		stashSplitDiff = null;
+		stashSplitMode = false;
 		if (ctrlKey && $selectedOid && $selectedOid !== oid) {
 			comparisonOid.set(oid);
 			return;
@@ -483,6 +503,41 @@
 			detailsLoading = false;
 			if ($operationState === 'LoadingDetails') operationState.set('Idle');
 		}
+	}
+
+	async function onStashSelect(stash: StashEntry) {
+		selectedStash = stash;
+		comparisonOid.set(null);
+		selectedOid.set(stash.parent_oid);
+		commitDetails = null;
+		detailsLoading = true;
+		operationState.set('LoadingDetails');
+		try {
+			stashDiff = await getStashDiff(repoPath, stash.index);
+		} catch {
+			stashDiff = null;
+		} finally {
+			detailsLoading = false;
+			if ($operationState === 'LoadingDetails') operationState.set('Idle');
+		}
+		stashSplitDiff = null;
+		stashSplitMode = false;
+	}
+
+	async function onStashSplitToggle() {
+		if (!selectedStash) return;
+		if (stashSplitMode) {
+			stashSplitMode = false;
+			return;
+		}
+		if (!stashSplitDiff) {
+			try {
+				stashSplitDiff = await getStashSplitDiff(repoPath, selectedStash.index);
+			} catch {
+				return;
+			}
+		}
+		stashSplitMode = true;
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -874,7 +929,7 @@
 						/>
 					{/snippet}
 					{#snippet stash()}
-						<StashList {repoPath} />
+						<StashList {repoPath} onstashselect={(stash) => onStashSelect(stash)} />
 					{/snippet}
 					{#snippet reflog()}
 						<ReflogPanel {repoPath} onentryselect={(oid) => onSelectCommit(oid)} />
@@ -907,6 +962,12 @@
 							matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
 							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 							onContextMenu={handleCommitContextMenu}
+							onStashSelect={(idx: number) => {
+								getStashList(repoPath).then((stashes) => {
+									const entry = stashes[idx];
+									if (entry) onStashSelect(entry);
+								});
+							}}
 							graphWidth={savedLayout?.graphWidth ?? 200}
 						/>
 					{/if}
@@ -926,6 +987,25 @@
 					>
 						{#if $comparisonOid}
 							<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
+						{:else if selectedStash}
+							<StashDetailPanel
+								stashIndex={selectedStash.index}
+								stashMessage={selectedStash.message}
+								stashAuthor={selectedStash.author}
+								stashTime={selectedStash.time}
+								fileCount={selectedStash.file_summary.length}
+								diff={stashDiff}
+								splitDiff={stashSplitDiff}
+								splitMode={stashSplitMode}
+								onSplitToggle={onStashSplitToggle}
+								onClose={() => {
+									selectedStash = null;
+									stashDiff = null;
+									stashSplitDiff = null;
+									stashSplitMode = false;
+									selectedOid.set(null);
+								}}
+							/>
 						{:else if detailsLoading}
 							<div
 								class="flex items-center justify-center h-full text-sm text-gray-500"

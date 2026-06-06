@@ -88,6 +88,7 @@ export interface StashMarker {
 	column: number;
 	stash_index: number;
 	stash_oid: string;
+	parent_oid: string;
 	message: string;
 }
 
