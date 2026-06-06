@@ -182,7 +182,15 @@
 		"matches": "{count} 个匹配",
 		"matches_plural": "{count} 个匹配",
 		"search_aria": "搜索提交",
-		"options_aria": "搜索选项"
+		"options_aria": "搜索选项",
+		"sort_by": "排序",
+		"sort_date": "日期",
+		"sort_author": "作者",
+		"sort_sha": "SHA",
+		"sort_asc": "↑",
+		"sort_desc": "↓",
+		"show_nonmatches": "显示不匹配",
+		"hide_nonmatches": "隐藏不匹配"
 	},
 	"blame": {
 		"title": "追溯：",

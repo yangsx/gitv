@@ -6,7 +6,7 @@
 
 	interface Props {
 		commits: CommitInfo[];
-		layout: GraphLayout;
+		layout: GraphLayout | null;
 		selectedOid: string | null;
 		matchingOids?: Set<string>;
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
@@ -38,10 +38,12 @@
 	let commitsByOid = $derived(new Map(commits.map((c) => [c.oid, c])));
 
 	let orderedCommits = $derived(
-		[...layout.nodes]
-			.sort((a, b) => a.row - b.row)
-			.map((n) => commitsByOid.get(n.oid))
-			.filter((c): c is CommitInfo => c !== undefined)
+		layout
+			? [...layout.nodes]
+					.sort((a, b) => a.row - b.row)
+					.map((n) => commitsByOid.get(n.oid))
+					.filter((c): c is CommitInfo => c !== undefined)
+			: commits
 	);
 
 	let visibleStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - BUFFER));
@@ -143,16 +145,18 @@
 	>
 		<div style="height: {totalHeight}px; position: relative;">
 			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
-				<div class="shrink-0 overflow-hidden" style="width: {graphWidth}px;" aria-hidden="true">
-					<CommitGraph
-						{layout}
-						{rowHeight}
-						{visibleStart}
-						{visibleEnd}
-						{scrollVersion}
-						{onSelect}
-					/>
-				</div>
+				{#if layout}
+					<div class="shrink-0 overflow-hidden" style="width: {graphWidth}px;" aria-hidden="true">
+						<CommitGraph
+							{layout}
+							{rowHeight}
+							{visibleStart}
+							{visibleEnd}
+							{scrollVersion}
+							{onSelect}
+						/>
+					</div>
+				{/if}
 				<div class="flex-1 min-w-0">
 					{#each visibleCommits as commit (commit.oid)}
 						<CommitRow

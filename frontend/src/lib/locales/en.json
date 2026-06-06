@@ -182,7 +182,15 @@
 		"matches": "{count} match",
 		"matches_plural": "{count} matches",
 		"search_aria": "Search commits",
-		"options_aria": "Search options"
+		"options_aria": "Search options",
+		"sort_by": "Sort by",
+		"sort_date": "Date",
+		"sort_author": "Author",
+		"sort_sha": "SHA",
+		"sort_asc": "↑",
+		"sort_desc": "↓",
+		"show_nonmatches": "Show non-matches",
+		"hide_nonmatches": "Hide non-matches"
 	},
 	"blame": {
 		"title": "Blame:",

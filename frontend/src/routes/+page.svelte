@@ -31,7 +31,10 @@
 		graphHideMerges,
 		graphOrientation,
 		graphPalette,
-		operationState
+		operationState,
+		sortBy,
+		sortAsc,
+		searchShowMode
 	} from '$lib/stores/repository';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -359,6 +362,37 @@
 			stash_markers: graphLayout.stash_markers.map((s) => ({ ...s, row: s.row + virtualCount })),
 			total_rows: graphLayout.total_rows + virtualCount
 		};
+	});
+
+	let effectiveCommits = $derived.by(() => {
+		let result = displayCommits;
+
+		if ($searchShowMode === 'hide-nonhits' && $matchingOids.size > 0) {
+			result = result.filter((c) => VIRTUAL_OIDS.has(c.oid) || $matchingOids.has(c.oid));
+		}
+
+		const sb = $sortBy;
+		const sa = $sortAsc;
+		if (sb !== 'date' || sa) {
+			const sorted = [...result];
+			const direction = sa ? 1 : -1;
+			if (sb === 'date') {
+				sorted.sort((a, b) => direction * a.author_time.localeCompare(b.author_time));
+			} else if (sb === 'author') {
+				sorted.sort((a, b) => direction * a.author.name.localeCompare(b.author.name));
+			} else if (sb === 'sha') {
+				sorted.sort((a, b) => direction * a.oid.localeCompare(b.oid));
+			}
+			return sorted;
+		}
+
+		return result;
+	});
+
+	let effectiveLayout = $derived.by(() => {
+		if ($searchShowMode === 'hide-nonhits' && $matchingOids.size > 0) return null;
+		if ($sortBy !== 'date' || $sortAsc) return null;
+		return displayLayout;
 	});
 
 	$effect(() => {
@@ -812,38 +846,21 @@
 				{#if graphLayout}
 					<AuthorLegend layout={graphLayout} />
 				{/if}
-				<div class="ml-auto w-80">
+				<div class="ml-auto flex items-center gap-3">
 					<SearchBar {repoPath} />
+					{#if loadError}
+						<span class="flex items-center gap-2 text-xs text-amber-400">
+							{$t('page.loading_incomplete')}
+							<button
+								class="rounded bg-amber-700/50 px-2 py-0.5 text-xs hover:bg-amber-700"
+								onclick={() => loadRepo(repoPath)}
+								aria-label={$t('page.retry')}
+							>
+								{$t('page.retry')}
+							</button>
+						</span>
+					{/if}
 				</div>
-				{#if loadError}
-					<span class="flex items-center gap-2 text-xs text-amber-400">
-						{$t('page.loading_incomplete')}
-						<button
-							class="rounded bg-amber-700/50 px-2 py-0.5 text-xs hover:bg-amber-700"
-							onclick={() => loadRepo(repoPath)}
-							aria-label={$t('page.retry')}
-						>
-							{$t('page.retry')}
-						</button>
-					</span>
-				{/if}
-				{#if $operationState === 'LoadingRepo'}
-					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>{$t('page.loading_repo')}</span
-					>
-				{:else if $operationState === 'LoadingDetails'}
-					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>{$t('page.loading_details')}</span
-					>
-				{:else if $operationState === 'Searching'}
-					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>{$t('page.searching')}</span
-					>
-				{:else if $operationState === 'ApplyingFilter'}
-					<span class="text-xs text-gray-500" role="status" aria-live="polite"
-						>{$t('page.applying_filter')}</span
-					>
-				{/if}
 			</header>
 		{/if}
 		<div class="flex flex-1 overflow-hidden">
@@ -882,12 +899,12 @@
 				aria-label={$t('commit_list.aria')}
 			>
 				<div class="flex-1 overflow-hidden">
-					{#if displayLayout}
+					{#if effectiveCommits.length > 0}
 						<CommitList
-							commits={displayCommits}
-							layout={displayLayout}
+							commits={effectiveCommits}
+							layout={effectiveLayout}
 							selectedOid={$selectedOid}
-							matchingOids={$matchingOids}
+							matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
 							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 							onContextMenu={handleCommitContextMenu}
 							graphWidth={savedLayout?.graphWidth ?? 200}

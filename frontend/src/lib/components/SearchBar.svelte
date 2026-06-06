@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { searchCommits } from '$lib/bindings/commands';
-	import { searchQuery, searchResults, operationState } from '$lib/stores/repository';
+	import {
+		searchQuery,
+		searchResults,
+		operationState,
+		sortBy,
+		sortAsc,
+		searchShowMode
+	} from '$lib/stores/repository';
 	import { showToast } from '$lib/stores/toast';
 	import { t, translate } from '$lib/stores/locale';
 
@@ -135,5 +142,40 @@
 			bind:value={authorFilter}
 			oninput={handleInput}
 		/>
+		<span class="text-xs text-gray-500">{$t('search.sort_by')}</span>
+		<select
+			class="rounded border border-gray-700 bg-gray-800 px-1.5 py-1 text-xs text-gray-300"
+			aria-label={$t('search.sort_by')}
+			value={$sortBy}
+			onchange={(e) =>
+				sortBy.set((e.target as HTMLSelectElement).value as 'date' | 'author' | 'sha')}
+		>
+			<option value="date">{$t('search.sort_date')}</option>
+			<option value="author">{$t('search.sort_author')}</option>
+			<option value="sha">{$t('search.sort_sha')}</option>
+		</select>
+		<button
+			class="rounded px-1.5 py-1 text-xs border border-gray-700 {$sortAsc
+				? 'bg-gray-600 text-gray-200'
+				: 'bg-gray-800 text-gray-400 hover:text-gray-200'}"
+			onclick={() => sortAsc.update((v) => !v)}
+			aria-label={$sortAsc ? $t('search.sort_desc') : $t('search.sort_asc')}
+		>
+			{$sortAsc ? $t('search.sort_asc') : $t('search.sort_desc')}
+		</button>
+		<button
+			class="rounded px-2 py-1 text-xs border border-gray-700 {$searchShowMode === 'hide-nonhits'
+				? 'bg-blue-600 text-white'
+				: 'bg-gray-800 text-gray-400 hover:text-gray-200'}"
+			onclick={() =>
+				searchShowMode.update((v) => (v === 'hide-nonhits' ? 'insitu' : 'hide-nonhits'))}
+			aria-label={$searchShowMode === 'hide-nonhits'
+				? $t('search.show_nonmatches')
+				: $t('search.hide_nonmatches')}
+		>
+			{$searchShowMode === 'hide-nonhits'
+				? $t('search.show_nonmatches')
+				: $t('search.hide_nonmatches')}
+		</button>
 	</div>
 {/if}
