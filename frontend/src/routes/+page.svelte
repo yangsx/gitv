@@ -56,6 +56,8 @@
 	import { t, translate, locale } from '$lib/stores/locale';
 
 	let repoPath = $state('');
+	let startupComplete = $state(false);
+	let autoDialogShown = $state(false);
 	let commits = $state<CommitInfo[]>([]);
 	let graphLayout = $state<GraphLayout | null>(null);
 	let commitDetails = $state<CommitDetails | null>(null);
@@ -92,12 +94,14 @@
 			const pathParam = params.get('path');
 			if (pathParam) {
 				repoPath = pathParam;
-				loadRepo(pathParam);
+				loadRepo(pathParam).finally(() => { startupComplete = true; });
 			} else {
 				getStartupInfo().then((info) => {
 					if (info.paths.length > 0) {
 						repoPath = info.paths[0];
-						loadRepo(info.paths[0]);
+						loadRepo(info.paths[0]).finally(() => { startupComplete = true; });
+					} else {
+						startupComplete = true;
 					}
 				});
 			}
@@ -203,9 +207,13 @@
 		operationState.set('Idle');
 	}
 
-	function handleOpen() {
-		if (repoPath.trim()) {
-			loadRepo(repoPath.trim());
+	async function browseForRepo() {
+		const { open } = await import('@tauri-apps/plugin-dialog');
+		const title = translate('page.select_repo_title');
+		const selected = await open({ directory: true, multiple: false, title });
+		if (selected) {
+			repoPath = selected;
+			loadRepo(selected);
 		}
 	}
 
@@ -227,6 +235,13 @@
 	}
 
 	let layoutLoaded = $state(false);
+
+	$effect(() => {
+		if (startupComplete && !$repoInfo && !autoDialogShown) {
+			autoDialogShown = true;
+			browseForRepo();
+		}
+	});
 
 	async function manualRefresh() {
 		if (!repoPath) return;
@@ -609,21 +624,13 @@
 			<div class="w-full max-w-md space-y-4 p-8">
 				<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
 				<p class="text-gray-400">{$t('page.subtitle')}</p>
-				<div class="flex gap-2">
-					<input
-						type="text"
-						class="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
-						placeholder={$t('page.repo_placeholder')}
-						aria-label={$t('page.open')}
-						bind:value={repoPath}
-						onkeydown={(e) => e.key === 'Enter' && handleOpen()}
-					/>
+				<div class="flex justify-center">
 					<button
-						class="rounded bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700"
-						onclick={handleOpen}
-						aria-label={$t('page.open')}
+						class="rounded bg-blue-600 px-6 py-3 text-sm hover:bg-blue-700"
+						onclick={browseForRepo}
+						aria-label={$t('page.browse_repo')}
 					>
-						{$t('page.open')}
+						{$t('page.browse_repo')}
 					</button>
 				</div>
 				{#if $error}

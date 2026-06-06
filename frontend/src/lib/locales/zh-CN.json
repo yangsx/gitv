@@ -88,9 +88,10 @@
 	"page": {
 		"title": "gitv",
 		"subtitle": "现代化 Git 仓库可视化工具",
-		"repo_placeholder": "/路径/到/仓库",
-		"open": "打开",
+		"browse_repo": "选择仓库文件夹…",
+		"select_repo_title": "选择 Git 仓库",
 		"retry": "重试",
+		"opening_repo": "正在打开仓库...",
 		"loading_repo": "正在加载仓库...",
 		"loading_details": "正在加载详情...",
 		"searching": "正在搜索...",

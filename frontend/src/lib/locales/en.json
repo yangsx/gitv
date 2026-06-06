@@ -88,9 +88,10 @@
 	"page": {
 		"title": "gitv",
 		"subtitle": "Modern Git repository visualizer",
-		"repo_placeholder": "/path/to/repository",
-		"open": "Open",
+		"browse_repo": "Browse for Repository…",
+		"select_repo_title": "Select Git Repository",
 		"retry": "Retry",
+		"opening_repo": "Opening repository...",
 		"loading_repo": "Loading repository...",
 		"loading_details": "Loading details...",
 		"searching": "Searching...",
