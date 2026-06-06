@@ -148,13 +148,18 @@
 		<div style="height: {totalHeight}px; position: relative;">
 			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
 				{#if layout}
-					<div class="shrink-0 overflow-hidden relative" style="width: {graphWidth}px;" aria-hidden="true">
+					<div
+						class="shrink-0 overflow-hidden relative"
+						style="width: {graphWidth}px;"
+						aria-hidden="true"
+					>
 						<CommitGraph
 							{layout}
 							{rowHeight}
 							{visibleStart}
 							{visibleEnd}
 							{scrollVersion}
+							{selectedOid}
 							{onSelect}
 							{onStashSelect}
 						/>

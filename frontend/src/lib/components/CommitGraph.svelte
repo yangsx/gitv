@@ -10,6 +10,7 @@
 		visibleStart: number;
 		visibleEnd: number;
 		scrollVersion: number;
+		selectedOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onStashSelect?: (_stashIndex: number) => void;
 	}
@@ -22,6 +23,7 @@
 		visibleStart,
 		visibleEnd,
 		scrollVersion,
+		selectedOid,
 		onSelect,
 		onStashSelect
 	}: Props = $props();
@@ -142,6 +144,14 @@
 	function drawNode(ctx: CanvasRenderingContext2D, node: NodePosition, startRow: number) {
 		const x = colX(node.column);
 		const y = rowY(node.row, startRow);
+
+		if (node.oid === selectedOid) {
+			ctx.beginPath();
+			ctx.arc(x, y, nodeRadius + 3, 0, Math.PI * 2);
+			ctx.strokeStyle = '#60a5fa';
+			ctx.lineWidth = 2;
+			ctx.stroke();
+		}
 
 		ctx.globalAlpha = node.is_dimmed ? 0.35 : 1.0;
 		ctx.beginPath();
