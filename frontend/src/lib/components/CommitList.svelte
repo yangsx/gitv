@@ -149,12 +149,13 @@
 			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
 				{#if layout}
 					<div
-						class="shrink-0 overflow-hidden relative"
+						class="shrink-0 overflow-x-auto overflow-y-hidden relative"
 						style="width: {graphWidth}px;"
 						aria-hidden="true"
 					>
 						<CommitGraph
 							{layout}
+							{commits}
 							{rowHeight}
 							{visibleStart}
 							{visibleEnd}
