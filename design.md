@@ -141,26 +141,21 @@ graph TB
 
 **Alternative Considered**: femtovg was considered but wgpu provides more control for custom graph rendering with virtualization.
 
-#### ADR-004: Tab State Isolation (Req 31)
+#### ADR-004: Multi-Instance Architecture
 
-**Decision**: Each tab maintains isolated state with its own repository connection, scroll position, filters, and selections.
+**Decision**: Each repository opens in its own independent window (multi-instance), not as tabs in a shared window.
 
 **Rationale**:
-- Multiple repositories can be open simultaneously without state conflicts
-- Tab state can be serialized independently for persistence
-- Switching tabs is instant (no need to reload data)
-- Memory efficient - only active tab needs full rendering resources
-
-**Implementation**:
-- `TabState` struct contains all per-tab state
-- `TabSession` manages the collection of tabs
-- On app close, `TabSession` is serialized to storage
-- On app open, `TabSession` is deserialized and tabs restored
+- Each window has fully isolated state — no tab-store abstraction needed
+- Multiple repos can be viewed side-by-side across monitors
+- Process isolation: one crashed window doesn't take down others
+- Simpler implementation: each window is a fresh Svelte app with its own stores
+- No inter-instance IPC or tab serialization logic required
 
 **Consequences**:
-- Each tab holds Git repository connection and cached data
-- Memory usage scales with number of open tabs
-- Tab switching requires context switch in UI components
+- Taskbar shows multiple entries for multiple repos
+- Higher total memory than tab-based approach
+- Shared persistent data (preferences, recent repos cache) read/written independently by each instance
 
 #### ADR-005: Branch View Filtering Architecture (Req 32)
 
@@ -868,7 +863,6 @@ struct Cli {
 // 3. If repo_path + revision_range: open repo with range filter pre-applied
 // 4. If additional flags (--branches, --author, --): apply as initial filters
 // 5. Invalid revision ranges: show error, fall back to full history
-// 6. Subsequent launches: send args to existing instance via single-instance IPC
 ```
 
 ### Frontend Components (Svelte)
@@ -884,13 +878,10 @@ frontend/
 │   ├── app.html                      # HTML shell
 │   ├── app.css                       # Global Tailwind styles
 │   ├── routes/
-│   ├── +layout.svelte                # Root layout (TabBar, global modals)
+│   ├── +layout.svelte                # Root layout (global modals)
 │   └── +page.svelte                  # Main page (Welcome / Repo view)
 ├── lib/
 │   ├── components/
-│   │   ├── TabBar.svelte             (Req 31: multiple repository tabs)
-│   │   ├── Tab.svelte
-│   │   ├── NewTabButton.svelte
 │   │   ├── WelcomeScreen.svelte      (shown when no repo is open)
 │   │   │   ├── RecentReposList.svelte    (prominent when non-empty: name, path, timestamp)
 │   │   │   ├── OpenRepoButton.svelte
@@ -951,7 +942,6 @@ frontend/
 │   ├── stores/
 │   │   ├── app.svelte.ts               # Global app state
 │   │   ├── repository.svelte.ts        # Repository data store
-│   │   ├── tabs.svelte.ts              # Tab session store (Req 31)
 │   │   ├── comparison.svelte.ts        # Two-commit comparison state
 │   │   └── ui.svelte.ts                # UI preferences (theme, layout, fullscreen)
 │   │   └── debug.svelte.ts              # Debug overlay state (Req 69)
@@ -1226,33 +1216,6 @@ Two-commit diff comparison for arbitrary commit pairs.
 /// Unique object identifier — 20-byte binary SHA-1
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Oid([u8; 20]);
-
-// ===== Tab State Models (Req 31) =====
-
-/// Unique tab identifier
-pub type TabId = String;
-
-/// Tab state for a single repository
-pub struct TabState {
-    pub id: TabId,
-    pub repository_path: PathBuf,
-    pub repository_name: String,
-    pub display_name: String,
-    pub parent_dir: Option<String>,
-    pub scroll_position: u64,
-    pub selected_commit: Option<Oid>,
-    pub selected_file: Option<PathBuf>,
-    pub filters: FilterState,
-    pub branch_view_mode: BranchViewMode,
-    pub file_tree_search: Option<String>,
-    pub last_accessed: DateTime<Utc>,
-}
-
-/// Full tab session state for persistence
-pub struct TabSession {
-    pub tabs: Vec<TabState>,
-    pub active_tab_id: Option<TabId>,
-}
 
 /// Branch view mode (Req 32)
 pub struct BranchViewMode {
@@ -1617,8 +1580,6 @@ State is managed via Svelte stores in `src/stores/`. Svelte 5 runes (`$state`, `
 ```typescript
 // src/stores/app.svelte.ts
 
-let tabs = $state<TabState[]>([]);
-let activeTabId = $state<string | null>(null);
 let repository = $state<RepositoryState | null>(null);
 let recentRepositories = $state<RecentRepository[]>([]);
 
@@ -1665,16 +1626,13 @@ let isLoading = $state<boolean>(false);
 let loadingProgress = $state<number>(0);
 let error = $state<ErrorInfo | null>(null);
 
-// Per-tab operation state (Req 62)
 let operationState = $state<OperationState>("idle");
 let loadIncomplete = $state<boolean>(false);
 
 type OperationState = "idle" | "streaming" | "searching" | "applying-filter";
-// Auto-refresh is deferred when state != "idle" (Req 62.4).
 // "User interaction" that defers refresh = applying filter, comparison selection, drag operations.
 // Scroll, selection, and hover do NOT defer refresh — they are non-mutating (Req 22.5).
 
-let activeTab = $derived(tabs.find((t) => t.id === activeTabId) ?? null);
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -1704,8 +1662,6 @@ function restoreLayout(saved: PersistedLayout, windowWidth: number, windowHeight
 
 export function getAppState() {
   return {
-    get tabs() { return tabs; },
-    get activeTabId() { return activeTabId; },
     get repository() { return repository; },
   };
 }
@@ -1739,39 +1695,6 @@ export function clearComparison() {
   commitB = null;
   comparisonDiff = null;
 }
-```
-
-```typescript
-// src/stores/tabs.svelte.ts
-
-interface TabState {
-  id: string;
-  repositoryPath: string;
-  repositoryName: string;
-  displayName: string;
-  parentDir?: string;
-  isActive: boolean;
-  scrollPosition: number;
-  selectedCommit: string | null;
-  selectedFile: string | null;
-  filters: FilterState;
-  branchViewMode: BranchViewMode;
-  fileTreeSearch: string;
-  lastAccessed: Date;
-}
-
-let tabSession = $state<{ tabs: TabState[]; activeTabId: string | null }>({
-  tabs: [],
-  activeTabId: null,
-});
-
-$effect(() => {
-  persistTabSession(tabSession);
-});
-
-export function addTab(tab: TabState) { /* ... */ }
-export function removeTab(tabId: string) { /* ... */ }
-export function switchTab(tabId: string) { /* ... */ }
 ```
 
 ```typescript
@@ -2429,7 +2352,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Bare repository (opens normally, working changes disabled, status bar shows "bare repository")
 - Toast notifications (auto-refresh, copy confirmation, error toasts)
 - Reduced motion (verify instant transitions when OS setting is active)
-- Focus management (modal open/close, command palette, tab switch, programmatic navigation)
+- Focus management (modal open/close, command palette, programmatic navigation)
 
 ### Performance Benchmarks
 
@@ -2683,16 +2606,6 @@ interface LayoutConfig {
 //   Branch list → copy branch name
 //   Diff viewer → copy selected diff lines
 
-### Tab Navigation Shortcuts (Req 31)
-
-| Action | Windows/Linux | macOS |
-|--------|---------------|-------|
-| Next Tab | Ctrl+Tab | Ctrl+Tab |
-| Previous Tab | Ctrl+Shift+Tab | Ctrl+Shift+Tab |
-| Close Tab | Ctrl+W | Cmd+W |
-| New Tab | Ctrl+T | Cmd+T |
-| Switch to Tab 1-9 | Ctrl+1-9 | Cmd+1-9 |
-
 ### Fullscreen Shortcuts (Req 33)
 
 | Action | Windows/Linux | macOS |
@@ -2738,7 +2651,6 @@ pub struct KeyBinding {
   clicking reflog entry → focus moves to target commit in list,
   clicking stash entry → focus moves to stash marker
 - Modal focus trap: focus trapped inside open modals, returns to opener on close (Req 67.3)
-- Tab switch: focus moves to commit list in new tab (Req 67.6)
 - Command palette: focus moves to search input on open, returns on close (Req 67.7)
 
 ### Visual Accessibility
@@ -2876,7 +2788,6 @@ gitv/
 │   │   ├── stores/               # Svelte stores
 │   │   │   ├── app.svelte.ts
 │   │   │   ├── repository.svelte.ts
-│   │   │   ├── tabs.svelte.ts
 │   │   │   ├── comparison.svelte.ts
 │   │   │   └── ui.svelte.ts
 │   │   ├── actions/              # Svelte actions
@@ -3153,19 +3064,7 @@ gitv/
 
 **Validates: Requirements 22.4**
 
-### Property 29: Tab Title Correctness
-
-*For any* repository info and set of open tabs, the tab title rendering shall display the repository name, with parent directory disambiguation when multiple tabs have the same repository name.
-
-**Validates: Requirements 31.2, 31.3**
-
-### Property 30: Tab State Persistence Round-Trip
-
-*For any* valid tab session state, serializing to storage and deserializing shall produce an equivalent tab session with all repository paths, selections, and filters preserved.
-
-**Validates: Requirements 31.5**
-
-### Property 31: Single-Branch Filtering Correctness
+### Property 29: Single-Branch Filtering Correctness
 
 *For any* branch and repository, single-branch filtering shall return exactly the commits reachable from the branch tip.
 
@@ -3231,13 +3130,7 @@ gitv/
 
 **Validates: File tree browser**
 
-### Property 42: Single-Instance IPC Correctness
-
-*For any* subsequent launch with a valid repository path argument, the existing instance shall receive the path and open a new tab for that repository within 1 second.
-
-**Validates: Single-instance behavior**
-
-### Property 43: Layout Clamping Correctness
+### Property 42: Layout Clamping Correctness
 
 *For any* persisted layout values and current window dimensions, `restoreLayout` shall produce panel sizes where each panel is ≥ its minimum and ≤ `window_dimension * max_fraction`. If the window is too small for all minimums, all panels shall be set to proportional defaults.
 

@@ -366,18 +366,16 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 7. THE gitv_Application SHALL provide a welcome screen that displays inline keyboard shortcut hints for the 3-5 most common actions (e.g., open repository, command palette, search), using platform-appropriate modifier keys (Ctrl on Windows/Linux, Cmd on macOS), visually subordinate to primary actions
 8. THE gitv_Application SHALL support pinning commits for quick reference during a session
 
-### Requirement 31: Tabbed Repository Support
+### Requirement 31: Multi-Instance Repository Opening
 
-**User Story:** As a developer working with multiple repositories, I want to open multiple repositories in tabs, so that I can quickly switch between projects.
+**User Story:** As a developer, I want to open multiple repositories in separate windows, so that I can view them side by side or on different monitors.
 
 #### Acceptance Criteria
 
-1. THE gitv_Application SHALL support opening multiple repositories in separate tabs
-2. THE gitv_Application SHALL display tab titles with repository names
-3. WHEN multiple repositories with the same name are opened, THE gitv_Application SHALL distinguish them with parent directory names
-4. THE gitv_Application SHALL support keyboard shortcuts for switching between tabs (Ctrl+Tab, Ctrl+Shift+Tab)
-5. THE gitv_Application SHALL remember open tabs between sessions
-6. WHEN a tab is closed, THE gitv_Application SHALL prompt for unsaved state if applicable
+1. WHEN a new repository path is passed via CLI, THE gitv_Application SHALL open it in a new independent window (not a tab within the existing window)
+2. Each window SHALL have isolated state — its own stores, scroll position, selected commit, filters, and sidebar state
+3. Multiple windows SHALL share the same persistent configuration (preferences, recent repositories cache)
+4. THE gitv_Application SHALL NOT enforce single-instance behavior
 
 ### Requirement 32: Focused Branch View
 
@@ -588,15 +586,16 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 4. THE file tree SHALL support expanding and collapsing directories
 5. THE file tree SHALL update when a different commit is selected, reflecting the tree state at that commit
 
-### Requirement 45: Single-Instance Application
+### Requirement 45: Multi-Instance Architecture
 
-**User Story:** As a developer, I want gitv to reuse an existing window when I open another repository, so that I don't end up with multiple windows for the same tool.
+**User Story:** As a developer, I want gitv to open each repository in its own window, so that I can view multiple repos independently without state-sharing complexity.
 
 #### Acceptance Criteria
 
-1. THE gitv_Application SHALL run as a single-instance application — subsequent launches SHALL send the request to the existing instance
-2. WHEN a subsequent launch provides a repository path, THE existing instance SHALL open that repository in a new tab
-3. WHEN a subsequent launch provides no arguments, THE existing instance SHALL bring its window to the foreground
+1. THE gitv_Application SHALL NOT enforce single-instance behavior — each launch creates a new independent window
+2. Each window SHALL manage its own state independently (commits, graph, selected commit, scroll, filters, sidebar)
+3. Persistent data (preferences, recent repositories) SHALL be shared across instances via the filesystem
+4. THE gitv_Application SHALL NOT implement inter-instance communication or tab management
 
 ### Requirement 46: Context Menu Actions
 

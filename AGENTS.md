@@ -12,7 +12,7 @@
 - **Rust + Tauri 2.0** desktop app: Git visualization tool (modern gitk)
 - **Backend**: `src-tauri/` — Rust with `gix` (gitoxide) for Git ops, `wgpu` for GPU graph rendering
 - **Decoupled Git core**: `crates/gitv-git-core/` — pure Rust, no Tauri deps, independently testable
-- **Single-instance**: subsequent launches open repos as tabs in the existing window
+- **Multi-instance**: each launch opens an independent window; no tab support
 - **Frontend**: `frontend/` — SvelteKit + Svelte 5 + TypeScript + Tailwind + Vite
 - **Pure Rust preferred**: use pure-Rust crates over C bindings; shell out to `git` CLI only as documented fallback
 

@@ -3,7 +3,6 @@ mod commands;
 mod state;
 
 use std::path::PathBuf;
-use tauri::Emitter;
 
 fn init_tracing() {
     let log_dir = dirs::data_dir()
@@ -61,19 +60,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            let repo_paths: Vec<String> = args
-                .iter()
-                .skip(1)
-                .filter(|a| !a.starts_with('-'))
-                .map(|a| a.to_string())
-                .collect();
-            if !repo_paths.is_empty() {
-                let _ = app.emit("new-repo-request", repo_paths);
-            } else {
-                let _ = app.emit("focus-request", ());
-            }
-        }))
         .manage(state::AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::args::get_startup_info,
