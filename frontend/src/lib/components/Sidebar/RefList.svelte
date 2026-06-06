@@ -5,11 +5,13 @@
 	let {
 		refs,
 		onbranchselect,
-		onbranchcontextmenu
+		onbranchcontextmenu,
+		selectedBranch
 	}: {
 		refs: Ref[];
 		onbranchselect?: (_name: string) => void;
 		onbranchcontextmenu?: (_e: MouseEvent, _name: string) => void;
+		selectedBranch?: string | null;
 	} = $props();
 
 	let branches = $derived(
@@ -43,7 +45,12 @@
 			<div class="space-y-0.5">
 				{#each branches as branch (branch.name)}
 					<button
-						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800"
+						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {branch.name ===
+						selectedBranch
+							? 'bg-blue-900/40 text-blue-300'
+							: branch.is_merged
+								? 'text-gray-500'
+								: ''}"
 						aria-label={branch.is_head
 							? $t('sidebar.branch_aria', { name: branch.name })
 							: $t('sidebar.branch_aria_default', { name: branch.name })}

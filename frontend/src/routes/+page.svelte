@@ -93,6 +93,8 @@
 
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
 
+	let focusBranchOid = $state<string | null>(null);
+
 	let selectedStash = $state<StashEntry | null>(null);
 	let stashDiff = $state<FileDiff | null>(null);
 	let stashSplitDiff = $state<StashSplitDiff | null>(null);
@@ -174,6 +176,7 @@
 		stashDiff = null;
 		stashSplitDiff = null;
 		stashSplitMode = false;
+		focusBranchOid = null;
 		layoutLoaded = false;
 		getRecentRepositories().then((r) => (recentRepos = r));
 	}
@@ -269,7 +272,8 @@
 				hide_merges: $graphHideMerges,
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
-				palette: $graphPalette
+				palette: $graphPalette,
+				focus_branch_oid: focusBranchOid
 			});
 		} catch {
 			// keep existing layout
@@ -749,8 +753,16 @@
 	function handleBranchSelect(name: string) {
 		const ref = allRefs.find((r) => 'Branch' in r && r.Branch?.name === name);
 		if (ref && 'Branch' in ref && ref.Branch) {
+			if (selectedBranch === name) {
+				selectedBranch = null;
+				focusBranchOid = null;
+				reloadLayout();
+				return;
+			}
 			onSelectCommit(ref.Branch.oid);
 			selectedBranch = name;
+			focusBranchOid = ref.Branch.oid;
+			reloadLayout();
 		}
 	}
 
@@ -924,6 +936,7 @@
 					{#snippet refs()}
 						<RefList
 							refs={allRefs}
+							{selectedBranch}
 							onbranchselect={handleBranchSelect}
 							onbranchcontextmenu={handleBranchContextMenu}
 						/>

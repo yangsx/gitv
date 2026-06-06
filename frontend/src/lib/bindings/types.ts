@@ -26,6 +26,7 @@ export interface BranchRef {
 	upstream: string | null;
 	ahead: number;
 	behind: number;
+	is_merged: boolean;
 }
 
 export interface TagRef {

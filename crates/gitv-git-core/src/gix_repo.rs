@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{TimeZone, Utc};
@@ -182,6 +182,22 @@ impl Repository for GixRepository {
         let repo = self.thread_local();
         let head_id = repo.head_id().ok();
         let mut result = Vec::new();
+
+        let head_ancestors: HashSet<Oid> = head_id
+            .and_then(|hid| {
+                let walk = repo
+                    .rev_walk([hid])
+                    .sorting(gix::revision::walk::Sorting::BreadthFirst)
+                    .all()
+                    .ok()?;
+                let mut set = HashSet::new();
+                for info in walk.flatten() {
+                    set.insert(gix_object_id_to_oid(info.id));
+                }
+                Some(set)
+            })
+            .unwrap_or_default();
+
         let platform = repo
             .references()
             .map_err(|e| GitError::Gix(e.to_string()))?;
@@ -200,9 +216,13 @@ impl Repository for GixRepository {
                 .as_ref()
                 .map(|hid| *hid == target_id)
                 .unwrap_or(false);
-            if let Some(r#ref) =
-                categorize_ref_from_parts(category.as_deref(), name_str, oid, is_head)
-            {
+            if let Some(r#ref) = categorize_ref_from_parts(
+                category.as_deref(),
+                name_str,
+                oid,
+                is_head,
+                &head_ancestors,
+            ) {
                 result.push(r#ref);
             }
         }
@@ -975,7 +995,8 @@ fn build_ref_map(repo: &gix::Repository) -> Result<HashMap<Oid, Vec<Ref>>, GitEr
             .as_ref()
             .map(|hid| *hid == target_id)
             .unwrap_or(false);
-        if let Some(r#ref) = categorize_ref_from_parts(category.as_deref(), name_str, oid, is_head)
+        if let Some(r#ref) =
+            categorize_ref_from_parts(category.as_deref(), name_str, oid, is_head, &HashSet::new())
         {
             map.entry(oid).or_default().push(r#ref);
         }
@@ -988,6 +1009,7 @@ fn categorize_ref_from_parts(
     name_str: String,
     oid: Oid,
     is_head: bool,
+    head_ancestors: &HashSet<Oid>,
 ) -> Option<Ref> {
     match category {
         Some("refs/heads/") => Some(Ref::Branch(BranchRef {
@@ -998,6 +1020,7 @@ fn categorize_ref_from_parts(
             upstream: None,
             ahead: 0,
             behind: 0,
+            is_merged: !is_head && head_ancestors.contains(&oid),
         })),
         Some("refs/remotes/") => {
             let parts: Vec<&str> = name_str.splitn(2, '/').collect();

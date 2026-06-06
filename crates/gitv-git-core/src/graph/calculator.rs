@@ -463,6 +463,22 @@ impl GraphCalculator {
         }
     }
 
+    pub fn get_ancestor_oids(&self, oid: &Oid) -> HashSet<Oid> {
+        let mut ancestors = HashSet::new();
+        let mut stack = vec![*oid];
+        while let Some(current) = stack.pop() {
+            if !ancestors.insert(current) {
+                continue;
+            }
+            if let Some(commit) = self.commits.iter().find(|c| c.oid == current) {
+                for parent in &commit.parent_oids {
+                    stack.push(*parent);
+                }
+            }
+        }
+        ancestors
+    }
+
     fn filter_merges(&self) -> Vec<CommitInfo> {
         let merge_oids: HashSet<Oid> = self
             .commits

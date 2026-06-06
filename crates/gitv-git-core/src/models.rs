@@ -142,6 +142,7 @@ pub struct BranchRef {
     pub upstream: Option<String>,
     pub ahead: usize,
     pub behind: usize,
+    pub is_merged: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

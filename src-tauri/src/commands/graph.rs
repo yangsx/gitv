@@ -15,6 +15,7 @@ pub fn get_graph_layout(
     orientation: Option<String>,
     color_mode: Option<String>,
     palette: Option<String>,
+    focus_branch_oid: Option<String>,
 ) -> Result<gitv_git_core::graph::GraphLayout, String> {
     let repo_path = PathBuf::from(&path);
     let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
@@ -54,5 +55,14 @@ pub fn get_graph_layout(
 
     let stashes = repo.stash_list().map_err(|e| e.to_string())?;
     let calc = GraphCalculator::new(commits, refs_map, stashes, options);
-    Ok(calc.calculate_layout())
+    let mut layout = calc.calculate_layout();
+
+    if let Some(ref oid_hex) = focus_branch_oid
+        && let Ok(focus_oid) = gitv_git_core::models::Oid::from_hex(oid_hex)
+    {
+        let ancestors = calc.get_ancestor_oids(&focus_oid);
+        GraphCalculator::apply_dimming(&mut layout, Some(focus_oid), Some(&ancestors));
+    }
+
+    Ok(layout)
 }

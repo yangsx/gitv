@@ -63,6 +63,7 @@ export async function getGraphLayout(
 		orientation?: string;
 		color_mode?: string;
 		palette?: string;
+		focus_branch_oid?: string | null;
 	}
 ): Promise<GraphLayout> {
 	return timedInvoke<GraphLayout>('get_graph_layout', {
@@ -70,7 +71,8 @@ export async function getGraphLayout(
 		hide_merges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
 		color_mode: options?.color_mode ?? 'by-branch',
-		palette: options?.palette ?? null
+		palette: options?.palette ?? null,
+		focus_branch_oid: options?.focus_branch_oid ?? null
 	});
 }
 
