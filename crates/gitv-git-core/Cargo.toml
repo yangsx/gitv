@@ -22,6 +22,7 @@ tracing = { workspace = true }
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1"
+dhat = "0.3"
 
 [[bench]]
 name = "graph_bench"
@@ -32,3 +33,8 @@ path = "benches/graph_bench.rs"
 name = "search_bench"
 harness = false
 path = "benches/search_bench.rs"
+
+[[bench]]
+name = "memory_bench"
+harness = false
+path = "benches/memory_bench.rs"
