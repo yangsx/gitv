@@ -1085,7 +1085,7 @@
 						<StashList {repoPath} onstashselect={(stash) => onStashSelect(stash)} />
 					{/snippet}
 					{#snippet reflog()}
-						<ReflogPanel {repoPath} onentryselect={(oid) => onSelectCommit(oid)} />
+						<ReflogPanel {repoPath} refs={allRefs} onentryselect={(oid) => onSelectCommit(oid)} />
 					{/snippet}
 					{#snippet history()}
 						{#if historyFilePath}
