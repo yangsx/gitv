@@ -173,8 +173,11 @@
 	tabindex="-1"
 >
 	<div
-		class="w-96 rounded-lg border border-gray-700 bg-gray-900 shadow-2xl"
-		style={isDragging ? 'cursor: grabbing;' : ''}
+		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden resize"
+		style="min-width: 320px; min-height: 250px; max-width: min(90vw, 700px); max-height: min(90vh, 700px); width: 384px; {isDragging
+			? 'cursor: grabbing;'
+			: ''}"
+		onresize={() => {}}
 	>
 		<div
 			class="flex items-center justify-between border-b border-gray-800 px-3 py-2 cursor-grab select-none"
@@ -207,7 +210,7 @@
 			</button>
 		</div>
 
-		<div class="max-h-[70vh] overflow-y-auto px-3 py-2 space-y-4 text-xs">
+		<div class="overflow-y-auto flex-1 px-3 py-2 space-y-4 text-xs">
 			<!-- Graph Section -->
 			<section>
 				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">
@@ -501,3 +504,10 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	:global(.resize)::-webkit-resizer {
+		background: #4b5563;
+		border-radius: 0 0 0.5rem 0;
+	}
+</style>
