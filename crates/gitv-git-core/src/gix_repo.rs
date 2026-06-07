@@ -689,6 +689,49 @@ impl Repository for GixRepository {
         Ok(diffs)
     }
 
+    fn working_changes_combined_diff(
+        &self,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+    ) -> Result<Vec<FileDiff>, DiffError> {
+        if self.is_bare() {
+            return Ok(Vec::new());
+        }
+
+        let repo = self.thread_local();
+        let platform = repo
+            .status(gix::progress::Discard)
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let iter = platform
+            .into_iter(Vec::<gix::bstr::BString>::new())
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let mut diffs = Vec::new();
+
+        for item in iter {
+            let item = item.map_err(|e| DiffError::Gix(e.to_string()))?;
+            match item {
+                gix::status::Item::TreeIndex(change) => {
+                    if let Some(fd) =
+                        staged_change_to_file_diff(&repo, &change, &mode, &whitespace)?
+                    {
+                        diffs.push(fd);
+                    }
+                }
+                gix::status::Item::IndexWorktree(iw_item) => {
+                    if let Some(fd) =
+                        unstaged_item_to_file_diff(&repo, &iw_item, &mode, &whitespace)?
+                    {
+                        diffs.push(fd);
+                    }
+                }
+            }
+        }
+
+        Ok(diffs)
+    }
+
     fn diff_summary(
         &self,
         from: Option<Oid>,
@@ -2783,12 +2826,16 @@ fn build_file_tree(
                 children.push(child);
             }
             gix_object::tree::EntryKind::Blob | gix_object::tree::EntryKind::BlobExecutable => {
+                let size = repo
+                    .find_object(entry.oid())
+                    .ok()
+                    .map(|obj| obj.data.len() as u64);
                 children.push(FileTreeNode {
                     name,
                     path,
                     node_type: FileNodeType::File,
                     children: Vec::new(),
-                    size: None,
+                    size,
                 });
             }
             gix_object::tree::EntryKind::Link => {

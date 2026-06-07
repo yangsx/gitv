@@ -156,3 +156,18 @@ pub fn get_working_changes_diffs(
     repo.working_changes_file_diffs(staged, mode, ws)
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+#[instrument(skip(path), fields(command = "get_working_changes_combined_diff"))]
+pub fn get_working_changes_combined_diff(
+    path: String,
+    diff_mode: Option<String>,
+    whitespace: Option<String>,
+) -> Result<Vec<gitv_git_core::models::FileDiff>, String> {
+    let repo_path = PathBuf::from(&path);
+    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let mode = parse_diff_mode(diff_mode.as_deref());
+    let ws = parse_whitespace(whitespace.as_deref());
+    repo.working_changes_combined_diff(mode, ws)
+        .map_err(|e| e.to_string())
+}

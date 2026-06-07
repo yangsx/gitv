@@ -303,6 +303,18 @@
 		"aria": "通知",
 		"dismiss": "关闭通知"
 	},
+	"working_changes": {
+		"title": "工作区变更",
+		"file_count": "{count} 个文件",
+		"file_count_plural": "{count} 个文件",
+		"staged_count": "{count} 个已暂存",
+		"unstaged_count": "{count} 个未暂存",
+		"combined": "合并",
+		"staged": "已暂存",
+		"unstaged": "未暂存",
+		"no_changes": "无变更",
+		"mode_aria": "工作区变更模式"
+	},
 	"common": {
 		"close": "关闭",
 		"loading": "正在加载..."

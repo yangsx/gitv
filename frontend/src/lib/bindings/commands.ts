@@ -187,6 +187,18 @@ export async function getWorkingChangesDiffs(
 	});
 }
 
+export async function getWorkingChangesCombinedDiff(
+	path: string,
+	diffMode?: string,
+	whitespace?: string
+): Promise<FileDiff[]> {
+	return timedInvoke<FileDiff[]>('get_working_changes_combined_diff', {
+		path,
+		diffMode: diffMode ?? null,
+		whitespace: whitespace ?? null
+	});
+}
+
 export interface StartupInfo {
 	paths: string[];
 	debug_overlay_enabled: boolean;

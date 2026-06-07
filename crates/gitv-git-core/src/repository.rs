@@ -54,6 +54,11 @@ pub trait Repository {
         mode: DiffMode,
         whitespace: WhitespaceMode,
     ) -> Result<Vec<FileDiff>, DiffError>;
+    fn working_changes_combined_diff(
+        &self,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+    ) -> Result<Vec<FileDiff>, DiffError>;
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {

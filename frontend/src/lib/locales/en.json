@@ -303,6 +303,18 @@
 		"aria": "Notifications",
 		"dismiss": "Dismiss notification"
 	},
+	"working_changes": {
+		"title": "Working Changes",
+		"file_count": "{count} file",
+		"file_count_plural": "{count} files",
+		"staged_count": "{count} staged",
+		"unstaged_count": "{count} unstaged",
+		"combined": "Combined",
+		"staged": "Staged",
+		"unstaged": "Unstaged",
+		"no_changes": "No changes",
+		"mode_aria": "Working changes mode"
+	},
 	"common": {
 		"close": "Close",
 		"loading": "Loading..."

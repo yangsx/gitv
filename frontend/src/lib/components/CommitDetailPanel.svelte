@@ -161,7 +161,11 @@
 		if (fileTree) return;
 		loadingTree = true;
 		try {
-			fileTree = await getFileTree(repoPath, details.info.oid);
+			const treeOid =
+				details.info.oid === '__staged__' || details.info.oid === '__unstaged__'
+					? null
+					: details.info.oid;
+			fileTree = await getFileTree(repoPath, treeOid);
 		} catch {
 			fileTree = null;
 		} finally {

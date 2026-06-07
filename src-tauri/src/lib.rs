@@ -91,6 +91,7 @@ pub fn run() {
             commands::diff::get_blob_content,
             commands::diff::get_working_changes,
             commands::diff::get_working_changes_diffs,
+            commands::diff::get_working_changes_combined_diff,
             commands::reflog_stash::get_reflog,
             commands::reflog_stash::get_stash_list,
             commands::reflog_stash::get_stash_diff,
