@@ -1112,6 +1112,7 @@
 							commits={effectiveCommits}
 							layout={effectiveLayout}
 							selectedOid={$selectedOid}
+							comparisonOid={$comparisonOid}
 							matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
 							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 							onContextMenu={handleCommitContextMenu}

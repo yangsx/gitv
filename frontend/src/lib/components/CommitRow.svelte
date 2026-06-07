@@ -5,6 +5,7 @@
 	interface Props {
 		commit: CommitInfo;
 		isSelected: boolean;
+		isComparison?: boolean;
 		isDimmed?: boolean;
 		highlights?: Highlight[];
 		onclick: (_oid: string, _ctrlKey: boolean) => void;
@@ -15,6 +16,7 @@
 	let {
 		commit,
 		isSelected,
+		isComparison = false,
 		isDimmed = false,
 		highlights = [],
 		onclick,
@@ -85,7 +87,9 @@
 		aria-selected={isSelected}
 		class="flex w-full items-center gap-3 px-3 h-7 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
 			? 'bg-blue-900/40 text-blue-200'
-			: 'text-gray-300'}"
+			: isComparison
+				? 'bg-indigo-900/40 text-indigo-200'
+				: 'text-gray-300'}"
 		aria-label={$t('commit_row.staged_aria', {
 			summary: commit.summary,
 			type: isStaged ? 'staged' : 'unstaged'
@@ -110,9 +114,11 @@
 		aria-selected={isSelected}
 		class="flex w-full items-center gap-3 px-3 h-7 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
 			? 'bg-blue-900/40 text-blue-200'
-			: isDimmed
-				? 'text-gray-600'
-				: 'text-gray-300'}"
+			: isComparison
+				? 'bg-indigo-900/40 text-indigo-200'
+				: isDimmed
+					? 'text-gray-600'
+					: 'text-gray-300'}"
 		aria-label={$t('commit_row.aria_label', {
 			summary: commit.summary,
 			author: commit.author.name,

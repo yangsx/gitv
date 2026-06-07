@@ -9,6 +9,7 @@
 		commits: CommitInfo[];
 		layout: GraphLayout | null;
 		selectedOid: string | null;
+		comparisonOid?: string | null;
 		matchingOids?: Set<string>;
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
 		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
@@ -21,6 +22,7 @@
 		commits,
 		layout,
 		selectedOid,
+		comparisonOid = null,
 		matchingOids,
 		onSelect,
 		onContextMenu,
@@ -164,6 +166,7 @@
 							{visibleEnd}
 							{scrollVersion}
 							{selectedOid}
+							{comparisonOid}
 							{onSelect}
 							{onStashSelect}
 						/>
@@ -175,6 +178,7 @@
 							id="commit-{commit.oid}"
 							{commit}
 							isSelected={commit.oid === selectedOid}
+							isComparison={commit.oid === comparisonOid}
 							isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
 							highlights={highlightsByOid.get(commit.oid)}
 							onclick={onSelect}

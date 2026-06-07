@@ -20,6 +20,7 @@
 		visibleEnd: number;
 		scrollVersion: number;
 		selectedOid?: string | null;
+		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onStashSelect?: (_stashIndex: number) => void;
 	}
@@ -34,6 +35,7 @@
 		visibleEnd,
 		scrollVersion,
 		selectedOid,
+		comparisonOid = null,
 		onSelect,
 		onStashSelect
 	}: Props = $props();
@@ -207,6 +209,14 @@
 			ctx.strokeStyle = '#60a5fa';
 			ctx.lineWidth = 2;
 			ctx.stroke();
+		} else if (node.oid === comparisonOid) {
+			ctx.beginPath();
+			ctx.arc(x, y, sNodeRadius + 3, 0, Math.PI * 2);
+			ctx.strokeStyle = '#a78bfa';
+			ctx.lineWidth = 2;
+			ctx.setLineDash([3, 3]);
+			ctx.stroke();
+			ctx.setLineDash([]);
 		}
 
 		ctx.globalAlpha = node.is_dimmed ? 0.35 : 1.0;
