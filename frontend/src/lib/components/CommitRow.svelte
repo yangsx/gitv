@@ -83,6 +83,7 @@
 {#if isVirtual}
 	<button
 		{id}
+		tabindex="-1"
 		role="option"
 		aria-selected={isSelected}
 		class="flex w-full items-center gap-3 px-3 h-7 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
@@ -110,6 +111,7 @@
 {:else}
 	<button
 		{id}
+		tabindex="-1"
 		role="option"
 		aria-selected={isSelected}
 		class="flex w-full items-center gap-3 px-3 h-7 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected

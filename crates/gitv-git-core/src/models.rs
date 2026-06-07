@@ -163,6 +163,7 @@ pub struct TagAnnotation {
 pub struct RemoteRef {
     pub name: String,
     pub remote: String,
+    pub oid: Oid,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -439,6 +440,24 @@ pub struct CachedCommitSummary {
     pub author_time: DateTime<Utc>,
     pub parent_oids: Vec<Oid>,
     pub refs: Vec<Ref>,
+}
+
+impl From<CachedCommitSummary> for CommitInfo {
+    fn from(s: CachedCommitSummary) -> Self {
+        let short_oid = s.oid.short_hex();
+        CommitInfo {
+            oid: s.oid,
+            short_oid,
+            message: String::new(),
+            summary: s.summary,
+            author: s.author.clone(),
+            committer: s.author,
+            author_time: s.author_time,
+            commit_time: s.author_time,
+            parent_oids: s.parent_oids,
+            refs: s.refs,
+        }
+    }
 }
 
 #[cfg(test)]

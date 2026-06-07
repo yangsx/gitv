@@ -18,7 +18,6 @@
 		nodeRadius?: number;
 		visibleStart: number;
 		visibleEnd: number;
-		scrollVersion: number;
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
@@ -33,7 +32,6 @@
 		nodeRadius = 4,
 		visibleStart,
 		visibleEnd,
-		scrollVersion,
 		selectedOid,
 		comparisonOid = null,
 		onSelect,
@@ -97,7 +95,8 @@
 	}
 
 	$effect(() => {
-		void scrollVersion;
+		void visibleStart;
+		void visibleEnd;
 		draw(layout);
 	});
 

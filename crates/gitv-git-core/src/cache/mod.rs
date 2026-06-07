@@ -68,6 +68,24 @@ impl CachedRepoData {
             version: CACHE_VERSION,
         }
     }
+
+    pub fn from_commits(commits: &[CommitInfo], ref_snapshot: HashMap<String, Oid>) -> Self {
+        Self {
+            ref_snapshot,
+            commit_summaries: commits
+                .iter()
+                .map(|c| CachedCommitSummary {
+                    oid: c.oid,
+                    summary: c.summary.clone(),
+                    author: c.author.clone(),
+                    author_time: c.author_time,
+                    parent_oids: c.parent_oids.clone(),
+                    refs: c.refs.clone(),
+                })
+                .collect(),
+            version: CACHE_VERSION,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -25,18 +25,18 @@
 		if (isVertical()) {
 			if (e.key === 'ArrowUp') {
 				e.preventDefault();
-				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight + 20));
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
-				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight + 20));
 			}
 		} else {
 			if (e.key === 'ArrowRight') {
 				e.preventDefault();
-				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth - 20));
+				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth + 20));
 			} else if (e.key === 'ArrowLeft') {
 				e.preventDefault();
-				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth + 20));
+				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth - 20));
 			}
 		}
 	}
@@ -56,10 +56,10 @@
 
 		function onMouseMove(e: MouseEvent) {
 			if (isVertical()) {
-				const delta = startY - e.clientY;
+				const delta = e.clientY - startY;
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
 			} else {
-				const delta = startX - e.clientX;
+				const delta = e.clientX - startX;
 				panelWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
 			}
 		}
@@ -86,7 +86,7 @@
 	role="separator"
 	aria-orientation={isVertical() ? 'horizontal' : 'vertical'}
 	aria-label={isVertical() ? 'Resize detail panel' : 'Resize file list'}
-	tabindex="0"
+	tabindex={isVertical() ? -1 : 0}
 	onmousedown={onMouseDown}
 	onkeydown={onKeyDown}
 >

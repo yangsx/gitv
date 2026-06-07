@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, GraphLayout, Highlight } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
@@ -35,7 +36,6 @@
 
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
-	let scrollVersion = $state(0);
 	let containerHeight = $state(800);
 	let rafId = 0;
 	let pendingScrollTop = 0;
@@ -46,10 +46,18 @@
 
 	let orderedCommits = $derived(
 		layout
-			? [...layout.nodes]
-					.sort((a, b) => a.row - b.row)
-					.map((n) => commitsByOid.get(n.oid))
-					.filter((c): c is CommitInfo => c !== undefined)
+			? (() => {
+					const mapped = [...layout.nodes]
+						.sort((a, b) => a.row - b.row)
+						.map((n) => commitsByOid.get(n.oid));
+					if (import.meta.env.DEV) {
+						const missing = mapped.filter((c) => c === undefined).length;
+						if (missing > 0) {
+							console.warn(`orderedCommits: ${missing} layout nodes not found in commitsByOid`);
+						}
+					}
+					return mapped.filter((c): c is CommitInfo => c !== undefined);
+				})()
 			: commits
 	);
 
@@ -66,7 +74,6 @@
 		if (!rafId) {
 			rafId = requestAnimationFrame(() => {
 				scrollTop = pendingScrollTop;
-				scrollVersion++;
 				rafId = 0;
 			});
 		}
@@ -85,56 +92,78 @@
 		return () => observer.disconnect();
 	});
 
+	let selectedIdx = $state(0);
+
+	$effect(() => {
+		if (!orderedCommits.length) return;
+		if (!selectedOid) { selectedIdx = 0; return; }
+		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+		if (idx >= 0) selectedIdx = idx;
+	});
+
 	$effect(() => {
 		if (!containerEl || !selectedOid || !orderedCommits.length) return;
+		if (!untrack(() => orderedCommits.some((c) => c.oid === selectedOid))) return;
 		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
 		if (idx >= 0) scrollToIndex(idx);
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (!orderedCommits.length) return;
-		const currentIdx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+		if (containerEl && document.activeElement !== containerEl) {
+			containerEl.focus();
+		}
 		const lastIdx = orderedCommits.length - 1;
 		const pageSize = Math.max(1, Math.floor(containerHeight / rowHeight));
 
 		if (e.key === 'ArrowDown' || e.key === 'j') {
 			e.preventDefault();
-			const next = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, lastIdx);
-			onSelect(orderedCommits[next].oid, false);
-			scrollToIndex(next);
+			const next = Math.min(selectedIdx + 1, lastIdx);
+			if (next === selectedIdx) return;
+			selectedIdx = next;
+			onSelect(orderedCommits[selectedIdx].oid, false);
+			scrollToIndex(selectedIdx);
 		} else if (e.key === 'ArrowUp' || e.key === 'k') {
 			e.preventDefault();
-			const prev = currentIdx < 0 ? 0 : Math.max(currentIdx - 1, 0);
-			onSelect(orderedCommits[prev].oid, false);
-			scrollToIndex(prev);
+			const prev = Math.max(selectedIdx - 1, 0);
+			if (prev === selectedIdx) return;
+			selectedIdx = prev;
+			onSelect(orderedCommits[selectedIdx].oid, false);
+			scrollToIndex(selectedIdx);
 		} else if (e.key === 'PageDown') {
 			e.preventDefault();
-			const next = currentIdx < 0 ? pageSize : Math.min(currentIdx + pageSize, lastIdx);
-			onSelect(orderedCommits[next].oid, false);
-			scrollToIndex(next);
+			const next = Math.min(selectedIdx + pageSize, lastIdx);
+			if (next === selectedIdx) return;
+			selectedIdx = next;
+			onSelect(orderedCommits[selectedIdx].oid, false);
+			scrollToIndex(selectedIdx);
 		} else if (e.key === 'PageUp') {
 			e.preventDefault();
-			const prev = currentIdx < 0 ? 0 : Math.max(currentIdx - pageSize, 0);
-			onSelect(orderedCommits[prev].oid, false);
-			scrollToIndex(prev);
+			const prev = Math.max(selectedIdx - pageSize, 0);
+			if (prev === selectedIdx) return;
+			selectedIdx = prev;
+			onSelect(orderedCommits[selectedIdx].oid, false);
+			scrollToIndex(selectedIdx);
 		} else if (e.key === 'Home') {
 			e.preventDefault();
+			selectedIdx = 0;
 			onSelect(orderedCommits[0].oid, false);
-			scrollToIndex(0);
+			containerEl.scrollTop = 0;
 		} else if (e.key === 'End') {
 			e.preventDefault();
+			selectedIdx = lastIdx;
 			onSelect(orderedCommits[lastIdx].oid, false);
-			scrollToIndex(lastIdx);
+			containerEl.scrollTop = containerEl.scrollHeight - containerEl.clientHeight;
 		}
 	}
 
 	function scrollToIndex(idx: number) {
 		const targetTop = idx * rowHeight;
-		const targetBottom = targetTop + rowHeight;
-		if (targetTop < scrollTop) {
+		const viewBottom = containerEl.scrollTop + containerEl.clientHeight;
+		if (targetTop < containerEl.scrollTop) {
 			containerEl.scrollTop = targetTop;
-		} else if (targetBottom > scrollTop + containerHeight) {
-			containerEl.scrollTop = targetBottom - containerHeight;
+		} else if (targetTop + rowHeight > viewBottom) {
+			containerEl.scrollTop = targetTop + rowHeight - containerEl.clientHeight;
 		}
 	}
 </script>
@@ -164,7 +193,6 @@
 							{rowHeight}
 							{visibleStart}
 							{visibleEnd}
-							{scrollVersion}
 							{selectedOid}
 							{comparisonOid}
 							{onSelect}

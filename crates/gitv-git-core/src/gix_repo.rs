@@ -1125,6 +1125,7 @@ fn categorize_ref_from_parts(
             Some(Ref::Remote(RemoteRef {
                 name: branch_name.to_string(),
                 remote: remote.to_string(),
+                oid,
             }))
         }
         Some("refs/tags/") => Some(Ref::Tag(TagRef {

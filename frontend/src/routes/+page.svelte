@@ -494,6 +494,7 @@
 	});
 
 	async function onSelectCommit(oid: string, ctrlKey = false) {
+		if (!ctrlKey && oid === $selectedOid) return;
 		selectedBranch = null;
 		selectedStash = null;
 		stashDiff = null;
@@ -551,6 +552,10 @@
 
 		try {
 			commitDetails = await getCommitDetails(repoPath, oid);
+			if (oid !== $selectedOid) {
+				commitDetails = null;
+				return;
+			}
 		} catch {
 			commitDetails = null;
 		} finally {

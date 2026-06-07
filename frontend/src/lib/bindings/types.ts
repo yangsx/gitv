@@ -44,6 +44,7 @@ export interface TagAnnotation {
 export interface RemoteRef {
 	name: string;
 	remote: string;
+	oid: string;
 }
 
 export interface RepositoryInfo {
