@@ -12,6 +12,8 @@ const DEFAULTS: AppPreferences = {
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
 	theme: 'dark',
+	font_size: 13,
+	high_contrast: false,
 	language: 'en'
 };
 
@@ -29,6 +31,8 @@ export const diffWhitespace = writable<
 		| 'ignore-blank-lines'
 );
 export const showStashes = writable(true);
+export const fontSize = writable(DEFAULTS.font_size);
+export const highContrast = writable(DEFAULTS.high_contrast);
 let loadedPrefs: AppPreferences | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -41,6 +45,8 @@ function toPreferences(): AppPreferences {
 		diff_mode: get(diffMode),
 		diff_whitespace: get(diffWhitespace),
 		theme: get(theme),
+		font_size: get(fontSize),
+		high_contrast: get(highContrast),
 		language: get(locale)
 	};
 }
@@ -49,6 +55,10 @@ function updateFromPreferences(p: AppPreferences) {
 	loadedPrefs = p;
 
 	theme.set(p.theme);
+	highContrast.set(p.high_contrast);
+	if (p.font_size >= 10 && p.font_size <= 24) {
+		fontSize.set(p.font_size);
+	}
 	diffMode.set(p.diff_mode);
 	diffWhitespace.set(p.diff_whitespace);
 	if (p.graph_color_mode === 'by-branch' || p.graph_color_mode === 'by-author') {
@@ -82,13 +92,22 @@ function debouncedSave(prefs: AppPreferences) {
 	}, 300);
 }
 
+function detectSystemTheme(): 'dark' | 'light' {
+	if (typeof window === 'undefined') return 'dark';
+	try {
+		return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	} catch {
+		return 'dark';
+	}
+}
+
 export async function initPreferences() {
 	initLocale();
 	try {
 		const prefs = await getPreferences();
 		updateFromPreferences(prefs);
 	} catch {
-		// system locale already set above
+		theme.set(detectSystemTheme());
 	}
 }
 

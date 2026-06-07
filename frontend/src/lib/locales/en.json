@@ -43,7 +43,18 @@
 		"language": "Language",
 		"language_aria": "Interface language",
 		"lang_en": "English",
-		"lang_zh_cn": "简体中文"
+		"lang_zh_cn": "简体中文",
+		"section_appearance": "Appearance",
+		"theme": "Theme",
+		"theme_aria": "Interface theme",
+		"theme_dark": "Dark",
+		"theme_light": "Light",
+		"font_size": "Font Size",
+		"font_size_aria": "Interface font size",
+		"high_contrast": "High Contrast",
+		"high_contrast_aria": "Toggle high contrast mode",
+		"section_shortcuts": "Keyboard Shortcuts",
+		"no_shortcuts": "No shortcuts registered"
 	},
 	"commit_detail": {
 		"patch": "Patch",
@@ -136,7 +147,19 @@
 		"cmd_palette_default": "Graph palette: Default",
 		"cmd_palette_deuteranopia": "Graph palette: Deuteranopia-safe",
 		"cmd_palette_protanopia": "Graph palette: Protanopia-safe",
-		"cmd_palette_tritanopia": "Graph palette: Tritanopia-safe"
+		"cmd_palette_tritanopia": "Graph palette: Tritanopia-safe",
+		"cmd_shortcuts": "Show keyboard shortcuts",
+		"cmd_branch_next": "Next branch",
+		"cmd_branch_prev": "Previous branch",
+		"detached_head": "detached at {sha}",
+		"uncommitted_changes": "{count} uncommitted",
+		"uncommitted_changes_plural": "{count} uncommitted",
+		"commits_label": "{count} commits",
+		"statusbar_aria": "Status bar",
+		"settings_aria": "Open preferences"
+	},
+	"commit_graph": {
+		"aria": "Commit graph"
 	},
 	"commit_list": {
 		"aria": "Commit list",
@@ -212,6 +235,12 @@
 		"author_date": "Author and date",
 		"content": "Content",
 		"line_aria": "Line {number} by {author}"
+	},
+	"shortcut_help": {
+		"title": "Keyboard Shortcuts",
+		"close_aria": "Close shortcut help",
+		"none": "No shortcuts registered",
+		"dismiss_hint": "Press Esc to dismiss"
 	},
 	"command_palette": {
 		"aria": "Command palette",

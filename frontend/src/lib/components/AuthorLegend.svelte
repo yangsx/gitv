@@ -28,6 +28,7 @@
 					class="inline-block h-2.5 w-2.5 rounded-full"
 					style="background-color: {color}"
 					title={$t('author_legend.title')}
+					aria-label={$t('author_legend.title')}
 				></span>
 			{/each}
 		</div>

@@ -70,8 +70,16 @@ pub struct AppPreferences {
     pub diff_mode: DiffMode,
     pub diff_whitespace: DiffWhitespace,
     pub theme: Theme,
+    #[serde(default = "default_font_size")]
+    pub font_size: f64,
+    #[serde(default)]
+    pub high_contrast: bool,
     #[serde(default)]
     pub language: Language,
+}
+
+fn default_font_size() -> f64 {
+    13.0
 }
 
 impl Default for AppPreferences {
@@ -84,6 +92,8 @@ impl Default for AppPreferences {
             diff_mode: DiffMode::Normal,
             diff_whitespace: DiffWhitespace::None,
             theme: Theme::Dark,
+            font_size: default_font_size(),
+            high_contrast: false,
             language: Language::En,
         }
     }

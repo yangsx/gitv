@@ -307,5 +307,7 @@ export interface AppPreferences {
 	diff_mode: 'normal' | 'word-diff' | 'stat-only';
 	diff_whitespace: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines';
 	theme: 'dark' | 'light';
+	font_size: number;
+	high_contrast: boolean;
 	language: 'en' | 'zh-cn';
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { DiffSummary, FileDiff } from '$lib/bindings/types';
 	import { getDiff, getFileDiff } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
@@ -167,26 +168,26 @@
 					{#if fileDiff.truncated_at != null}
 						<div class="flex items-center justify-center gap-3 border-t border-gray-700 py-2">
 							<span class="text-xs text-gray-500">
-								Diff truncated at {fileDiff.truncated_at} lines
+								{$t('comparison.truncated', { count: fileDiff.truncated_at })}
 							</span>
 							<button
 								class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600"
 								onclick={loadFullDiff}
 							>
-								Show full diff
+								{$t('comparison.show_full')}
 							</button>
 						</div>
 					{/if}
 				{/if}
 			{:else}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500" role="status">
-					Select a file to view diff
+					{$t('comparison.select_file')}
 				</div>
 			{/if}
 		</div>
 	{:else}
 		<div class="flex items-center justify-center w-full text-sm text-gray-500" role="alert">
-			Failed to load comparison
+			{$t('comparison.failed')}
 		</div>
 	{/if}
 </div>

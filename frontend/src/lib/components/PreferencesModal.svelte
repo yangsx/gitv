@@ -5,9 +5,18 @@
 		graphOrientation,
 		graphPalette
 	} from '$lib/stores/repository';
-	import { diffMode, diffWhitespace, showStashes, savePreferences } from '$lib/stores/preferences';
+	import {
+		diffMode,
+		diffWhitespace,
+		showStashes,
+		theme,
+		fontSize,
+		highContrast,
+		savePreferences
+	} from '$lib/stores/preferences';
 	import { t, locale, setLocale as setAppLocale } from '$lib/stores/locale';
 	import type { Locale } from '$lib/stores/locale';
+	import { getCommands } from '$lib/stores/commands';
 
 	interface Props {
 		onclose: () => void;
@@ -132,6 +141,24 @@
 		'ignore-blank-lines'
 	] as const;
 	const languages: Locale[] = ['en', 'zh-cn'];
+	const themes = ['dark', 'light'] as const;
+
+	function setTheme(t: 'dark' | 'light') {
+		theme.set(t);
+		savePreferences();
+	}
+
+	function setFontSize(e: Event) {
+		const target = e.target as HTMLInputElement;
+		const val = parseInt(target.value, 10);
+		fontSize.set(val);
+		savePreferences();
+	}
+
+	let commands = $derived(getCommands().filter((c) => c.shortcut));
+	let shortcutCategories = $derived(
+		[...new Set(commands.map((c) => c.category ?? ''))].filter(Boolean).sort()
+	);
 </script>
 
 <svelte:window onkeydown={handleKeydown} onmousemove={onMouseMove} onmouseup={onMouseUp} />
@@ -375,6 +402,101 @@
 						{/each}
 					</div>
 				</div>
+			</section>
+
+			<div class="border-t border-gray-800"></div>
+
+			<!-- Appearance Section -->
+			<section>
+				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">
+					{$t('preferences.section_appearance')}
+				</h3>
+				<div class="space-y-3">
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.theme')}</span>
+						<div class="flex gap-1" role="radiogroup" aria-label={$t('preferences.theme_aria')}>
+							{#each themes as v (v)}
+								<button
+									class="whitespace-nowrap rounded px-2 py-1 text-xs transition-colors {$theme === v
+										? 'bg-blue-700/50 text-blue-300'
+										: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+									onclick={() => setTheme(v)}
+									role="radio"
+									aria-checked={$theme === v}
+								>
+									{$t(`preferences.theme_${v}`)}
+								</button>
+							{/each}
+						</div>
+					</div>
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.font_size')}</span>
+						<div class="flex items-center gap-2">
+							<span class="text-gray-500 text-xs">10</span>
+							<input
+								type="range"
+								min="10"
+								max="24"
+								step="1"
+								value={$fontSize}
+								oninput={setFontSize}
+								class="w-24 h-1 appearance-none bg-gray-700 rounded-full cursor-pointer accent-blue-500"
+								aria-label={$t('preferences.font_size_aria')}
+							/>
+							<span class="text-gray-500 text-xs">24</span>
+							<span class="w-6 text-right text-gray-300 text-xs">{$fontSize}</span>
+						</div>
+					</div>
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.high_contrast')}</span>
+						<button
+							class="relative h-5 w-9 rounded-full transition-colors {$highContrast
+								? 'bg-blue-600'
+								: 'bg-gray-700'}"
+							onclick={() => {
+								highContrast.update((v) => !v);
+								savePreferences();
+							}}
+							role="switch"
+							aria-checked={$highContrast}
+							aria-label={$t('preferences.high_contrast_aria')}
+						>
+							<span
+								class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {$highContrast
+									? 'translate-x-4'
+									: 'translate-x-0'}"
+							></span>
+						</button>
+					</div>
+				</div>
+			</section>
+
+			<div class="border-t border-gray-800"></div>
+
+			<!-- Keyboard Shortcuts Section -->
+			<section>
+				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">
+					{$t('preferences.section_shortcuts')}
+				</h3>
+				{#if commands.length === 0}
+					<p class="text-gray-500 italic">{$t('preferences.no_shortcuts')}</p>
+				{:else}
+					{#each shortcutCategories as cat (cat)}
+						<div class="mb-2">
+							<h4 class="text-xs text-gray-500 font-semibold mb-1">{cat}</h4>
+							<div class="space-y-1">
+								{#each commands.filter((c) => c.category === cat) as cmd (cmd.id)}
+									<div class="flex items-center justify-between">
+										<span class="text-gray-300 text-xs">{cmd.label}</span>
+										<kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-xs text-gray-400">
+											{cmd.shortcut}
+										</kbd>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				{/if}
 			</section>
 		</div>
 	</div>

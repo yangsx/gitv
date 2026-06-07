@@ -65,7 +65,8 @@
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
-	import { initPreferences, theme } from '$lib/stores/preferences';
+	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
+	import { initPreferences, theme, fontSize, highContrast } from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
 
 	let repoPath = $state('');
@@ -90,7 +91,34 @@
 	let isFullscreen = $state(false);
 	let selectedBranch = $state<string | null>(null);
 	let showPreferences = $state(false);
+	let showShortcutHelp = $state(false);
+	let commitCount = $state(0);
 
+	let uncommittedCount = $derived(
+		workingChangesDiff ? workingChangesDiff.staged.length + workingChangesDiff.unstaged.length : 0
+	);
+	let detachedHeadSha = $derived(
+		$repoInfo?.head_commit && !$repoInfo?.head_branch ? $repoInfo.head_commit.substring(0, 7) : null
+	);
+
+	const ROW_HEIGHT_REM = 1.75;
+	let rowHeight = $derived(Math.round(ROW_HEIGHT_REM * $fontSize));
+
+	let branchNames = $derived(
+		allRefs
+			.filter((r) => 'Branch' in r)
+			.map((r) => r.Branch!.name)
+			.sort((a, b) => {
+				const aIsHead = allRefs.some(
+					(r) => 'Branch' in r && r.Branch?.name === a && r.Branch?.is_head
+				);
+				const bIsHead = allRefs.some(
+					(r) => 'Branch' in r && r.Branch?.name === b && r.Branch?.is_head
+				);
+				if (aIsHead !== bIsHead) return aIsHead ? -1 : 1;
+				return a.localeCompare(b);
+			})
+	);
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
 
 	let focusBranchOid = $state<string | null>(null);
@@ -203,7 +231,6 @@
 			return;
 		}
 
-		let commitCount = 0;
 		try {
 			const loadedCommits = await getCommits(repoPath);
 			commits = loadedCommits;
@@ -436,11 +463,20 @@
 
 	$effect(() => {
 		if (typeof document === 'undefined') return;
+		const root = document.documentElement;
 		if ($theme === 'light') {
-			document.documentElement.classList.remove('dark');
+			root.classList.remove('dark');
+			root.classList.add('light');
 		} else {
-			document.documentElement.classList.add('dark');
+			root.classList.add('dark');
+			root.classList.remove('light');
 		}
+		if ($highContrast) {
+			root.classList.add('high-contrast');
+		} else {
+			root.classList.remove('high-contrast');
+		}
+		root.style.fontSize = `${$fontSize}px`;
 	});
 
 	async function onSelectCommit(oid: string, ctrlKey = false) {
@@ -575,13 +611,32 @@
 			closeRepo();
 			return;
 		}
+		if ((e.key === 'F1' || (e.key === '/' && (e.ctrlKey || e.metaKey))) && !showPreferences) {
+			e.preventDefault();
+			showShortcutHelp = true;
+			return;
+		}
 		if (e.key === 'Escape') {
-			if (showCommandPalette || contextMenu) return;
+			if (showCommandPalette || contextMenu || showShortcutHelp || showPreferences) return;
 			if (isFullscreen) {
 				isFullscreen = false;
 				return;
 			}
 			comparisonOid.set(null);
+			return;
+		}
+		if (e.key === 'b' && e.altKey && !e.shiftKey && branchNames.length > 0) {
+			e.preventDefault();
+			const currentIdx = selectedBranch ? branchNames.indexOf(selectedBranch) : -1;
+			const nextIdx = currentIdx < branchNames.length - 1 ? currentIdx + 1 : 0;
+			handleBranchSelect(branchNames[nextIdx]);
+			return;
+		}
+		if (e.key === 'b' && e.altKey && e.shiftKey && branchNames.length > 0) {
+			e.preventDefault();
+			const currentIdx = selectedBranch ? branchNames.indexOf(selectedBranch) : branchNames.length;
+			const prevIdx = currentIdx > 0 ? currentIdx - 1 : branchNames.length - 1;
+			handleBranchSelect(branchNames[prevIdx]);
 			return;
 		}
 		if (!$selectedOid || !commits.length) return;
@@ -713,6 +768,41 @@
 			category: 'View',
 			action: () => {
 				isFullscreen = !isFullscreen;
+			}
+		});
+		registerCommand({
+			id: 'show-shortcuts',
+			label: translate('page.cmd_shortcuts'),
+			shortcut: 'F1',
+			category: 'Help',
+			action: () => {
+				showShortcutHelp = true;
+			}
+		});
+		registerCommand({
+			id: 'branch-next',
+			label: translate('page.cmd_branch_next'),
+			shortcut: 'Alt+B',
+			category: 'Branch',
+			action: () => {
+				if (branchNames.length === 0) return;
+				const currentIdx = selectedBranch ? branchNames.indexOf(selectedBranch) : -1;
+				const nextIdx = currentIdx < branchNames.length - 1 ? currentIdx + 1 : 0;
+				handleBranchSelect(branchNames[nextIdx]);
+			}
+		});
+		registerCommand({
+			id: 'branch-prev',
+			label: translate('page.cmd_branch_prev'),
+			shortcut: 'Alt+Shift+B',
+			category: 'Branch',
+			action: () => {
+				if (branchNames.length === 0) return;
+				const currentIdx = selectedBranch
+					? branchNames.indexOf(selectedBranch)
+					: branchNames.length;
+				const prevIdx = currentIdx > 0 ? currentIdx - 1 : branchNames.length - 1;
+				handleBranchSelect(branchNames[prevIdx]);
 			}
 		});
 	}
@@ -872,6 +962,34 @@
 				{:else}
 					<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
 				{/if}
+				<div class="flex justify-center">
+					<button
+						class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+						onclick={() => (showPreferences = true)}
+						aria-label={$t('page.settings_aria')}
+					>
+						<svg
+							class="h-5 w-5"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							aria-hidden="true"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+							/>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+							/>
+						</svg>
+					</button>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -885,6 +1003,20 @@
 				{:else if $repoInfo.head_branch}
 					<span class="rounded bg-green-700/50 px-2 py-0.5 text-xs text-green-300">
 						{$repoInfo.head_branch}
+					</span>
+				{:else if detachedHeadSha}
+					<span class="rounded bg-red-700/50 px-2 py-0.5 text-xs text-red-300">
+						{$t('page.detached_head', { sha: detachedHeadSha })}
+					</span>
+				{/if}
+				{#if uncommittedCount > 0}
+					<span class="rounded bg-amber-700/50 px-2 py-0.5 text-xs text-amber-300">
+						{$t(
+							uncommittedCount === 1
+								? 'page.uncommitted_changes'
+								: 'page.uncommitted_changes_plural',
+							{ count: uncommittedCount }
+						)}
 					</span>
 				{/if}
 				{#if $repoInfo.is_bare}
@@ -990,6 +1122,7 @@
 								});
 							}}
 							graphWidth={savedLayout?.graphWidth ?? 200}
+							{rowHeight}
 						/>
 					{/if}
 				</div>
@@ -1059,10 +1192,27 @@
 			</div>
 		</div>
 	{/if}
+	{#if $repoInfo}
+		<footer
+			class="flex items-center gap-3 border-t border-gray-800 px-4 py-1 text-xs text-gray-500 shrink-0"
+			role="status"
+			aria-label={$t('page.statusbar_aria')}
+		>
+			<span>{$t('page.commits_label', { count: commitCount })}</span>
+			{#if $operationState !== 'Idle'}
+				<span class="text-blue-400">
+					{$t('page.' + $operationState.toLowerCase()) ?? $operationState}
+				</span>
+			{/if}
+		</footer>
+	{/if}
 	<ToastContainer />
 	<DebugOverlay />
 	{#if showPreferences}
 		<PreferencesModal onclose={() => (showPreferences = false)} />
+	{/if}
+	{#if showShortcutHelp}
+		<ShortcutHelp onclose={() => (showShortcutHelp = false)} />
 	{/if}
 	{#if showCommandPalette}
 		<CommandPalette onclose={() => (showCommandPalette = false)} />

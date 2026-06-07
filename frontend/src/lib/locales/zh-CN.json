@@ -43,7 +43,18 @@
 		"language": "语言",
 		"language_aria": "界面语言",
 		"lang_en": "English",
-		"lang_zh_cn": "简体中文"
+		"lang_zh_cn": "简体中文",
+		"section_appearance": "外观",
+		"theme": "主题",
+		"theme_aria": "界面主题",
+		"theme_dark": "深色",
+		"theme_light": "浅色",
+		"font_size": "字体大小",
+		"font_size_aria": "界面字体大小",
+		"high_contrast": "高对比度",
+		"high_contrast_aria": "切换高对比度模式",
+		"section_shortcuts": "快捷键",
+		"no_shortcuts": "未注册快捷键"
 	},
 	"commit_detail": {
 		"patch": "补丁",
@@ -136,7 +147,19 @@
 		"cmd_palette_default": "图形调色板：默认",
 		"cmd_palette_deuteranopia": "图形调色板：绿色盲安全",
 		"cmd_palette_protanopia": "图形调色板：红色盲安全",
-		"cmd_palette_tritanopia": "图形调色板：蓝色盲安全"
+		"cmd_palette_tritanopia": "图形调色板：蓝色盲安全",
+		"cmd_shortcuts": "显示快捷键帮助",
+		"cmd_branch_next": "下一个分支",
+		"cmd_branch_prev": "上一个分支",
+		"detached_head": "分离头指针 {sha}",
+		"uncommitted_changes": "{count} 个未提交",
+		"uncommitted_changes_plural": "{count} 个未提交",
+		"commits_label": "{count} 个提交",
+		"statusbar_aria": "状态栏",
+		"settings_aria": "打开偏好设置"
+	},
+	"commit_graph": {
+		"aria": "提交图"
 	},
 	"commit_list": {
 		"aria": "提交列表",
@@ -212,6 +235,12 @@
 		"author_date": "作者和日期",
 		"content": "内容",
 		"line_aria": "第 {number} 行，作者 {author}"
+	},
+	"shortcut_help": {
+		"title": "快捷键",
+		"close_aria": "关闭快捷键帮助",
+		"none": "未注册快捷键",
+		"dismiss_hint": "按下 Esc 关闭"
 	},
 	"command_palette": {
 		"aria": "命令面板",

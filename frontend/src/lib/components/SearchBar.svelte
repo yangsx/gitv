@@ -53,9 +53,7 @@
 		}
 
 		const date_range =
-			dateFrom || dateTo
-				? { from: dateFrom || undefined, to: dateTo || undefined }
-				: undefined;
+			dateFrom || dateTo ? { from: dateFrom || undefined, to: dateTo || undefined } : undefined;
 
 		const query = {
 			text: inputText || undefined,

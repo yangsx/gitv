@@ -12,7 +12,15 @@
 		id?: string;
 	}
 
-	let { commit, isSelected, isDimmed = false, highlights = [], onclick, oncontextmenu, id }: Props = $props();
+	let {
+		commit,
+		isSelected,
+		isDimmed = false,
+		highlights = [],
+		onclick,
+		oncontextmenu,
+		id
+	}: Props = $props();
 
 	function escapeHtml(s: string): string {
 		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

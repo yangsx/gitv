@@ -187,7 +187,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. THE gitv_Application SHALL display the number of uncommitted changes (staged and unstaged)
 3. THE gitv_Application SHALL indicate if the current branch is ahead or behind its remote
 4. THE gitv_Application SHALL display a summary of staged and unstaged files
-5. THE gitv_Application SHALL refresh the status when changes are detected in the repository
+5. THE gitv_Application SHALL provide a manual refresh button in the toolbar to reload repository status
 
 ### Requirement 13: Keyboard Navigation
 
@@ -578,7 +578,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 1. THE gitv_Application SHALL display a "Working Changes" entry at the top of the commit list (or as a virtual node in the graph)
 2. WHEN the "Working Changes" entry is selected, THE gitv_Application SHALL display separate diffs for staged changes, unstaged changes, and the combined diff against HEAD
 3. THE gitv_Application SHALL allow toggling between staged-only, unstaged-only, and combined diff views
-4. THE gitv_Application SHALL update the working changes diff when filesystem changes are detected (per Req 22)
+4. THE gitv_Application SHALL update the working changes diff when the user clicks the manual refresh button (per Req 22)
 
 ### Requirement 44: File Tree Browser
 

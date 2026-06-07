@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type {
 		GraphLayout,
 		Color,
@@ -276,6 +277,7 @@
 <canvas
 	bind:this={canvas}
 	class="block cursor-pointer"
+	aria-label={$t('commit_graph.aria')}
 	onclick={handleClick}
 	onmousemove={handleMouseMove}
 	onmouseleave={handleMouseLeave}

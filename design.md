@@ -22,7 +22,7 @@ gitv is a modern, cross-platform Git visualization tool built with Rust and Taur
 - Cross-platform consistency
 - Streaming data loading for large repositories
 - Command palette for quick navigation
-- Filesystem watching with auto-refresh
+- Manual refresh with toolbar button
 - Persistent graph cache for instant re-open
 - Reflog visualization and stash browsing
 
@@ -94,7 +94,7 @@ graph TB
 |-------|----------------|------------|
 | Frontend | UI rendering, user interaction, state management | Svelte 5 + TypeScript |
 | Tauri Bridge | IPC communication, command routing, event broadcasting | Tauri 2.0 |
-| Backend (Git Core) | Git operations, graph calculation, search, file watching, caching | Rust + gix (gitoxide) |
+| Backend (Git Core) | Git operations, graph calculation, search, refresh, caching | Rust + gix (gitoxide) |
 | Platform | Native dialogs, window management, filesystem access | Tauri + OS APIs |
 
 ### Architectural Decisions
@@ -497,38 +497,6 @@ impl SearchEngine {
 }
 ```
 
-#### File Watcher Module (`gitv-git-core::watcher`)
-
-```rust
-/// Filesystem watcher for repository changes
-pub struct RepositoryWatcher {
-    watcher: Debouncer<RecommendedWatcher>,
-    tx: Sender<WatchEvent>,
-}
-
-pub enum WatchEvent {
-    RefsChanged,
-    HeadChanged,
-    IndexChanged,
-    ObjectsChanged,
-    WorkingTreeChanged,
-}
-
-impl RepositoryWatcher {
-    /// Start watching a repository's .git directory
-    pub fn start(repo_path: &Path, event_tx: Sender<WatchEvent>) -> Result<Self, WatchError>;
-
-    /// Stop watching
-    pub fn stop(self);
-}
-
-/// Configuration for debouncing
-pub struct WatchConfig {
-    pub debounce_ms: u64,
-    pub watch_mask: WatchMask,
-}
-```
-
 #### Streaming Iterator Module (`gitv-git-core::stream`)
 
 ```rust
@@ -704,12 +672,6 @@ pub struct GraphOptionsPayload {
     pub orientation: String,
     pub color_mode: String,
 }
-
-#[tauri::command]
-async fn watch_repository(
-    repo_path: String,
-    app: tauri::AppHandle
-) -> Result<(), String>;
 
 #[tauri::command]
 async fn get_file_history_follow(
@@ -1197,7 +1159,7 @@ Two-commit diff comparison for arbitrary commit pairs.
   // Sections:
   // Appearance: theme (dark/light), font size slider, color palette dropdown (Req 49.3)
   // Graph: default orientation, default color mode (by-branch / by-author)
-  // Behavior: auto-refresh toggle (Req 22.3), auto-update check toggle (Req 51.4)
+  // Behavior: auto-update check toggle (Req 51.4)
   // Shortcuts: keyboard shortcut customization table (Req 13.5)
   // Language: language selection dropdown (Req 21.3)
   // Advanced: log file path display (Req 68.7), "Open Log Directory" button (Req 70.5),
@@ -1631,7 +1593,6 @@ let loadIncomplete = $state<boolean>(false);
 
 type OperationState = "idle" | "streaming" | "searching" | "applying-filter";
 // "User interaction" that defers refresh = applying filter, comparison selection, drag operations.
-// Scroll, selection, and hover do NOT defer refresh — they are non-mutating (Req 22.5).
 
 
 function clamp(value: number, min: number, max: number): number {
@@ -2286,7 +2247,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 
 - Git backend operations against real repositories
 - Tauri IPC command handlers
-- Filesystem watcher behavior
+- Refresh workflow behavior
 - Cross-platform path handling
 - Persistent cache: write → close → reopen → verify
 
@@ -2320,7 +2281,6 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 **Not applicable for**:
 - GPU rendering (visual output)
 - Tauri IPC (external service behavior)
-- Filesystem watching (external service behavior)
 - Fullscreen mode toggle (UI wiring)
 - Tab switching keyboard shortcuts (UI wiring)
 
@@ -2350,7 +2310,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Mid-stream error recovery (simulate stream failure, verify partial data shown with retry)
 - Submodule display (file tree shows submodule icon + pinned SHA, diff shows SHA change)
 - Bare repository (opens normally, working changes disabled, status bar shows "bare repository")
-- Toast notifications (auto-refresh, copy confirmation, error toasts)
+- Toast notifications (refresh completion, copy confirmation, error toasts)
 - Reduced motion (verify instant transitions when OS setting is active)
 - Focus management (modal open/close, command palette, programmatic navigation)
 
@@ -2486,7 +2446,7 @@ For sub-100ms search on large repositories:
 2. **SHA prefix index**: Simple prefix table for O(1) SHA lookup by prefix
 3. **Author index**: HashMap of author name/email to commit set. Used for author filtering (Req 6.4), color-by-author mode (Req 52), and author navigation (Req 58)
 4. **Diff search**: Not indexed — uses streaming regex match across diffs with progressive results. Trade-off: diff search is slower but diffs are too large to index cheaply
-5. **Incremental updates**: When new commits arrive via filesystem watcher, append to existing index
+5. **Incremental updates**: On refresh, compute diff from cached ref tips and append new commits to existing index
 
 ### Persistent Cache
 
@@ -2506,7 +2466,7 @@ pub struct GraphCache {
 **Cache lifecycle**:
 1. **First open**: Full traversal, compute graph layout, build search index, write all to disk cache
 2. **Re-open**: Load cache, compare ref tips. If unchanged, skip traversal entirely. If changed, compute incremental diff (new commits only), append to cached layout and index
-3. **Background refresh**: Filesystem watcher detects change → incremental update to in-memory cache → async write to disk cache
+3. **Manual refresh**: User clicks refresh → incremental update to in-memory cache → async write to disk cache (Req 22)
 
 ### Memory Management
 
@@ -2647,7 +2607,7 @@ pub struct KeyBinding {
 - Graph nodes have accessible descriptions
 - Status bar announcements for state changes
 - `aria-live` region for dynamic content announcements (Req 67.5):
-  commit count updates, search results ("142 matches found"), auto-refresh events, loading errors
+  commit count updates, search results ("142 matches found"), loading errors
 
 ### Keyboard Navigation
 
@@ -2681,7 +2641,7 @@ pub struct KeyBinding {
 | Application Framework | Tauri 2.0 | Small bundle size, native performance, Rust backend |
 | Git Library | gix (gitoxide) | Pure Rust, production-grade, no C dependencies |
 | GPU Rendering | wgpu | Cross-platform, pure Rust, WebGPU compatible |
-| Filesystem Watching | notify + notify-debouncer-full | Pure Rust, cross-platform, debouncing support |
+| Refresh | Manual refresh via toolbar button | User-initiated status reload |
 | Date/Time | chrono | Comprehensive timezone support |
 | Serialization | serde + postcard | serde for JSON IPC; postcard for batch streaming and cache |
 | Search Index | RoaringBitmap-based inverted index | Compact, fast union/intersection for combined queries |
@@ -2731,7 +2691,6 @@ gitv/
 │   │   │   ├── commits.rs
 │   │   │   ├── diff.rs
 │   │   │   ├── search.rs
-│   │   │   ├── watch.rs
 │   │   │   ├── reflog.rs
 │   │   │   ├── stash.rs
 │   │   │   ├── working_changes.rs
@@ -2757,9 +2716,6 @@ gitv/
 │           ├── stream/
 │           │   ├── mod.rs
 │           │   └── iterator.rs
-│           ├── watcher/
-│           │   ├── mod.rs
-│           │   └── debouncer.rs
 │           ├── cache/
 │           │   ├── mod.rs
 │           │   ├── persistent.rs
@@ -3066,13 +3022,7 @@ gitv/
 
 **Validates: Requirements 21.7**
 
-### Property 28: Debounce Correctness
-
-*For any* sequence of filesystem events within the debounce window, only one refresh event shall be emitted after the debounce period expires.
-
-**Validates: Requirements 22.4**
-
-### Property 29: Single-Branch Filtering Correctness
+### Property 28: Single-Branch Filtering Correctness
 
 *For any* branch and repository, single-branch filtering shall return exactly the commits reachable from the branch tip.
 
@@ -3194,8 +3144,7 @@ No redundant properties were found. Each provides unique validation value.
 2. [Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) - Pierre Vigier's algorithm research
 3. [Git Commit-Graph Design](https://raw.githubusercontent.com/git/git/master/Documentation/technical/commit-graph.adoc) - Git's internal commit-graph format
 4. [wgpu - Cross-platform GPU API](https://wgpu.rs/) - GPU rendering in pure Rust
-5. [notify crate](https://lib.rs/crates/notify) - Cross-platform filesystem watching
-6. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
+5. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
 7. [postcard](https://docs.rs/postcard) - Binary serialization for Rust
 
 ### Technology Documentation

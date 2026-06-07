@@ -8,6 +8,36 @@
 	}
 }
 
+.high-contrast {
+	--hc-border: #ffffff;
+	--hc-text: #ffffff;
+	--hc-bg: #000000;
+}
+
+.high-contrast.dark {
+	--bg-primary: #000000;
+	--bg-secondary: #0a0a0a;
+	--text-primary: #ffffff;
+	--text-secondary: #cccccc;
+	--border-color: #ffffff;
+	background-color: #000000;
+	color: #ffffff;
+}
+
+.high-contrast.light {
+	--bg-primary: #ffffff;
+	--bg-secondary: #f0f0f0;
+	--text-primary: #000000;
+	--text-secondary: #222222;
+	--border-color: #000000;
+	background-color: #ffffff;
+	color: #000000;
+}
+
+.high-contrast * {
+	border-color: var(--border-color, currentColor) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
