@@ -18,6 +18,7 @@
 	import { get } from 'svelte/store';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { t, translate, locale } from '$lib/stores/locale';
+	import { renderMarkdown } from '$lib/utils/markdown';
 
 	interface Props {
 		details: CommitDetails;
@@ -29,6 +30,7 @@
 	let { details, repoPath, onhistoryfile, oncommitselect }: Props = $props();
 
 	let activeTab = $state<'patch' | 'tree'>('patch');
+	let rawMessage = $state(false);
 	let localDiffMode = $state($diffMode);
 	let localDiffWhitespace = $state($diffWhitespace);
 	let fileTree = $state<FileTreeNode | null>(null);
@@ -90,6 +92,8 @@
 		Copied: 'C',
 		SubmoduleUpdated: 'S'
 	};
+
+	let renderedBody = $derived(details.body ? renderMarkdown(details.body) : '');
 
 	$effect(() => {
 		void details.info.oid;
@@ -334,8 +338,18 @@
 					>
 				</div>
 			{/if}
+			<button
+				class="ml-auto whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {rawMessage
+					? 'bg-blue-700/50 text-blue-300'
+					: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+				onclick={() => (rawMessage = !rawMessage)}
+				role="radio"
+				aria-checked={rawMessage}
+			>
+				{rawMessage ? 'Raw' : 'Markdown'}
+			</button>
 			{#if activeTab === 'patch'}
-				<span class="ml-auto text-xs text-gray-500" role="status">
+				<span class="ml-2 text-xs text-gray-500" role="status">
 					{$t(
 						details.changed_files.length === 1
 							? 'commit_detail.file_count'
@@ -446,7 +460,12 @@
 						{/if}
 						<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{details.info.summary}</div>
 						{#if details.body}
-							<pre class="mt-1 text-sm text-gray-400 whitespace-pre-wrap">{details.body}</pre>
+							{#if rawMessage}
+								<pre
+									class="mt-1 text-sm text-gray-400 whitespace-pre-wrap font-sans">{details.body}</pre>
+							{:else if renderedBody}
+								<div class="mt-1 text-sm text-gray-400 markdown-body">{@html renderedBody}</div>
+							{/if}
 						{/if}
 					</div>
 				{/if}
