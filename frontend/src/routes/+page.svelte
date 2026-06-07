@@ -57,7 +57,15 @@
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import { showToast } from '$lib/stores/toast';
-	import { toggleDebug, tickFps, updateDebugGraphStats } from '$lib/stores/debug';
+	import {
+		toggleDebug,
+		tickFps,
+		updateDebugGraphStats,
+		debugOverlayEnabled,
+		logPath,
+		startMemoryTracking,
+		stopMemoryTracking
+	} from '$lib/stores/debug';
 	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
 	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
 	import { registerCommand, unregisterCommandsByPrefix } from '$lib/stores/commands';
@@ -145,6 +153,8 @@
 				});
 			} else {
 				getStartupInfo().then((info) => {
+					debugOverlayEnabled.set(info.debug_overlay_enabled);
+					logPath.set(info.log_path);
 					if (info.paths.length > 0) {
 						repoPath = info.paths[0];
 						loadRepo(info.paths[0]).finally(() => {
@@ -172,10 +182,13 @@
 		}
 		fpsRafId = requestAnimationFrame(fpsLoop);
 
+		startMemoryTracking();
+
 		return () => {
 			window.removeEventListener('resize', onResize);
 			window.removeEventListener('keydown', handleKeydown);
 			cancelAnimationFrame(fpsRafId);
+			stopMemoryTracking();
 		};
 	});
 
@@ -593,7 +606,9 @@
 		}
 		if (e.key === 'F12' || (e.key === 'D' && e.ctrlKey && e.shiftKey)) {
 			e.preventDefault();
-			toggleDebug();
+			if ($debugOverlayEnabled) {
+				toggleDebug();
+			}
 			return;
 		}
 		if ((e.key === 'p' && e.ctrlKey) || (e.key === 'p' && e.metaKey)) {
@@ -735,7 +750,9 @@
 			label: translate('page.cmd_debug'),
 			shortcut: 'F12',
 			category: 'Debug',
-			action: toggleDebug
+			action: () => {
+				if ($debugOverlayEnabled) toggleDebug();
+			}
 		});
 		registerCommand({
 			id: 'palette-default',

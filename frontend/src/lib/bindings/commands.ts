@@ -189,10 +189,16 @@ export async function getWorkingChangesDiffs(
 
 export interface StartupInfo {
 	paths: string[];
+	debug_overlay_enabled: boolean;
+	log_path: string;
 }
 
 export async function getStartupInfo(): Promise<StartupInfo> {
 	return timedInvoke<StartupInfo>('get_startup_info');
+}
+
+export async function openLogDirectory(): Promise<string> {
+	return timedInvoke<string>('open_log_directory');
 }
 
 export async function getPreferences(): Promise<AppPreferences> {

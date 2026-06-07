@@ -1618,6 +1618,7 @@ dependencies = [
  "clap",
  "dirs",
  "gitv-git-core",
+ "open",
  "postcard",
  "serde",
  "serde_json",

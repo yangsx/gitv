@@ -17,6 +17,8 @@
 	import { t, locale, setLocale as setAppLocale } from '$lib/stores/locale';
 	import type { Locale } from '$lib/stores/locale';
 	import { getCommands } from '$lib/stores/commands';
+	import { logPath } from '$lib/stores/debug';
+	import { openLogDirectory } from '$lib/bindings/commands';
 
 	interface Props {
 		onclose: () => void;
@@ -499,6 +501,33 @@
 							</div>
 						</div>
 					{/each}
+				{/if}
+			</section>
+
+			<div class="border-t border-gray-800"></div>
+
+			<!-- Logging Section -->
+			<section>
+				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">
+					{$t('preferences.section_logging')}
+				</h3>
+				{#if $logPath}
+					<div class="space-y-2">
+						<div class="flex items-center gap-2">
+							<span class="text-gray-400 shrink-0">{$t('preferences.log_path')}</span>
+							<span class="truncate text-gray-300 text-[11px]" title={$logPath}>
+								{$logPath}
+							</span>
+						</div>
+						<button
+							class="rounded bg-gray-700 px-2.5 py-1 text-xs text-gray-200 hover:bg-gray-600 transition-colors"
+							onclick={() => openLogDirectory().catch(() => {})}
+						>
+							{$t('preferences.open_log_dir')}
+						</button>
+					</div>
+				{:else}
+					<p class="text-gray-500 italic">{$t('preferences.log_unavailable')}</p>
 				{/if}
 			</section>
 		</div>

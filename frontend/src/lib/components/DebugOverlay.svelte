@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { debug, avgIpcTime, recentIpcTimings } from '$lib/stores/debug';
+	import {
+		debug,
+		avgIpcTime,
+		recentIpcTimings,
+		debugOverlayEnabled,
+		formatBytes
+	} from '$lib/stores/debug';
 	import { operationState } from '$lib/stores/repository';
 
 	let formatMs = (ms: number) => ms.toFixed(1);
@@ -11,11 +17,12 @@
 		$avgIpcTime > 100 ? 'text-red-400' : $avgIpcTime > 50 ? 'text-yellow-400' : ''
 	);
 	let stateClass = $derived($operationState !== 'Idle' ? 'text-yellow-400' : '');
+	let memoryStr = $derived($debug.memoryUsed > 0 ? formatBytes($debug.memoryUsed) : null);
 </script>
 
-{#if $debug.visible}
+{#if $debug.visible && $debugOverlayEnabled}
 	<div
-		class="fixed bottom-4 right-4 z-50 rounded-lg border border-gray-700 bg-gray-950/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
+		class="fixed top-4 right-4 z-50 rounded-lg border border-gray-700 bg-gray-950/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
 		role="dialog"
 		aria-label="Debug overlay"
 	>
@@ -29,6 +36,9 @@
 			<span class={fpsClass}>
 				{$debug.fps}
 			</span>
+
+			<span class="text-gray-500">Memory</span>
+			<span>{memoryStr ?? 'N/A'}</span>
 
 			<span class="text-gray-500">Commits</span>
 			<span>{$debug.totalCommits} ({$debug.visibleCommits} visible)</span>

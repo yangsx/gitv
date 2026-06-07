@@ -9,8 +9,9 @@
 				try {
 					var m = e.message || String(e.error || '');
 					var s = (e.error && e.error.stack) || '';
+					var meta = 'userAgent: ' + navigator.userAgent + ' url: ' + window.location.href;
 					if (window.__TAURI__ && window.__TAURI__.invoke) {
-						window.__TAURI__.invoke('log_frontend_error', { message: m, stack: s });
+						window.__TAURI__.invoke('log_frontend_error', { message: m + '\n' + meta, stack: s });
 					}
 				} catch (_) {}
 			});
@@ -18,8 +19,9 @@
 				try {
 					var m = (e.reason && e.reason.message) || String(e.reason || '');
 					var s = (e.reason && e.reason.stack) || '';
+					var meta = 'userAgent: ' + navigator.userAgent + ' url: ' + window.location.href;
 					if (window.__TAURI__ && window.__TAURI__.invoke) {
-						window.__TAURI__.invoke('log_frontend_error', { message: m, stack: s });
+						window.__TAURI__.invoke('log_frontend_error', { message: m + '\n' + meta, stack: s });
 					}
 				} catch (_) {}
 			});

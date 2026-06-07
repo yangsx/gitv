@@ -6,6 +6,8 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use tracing::instrument;
 
+use crate::commands::args;
+
 static CRASH_DIR: OnceLock<PathBuf> = OnceLock::new();
 static CRASH_LOCK: Mutex<()> = Mutex::new(());
 
@@ -114,4 +116,15 @@ pub fn log_frontend_message(level: String, message: String) {
         "warn" => tracing::warn!(message),
         _ => tracing::info!(message),
     }
+}
+
+#[tauri::command]
+#[instrument(fields(command = "open_log_directory"))]
+pub fn open_log_directory() -> Result<String, String> {
+    let path = args::get_log_path_str();
+    if path.is_empty() {
+        return Err("log directory not set".into());
+    }
+    open::that(&path).map_err(|e| format!("failed to open log directory: {e}"))?;
+    Ok(path)
 }

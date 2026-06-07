@@ -4,12 +4,14 @@ mod state;
 
 use std::path::PathBuf;
 
-fn init_tracing() {
+fn init_tracing(cli_log_level: Option<&str>) {
     let log_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("gitv")
         .join("logs");
     std::fs::create_dir_all(&log_dir).ok();
+
+    commands::args::set_log_path(log_dir.clone());
 
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
         .max_log_files(3)
@@ -27,10 +29,17 @@ fn init_tracing() {
     } else {
         "info"
     };
+
     let filter = tracing_subscriber::EnvFilter::builder()
         .with_env_var("GITV_LOG")
-        .from_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
+        .from_env_lossy()
+        .add_directive(
+            cli_log_level
+                .map(|l| format!("gitv={l}"))
+                .unwrap_or_else(|| format!("gitv={default_level}"))
+                .parse()
+                .unwrap_or_else(|_| tracing_subscriber::filter::LevelFilter::INFO.into()),
+        );
 
     use tracing_subscriber::util::SubscriberInitExt;
     let subscriber = tracing_subscriber::fmt()
@@ -46,16 +55,18 @@ fn init_tracing() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_tracing();
+    let cli = cli::parse_cli();
+
+    init_tracing(cli.log_level.as_deref());
     commands::diagnostics::install_panic_hook(env!("CARGO_PKG_VERSION"));
 
-    let repo_paths = cli::parse_cli();
     commands::args::init_startup_paths(
-        repo_paths
+        cli.repo_paths
             .iter()
             .map(|p| p.to_string_lossy().to_string())
             .collect(),
     );
+    commands::args::set_debug_overlay(cli.debug_overlay);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -90,6 +101,7 @@ pub fn run() {
             commands::saved_searches::delete_saved_search,
             commands::diagnostics::log_frontend_error,
             commands::diagnostics::log_frontend_message,
+            commands::diagnostics::open_log_directory,
             commands::preferences::get_preferences,
             commands::preferences::set_preferences,
         ])

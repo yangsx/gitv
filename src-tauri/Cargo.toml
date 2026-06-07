@@ -25,3 +25,4 @@ tauri-plugin-dialog = "2"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
+open = { workspace = true }

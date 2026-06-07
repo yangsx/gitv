@@ -54,7 +54,11 @@
 		"high_contrast": "High Contrast",
 		"high_contrast_aria": "Toggle high contrast mode",
 		"section_shortcuts": "Keyboard Shortcuts",
-		"no_shortcuts": "No shortcuts registered"
+		"no_shortcuts": "No shortcuts registered",
+		"section_logging": "Logging",
+		"log_path": "Log path:",
+		"open_log_dir": "Open Log Directory",
+		"log_unavailable": "Log path not available"
 	},
 	"commit_detail": {
 		"patch": "Patch",

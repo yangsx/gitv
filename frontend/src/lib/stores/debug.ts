@@ -44,6 +44,9 @@ export const recentIpcTimings = derived(debug, ($d) => {
 	return $d.ipcTimings.slice(-20);
 });
 
+export const debugOverlayEnabled = writable(false);
+export const logPath = writable('');
+
 const MAX_TIMINGS = 100;
 
 export function recordIpcTiming(command: string, durationMs: number) {
@@ -87,4 +90,32 @@ export function tickFps() {
 		fpsFrames = 0;
 		fpsLastTime = now;
 	}
+}
+
+let memoryTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startMemoryTracking() {
+	if (memoryTimer) return;
+	memoryTimer = setInterval(() => {
+		const mem = (performance as unknown as Record<string, unknown>).memory as
+			| { usedJSHeapSize: number }
+			| undefined;
+		if (mem?.usedJSHeapSize) {
+			debug.update((d) => ({ ...d, memoryUsed: mem.usedJSHeapSize }));
+		}
+	}, 2000);
+}
+
+export function stopMemoryTracking() {
+	if (memoryTimer) {
+		clearInterval(memoryTimer);
+		memoryTimer = null;
+	}
+}
+
+export function formatBytes(bytes: number): string {
+	if (bytes === 0) return '0 B';
+	const units = ['B', 'KB', 'MB', 'GB'];
+	const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+	return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
 }
