@@ -25,10 +25,10 @@
 		if (isVertical()) {
 			if (e.key === 'ArrowUp') {
 				e.preventDefault();
-				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight + 20));
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
-				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight + 20));
+				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
 			}
 		} else {
 			if (e.key === 'ArrowRight') {
@@ -56,7 +56,7 @@
 
 		function onMouseMove(e: MouseEvent) {
 			if (isVertical()) {
-				const delta = e.clientY - startY;
+				const delta = startY - e.clientY;
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
 			} else {
 				const delta = e.clientX - startX;
@@ -86,7 +86,8 @@
 	role="separator"
 	aria-orientation={isVertical() ? 'horizontal' : 'vertical'}
 	aria-label={isVertical() ? 'Resize detail panel' : 'Resize file list'}
-	tabindex={isVertical() ? -1 : 0}
+	tabindex={0}
+
 	onmousedown={onMouseDown}
 	onkeydown={onKeyDown}
 >

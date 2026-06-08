@@ -47,7 +47,6 @@
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
 	import ComparisonPanel from '$lib/components/ComparisonPanel.svelte';
 	import StashDetailPanel from '$lib/components/StashDetailPanel.svelte';
-	import WorkingChangesPanel from '$lib/components/WorkingChangesPanel.svelte';
 	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
 	import Sidebar from '$lib/components/Sidebar/Sidebar.svelte';
 	import RefList from '$lib/components/Sidebar/RefList.svelte';
@@ -1192,15 +1191,6 @@
 							>
 								{$t('page.loading_details')}
 							</div>
-						{:else if VIRTUAL_OIDS.has($selectedOid) && workingChangesDiff}
-							<WorkingChangesPanel
-								{repoPath}
-								{workingChangesDiff}
-								onclose={() => {
-									selectedOid.set(null);
-									commitDetails = null;
-								}}
-							/>
 						{:else if commitDetails}
 							<CommitDetailPanel
 								details={commitDetails}
