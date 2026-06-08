@@ -36,6 +36,7 @@ impl NodeInstance {
     pub const DIMMED: u32 = 2;
     pub const MERGE: u32 = 4;
     pub const COMPARISON: u32 = 8;
+    pub const IS_STASH: u32 = 16;
 }
 
 /// Pre-tessellated edge quad vertex (simple position + colour).

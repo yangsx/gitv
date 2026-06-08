@@ -588,11 +588,7 @@
 		{/if}
 	</div>
 
-	<ResizeHandle
-		direction="horizontal"
-		bind:rightPanelWidth={rightPanelWidth}
-		onDragEnd={persistRightPanelWidth}
-	/>
+	<ResizeHandle direction="horizontal" bind:rightPanelWidth onDragEnd={persistRightPanelWidth} />
 
 	<div
 		class="shrink-0 flex flex-col border-l border-gray-700 bg-gray-900/50 overflow-hidden"

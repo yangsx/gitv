@@ -5,6 +5,8 @@ export const SELECT_RGB: [number, number, number] = [0x60, 0xa5, 0xfa];
 export const COMPARISON_RGB: [number, number, number] = [0xa7, 0x8b, 0xfa];
 export const SELECTED_COLOR = '#60a5fa';
 export const COMPARISON_COLOR = '#a78bfa';
+export const STASH_RGB: [number, number, number] = [245, 158, 11];
+export const STASH_COLOR = '#f59e0b';
 
 export function columnCenterX(column: number, laneWidth: number, paddingLeft: number): number {
 	return column * laneWidth + paddingLeft + laneWidth / 2;

@@ -92,7 +92,7 @@
 
 {#if viewMode === 'side-by-side'}
 	<div class="font-mono text-xs leading-5" role="region" aria-label="Side by side diff">
-		{#each hunks as hunk (hunk.old_start)}
+		{#each hunks as hunk, hi (hi)}
 			<div
 				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
 				aria-label="Hunk header: lines {hunk.old_start} to {hunk.old_start +
@@ -149,7 +149,7 @@
 	</div>
 {:else}
 	<div class="font-mono text-xs leading-5" role="region" aria-label="Unified diff">
-		{#each hunks as hunk (hunk.old_start)}
+		{#each hunks as hunk, hi (hi)}
 			<div
 				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
 				aria-label="Hunk header: lines {hunk.old_start} to {hunk.old_start +

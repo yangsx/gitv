@@ -66,6 +66,7 @@ export interface NodePosition {
 	row: number;
 	column: number;
 	is_merge: boolean;
+	is_stash: boolean;
 	color: Color;
 	is_dimmed: boolean;
 	is_highlighted: boolean;
@@ -101,6 +102,7 @@ export interface GraphLayout {
 	total_columns: number;
 	orientation: 'TopToBottom' | 'BottomToTop';
 	total_rows: number;
+	stash_commits: CommitInfo[];
 }
 
 export interface CommitBatch {
@@ -343,6 +345,7 @@ export interface RenderNode {
 	is_selected: boolean;
 	is_comparison: boolean;
 	is_merge: boolean;
+	is_stash: boolean;
 	sel_color_r: number;
 	sel_color_g: number;
 	sel_color_b: number;

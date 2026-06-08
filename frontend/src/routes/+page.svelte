@@ -10,7 +10,6 @@
 		getRecentRepositories,
 		saveRecentRepository,
 		openInNewWindow,
-		getStashList,
 		getStashDiff,
 		getStashSplitDiff
 	} from '$lib/bindings/commands';
@@ -352,12 +351,17 @@
 		};
 	}
 
+	let allCommits = $derived.by(() => {
+		if (!graphLayout || graphLayout.stash_commits.length === 0) return commits;
+		return [...commits, ...graphLayout.stash_commits];
+	});
+
 	let displayCommits = $derived.by(() => {
 		void $locale;
-		if (!workingChangesDiff) return commits;
+		if (!workingChangesDiff) return allCommits;
 		const hasStaged = workingChangesDiff.staged.length > 0;
 		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
-		if (!hasStaged && !hasUnstaged) return commits;
+		if (!hasStaged && !hasUnstaged) return allCommits;
 		const virtuals: CommitInfo[] = [];
 		if (hasUnstaged)
 			virtuals.push(
@@ -371,7 +375,7 @@
 			virtuals.push(
 				makeVirtualCommit(STAGED_OID, translate('page.staged'), workingChangesDiff.staged.length)
 			);
-		return [...virtuals, ...commits];
+		return [...virtuals, ...allCommits];
 	});
 
 	let displayLayout = $derived.by(() => {
@@ -390,7 +394,8 @@
 				is_merge: false,
 				color: { r: 255, g: 255, b: 255, a: 255 },
 				is_dimmed: false,
-				is_highlighted: false
+				is_highlighted: false,
+				is_stash: false
 			});
 		}
 		if (hasStaged) {
@@ -401,7 +406,8 @@
 				is_merge: false,
 				color: { r: 255, g: 255, b: 255, a: 255 },
 				is_dimmed: false,
-				is_highlighted: false
+				is_highlighted: false,
+				is_stash: false
 			});
 		}
 		const virtualEdges: import('$lib/bindings/types').Edge[] = [];
@@ -1184,12 +1190,6 @@
 							matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
 							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 							onContextMenu={handleCommitContextMenu}
-							onStashSelect={(idx: number) => {
-								getStashList(repoPath).then((stashes) => {
-									const entry = stashes[idx];
-									if (entry) onStashSelect(entry);
-								});
-							}}
 							graphWidth={savedLayout?.graphWidth ?? 200}
 							{rowHeight}
 						/>

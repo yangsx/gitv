@@ -57,6 +57,7 @@ pub struct NodePosition {
     pub row: usize,
     pub column: usize,
     pub is_merge: bool,
+    pub is_stash: bool,
     pub color: Color,
     pub is_dimmed: bool,
     pub is_highlighted: bool,
@@ -99,6 +100,7 @@ pub struct GraphLayout {
     pub total_columns: usize,
     pub orientation: GraphOrientation,
     pub total_rows: usize,
+    pub stash_commits: Vec<CommitInfo>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

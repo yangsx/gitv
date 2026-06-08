@@ -1,23 +1,15 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import type {
-		GraphLayout,
-		NodePosition,
-		Edge,
-		StashMarker,
-		CommitInfo
-	} from '$lib/bindings/types';
-	import { showStashes } from '$lib/stores/preferences';
+	import type { GraphLayout, NodePosition, Edge, CommitInfo } from '$lib/bindings/types';
 	import { updateGraphDrawTime } from '$lib/stores/debug';
 	import {
 		colorToCSS,
 		columnCenterX,
 		nodeCenterY,
 		isEdgeVisible,
-		stashX,
-		stashY,
 		SELECTED_COLOR,
-		COMPARISON_COLOR
+		COMPARISON_COLOR,
+		STASH_COLOR
 	} from '$lib/graph/graph-math';
 
 	const PADDING_LEFT = 12;
@@ -33,7 +25,6 @@
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
-		onStashSelect?: (_stashIndex: number) => void;
 	}
 
 	let {
@@ -46,8 +37,7 @@
 		visibleEnd,
 		selectedOid,
 		comparisonOid = null,
-		onSelect,
-		onStashSelect
+		onSelect
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -93,15 +83,10 @@
 			if (!isEdgeVisible(edge, startRow, endRow)) continue;
 			drawEdge(ctx, edge, sLaneWidth, sPadding, startRow, rowHeight);
 		}
+		const stashIdxMap = new Map(l.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
 		for (const node of l.nodes) {
 			if (node.row < startRow || node.row > endRow) continue;
-			drawNode(ctx, node, sLaneWidth, sNodeRadius, sPadding, startRow, rowHeight);
-		}
-		if ($showStashes) {
-			for (const stash of l.stash_markers) {
-				if (stash.row < startRow || stash.row > endRow) continue;
-				drawStashMarker(ctx, stash, sLaneWidth, sNodeRadius, sPadding, startRow, rowHeight, sc);
-			}
+			drawNode(ctx, node, sLaneWidth, sNodeRadius, sPadding, startRow, rowHeight, sc, stashIdxMap);
 		}
 		updateGraphDrawTime(performance.now() - drawStart);
 	}
@@ -113,28 +98,10 @@
 	});
 
 	function handleClick(e: MouseEvent) {
-		if (!onSelect && !onStashSelect) return;
+		if (!onSelect) return;
 		const rect = canvas.getBoundingClientRect();
-		const sc = scale;
-		const sLaneWidth = laneWidth * sc;
-		const sNodeRadius = nodeRadius * sc;
-		const sPadding = PADDING_LEFT * sc;
-		const x = e.clientX - rect.left;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
-
-		if (onStashSelect && $showStashes) {
-			for (const stash of layout.stash_markers) {
-				if (stash.row === row) {
-					const msx = stashX(stash.column, sLaneWidth, sPadding, sNodeRadius, sc);
-					const msy = stashY(stash.row, visibleStart, rowHeight);
-					if (Math.abs(Math.abs(x - msx)) < 20 * sc && Math.abs(y - msy) < 20 * sc) {
-						onStashSelect(stash.stash_index);
-						return;
-					}
-				}
-			}
-		}
 
 		for (const node of layout.nodes) {
 			if (node.row === row) {
@@ -155,37 +122,29 @@
 		const row = Math.floor(y / rowHeight) + visibleStart;
 		const hitRadius = sNodeRadius + 4 * sc;
 
-		if ($showStashes) {
-			for (const stash of layout.stash_markers) {
-				if (stash.row === row) {
-					const msx = stashX(stash.column, sLaneWidth, sPadding, sNodeRadius, sc);
-					const msy = stashY(stash.row, visibleStart, rowHeight);
-					if (Math.abs(x - msx) < hitRadius && Math.abs(y - msy) < hitRadius) {
-						tooltip = {
-							x: e.clientX - rect.left + 12,
-							y: e.clientY - rect.top - 8,
-							text: stash.message
-						};
-						return;
-					}
-				}
-			}
-		}
-
 		for (const node of layout.nodes) {
 			if (node.row === row) {
 				const nx = columnCenterX(node.column, sLaneWidth, sPadding);
 				const ny = nodeCenterY(node.row, visibleStart, rowHeight);
 				if (Math.abs(x - nx) < hitRadius && Math.abs(y - ny) < hitRadius) {
-					const ci = commitMap.get(node.oid);
-					if (ci) {
+					if (node.is_stash) {
+						const stash = layout.stash_markers.find((s) => s.stash_oid === node.oid);
 						tooltip = {
 							x: e.clientX - rect.left + 12,
 							y: e.clientY - rect.top - 8,
-							text: `${ci.short_oid} ${ci.summary}`
+							text: stash?.message ?? node.oid.substring(0, 7) + ' stash'
 						};
-						return;
+					} else {
+						const ci = commitMap.get(node.oid);
+						if (ci) {
+							tooltip = {
+								x: e.clientX - rect.left + 12,
+								y: e.clientY - rect.top - 8,
+								text: `${ci.short_oid} ${ci.summary}`
+							};
+						}
 					}
+					return;
 				}
 			}
 		}
@@ -211,7 +170,9 @@
 		sNodeRadius: number,
 		sPadding: number,
 		startRow: number,
-		rh: number
+		rh: number,
+		sc: number,
+		stashIdxMap: Map<string, number>
 	) {
 		const x = columnCenterX(node.column, sLaneWidth, sPadding);
 		const y = nodeCenterY(node.row, startRow, rh);
@@ -233,10 +194,29 @@
 		}
 
 		ctx.globalAlpha = node.is_dimmed ? 0.35 : 1.0;
-		ctx.beginPath();
-		ctx.arc(x, y, sNodeRadius, 0, Math.PI * 2);
-		ctx.fillStyle = colorToCSS(node.color);
+		if (node.is_stash) {
+			const s = sNodeRadius * 0.7;
+			ctx.beginPath();
+			ctx.moveTo(x, y - s);
+			ctx.lineTo(x + s, y);
+			ctx.lineTo(x, y + s);
+			ctx.lineTo(x - s, y);
+			ctx.closePath();
+			ctx.fillStyle = STASH_COLOR;
+		} else {
+			ctx.beginPath();
+			ctx.arc(x, y, sNodeRadius, 0, Math.PI * 2);
+			ctx.fillStyle = colorToCSS(node.color);
+		}
 		ctx.fill();
+		if (node.is_stash) {
+			const idx = stashIdxMap.get(node.oid);
+			if (idx !== undefined) {
+				ctx.font = `${10 * sc}px monospace`;
+				ctx.fillStyle = STASH_COLOR;
+				ctx.fillText(`S${idx}`, x + sNodeRadius + 2 * sc, y + 3 * sc);
+			}
+		}
 		ctx.globalAlpha = 1.0;
 	}
 
@@ -278,24 +258,6 @@
 		ctx.stroke();
 		ctx.setLineDash([]);
 		ctx.globalAlpha = 1.0;
-	}
-
-	function drawStashMarker(
-		ctx: CanvasRenderingContext2D,
-		stash: StashMarker,
-		sLaneWidth: number,
-		sNodeRadius: number,
-		sPadding: number,
-		startRow: number,
-		rh: number,
-		sc: number
-	) {
-		const x = stashX(stash.column, sLaneWidth, sPadding, sNodeRadius, sc);
-		const y = stashY(stash.row, startRow, rh);
-
-		ctx.font = `${10 * sc}px monospace`;
-		ctx.fillStyle = '#f59e0b';
-		ctx.fillText(`S${stash.stash_index}`, x, y + 3 * sc);
 	}
 </script>
 

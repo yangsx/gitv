@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
-	import type { GraphLayout, RenderGraphInput, RenderNode, RenderEdge, CommitInfo } from '$lib/bindings/types';
-	import { showStashes } from '$lib/stores/preferences';
+	import type {
+		GraphLayout,
+		RenderGraphInput,
+		RenderNode,
+		RenderEdge,
+		CommitInfo
+	} from '$lib/bindings/types';
 	import {
 		columnCenterX,
 		nodeCenterY,
-		stashX,
-		stashY,
 		isEdgeVisible,
 		nodeHitTest,
 		SELECT_RGB,
@@ -26,7 +29,6 @@
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
-		onStashSelect?: (_stashIndex: number) => void;
 	}
 
 	let {
@@ -39,8 +41,7 @@
 		visibleEnd,
 		selectedOid = null,
 		comparisonOid = null,
-		onSelect,
-		onStashSelect
+		onSelect
 	}: Props = $props();
 
 	let canvasEl: HTMLCanvasElement;
@@ -50,18 +51,18 @@
 	let containerWidth = $derived(Math.round(layout.total_columns * laneWidth + PADDING_LEFT + 10));
 	let containerHeight = $derived(Math.round((visibleEnd - visibleStart) * rowHeight));
 
-	let visibleStashes = $derived.by(() => {
-		if (!$showStashes) return [];
-		return layout.stash_markers
-			.filter((s) => s.row >= visibleStart && s.row <= visibleEnd)
-			.map((s) => ({
-				index: s.stash_index,
-				left: Math.round(stashX(s.column, laneWidth, PADDING_LEFT, nodeRadius)),
-				top: Math.round(stashY(s.row, visibleStart, rowHeight))
+	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
+
+	let visibleStashLabels = $derived.by(() => {
+		const stashIdxMap = new Map(layout.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
+		return layout.nodes
+			.filter((n) => n.is_stash && n.row >= visibleStart && n.row <= visibleEnd)
+			.map((n) => ({
+				index: stashIdxMap.get(n.oid) ?? 0,
+				left: Math.round(columnCenterX(n.column, laneWidth, PADDING_LEFT) + nodeRadius + 2),
+				top: Math.round(nodeCenterY(n.row, visibleStart, rowHeight))
 			}));
 	});
-
-	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
 
 	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 
@@ -88,6 +89,7 @@
 				is_selected: n.oid === selectedOid,
 				is_comparison: n.oid === comparisonOid,
 				is_merge: n.is_merge,
+				is_stash: n.is_stash,
 				sel_color_r: sr,
 				sel_color_g: sg,
 				sel_color_b: sb
@@ -209,37 +211,29 @@
 		const row = Math.floor(my / rowHeight) + visibleStart;
 		const hitRadius = nodeRadius + 4;
 
-		if ($showStashes) {
-			for (const stash of layout.stash_markers) {
-				if (stash.row === row) {
-					const sx = stashX(stash.column, laneWidth, PADDING_LEFT, nodeRadius);
-					const sy = stashY(stash.row, visibleStart, rowHeight);
-					if (Math.abs(mx - sx) < hitRadius && Math.abs(my - sy) < hitRadius) {
-						tooltip = {
-							x: e.clientX - rect.left + 12,
-							y: e.clientY - rect.top - 8,
-							text: stash.message
-						};
-						return;
-					}
-				}
-			}
-		}
-
 		for (const n of layout.nodes) {
 			if (n.row === row) {
 				const nx = columnCenterX(n.column, laneWidth, PADDING_LEFT);
 				const ny = nodeCenterY(n.row, visibleStart, rowHeight);
 				if (Math.abs(mx - nx) < hitRadius && Math.abs(my - ny) < hitRadius) {
-					const ci = commitMap.get(n.oid);
-					if (ci) {
+					if (n.is_stash) {
+						const stash = layout.stash_markers.find((s) => s.stash_oid === n.oid);
 						tooltip = {
 							x: e.clientX - rect.left + 12,
 							y: e.clientY - rect.top - 8,
-							text: `${ci.short_oid} ${ci.summary}`
+							text: stash?.message ?? n.oid.substring(0, 7) + ' stash'
 						};
-						return;
+					} else {
+						const ci = commitMap.get(n.oid);
+						if (ci) {
+							tooltip = {
+								x: e.clientX - rect.left + 12,
+								y: e.clientY - rect.top - 8,
+								text: `${ci.short_oid} ${ci.summary}`
+							};
+						}
 					}
+					return;
 				}
 			}
 		}
@@ -269,24 +263,13 @@
 			{tooltip.text}
 		</div>
 	{/if}
-	{#if $showStashes}
-		<div class="absolute inset-0" style="pointer-events: none;">
-			{#each visibleStashes as s (s.index)}
-				<span
-					class="absolute text-xs font-bold font-mono leading-none cursor-pointer select-none"
-					style="left: {s.left}px; top: {s.top}px; transform: translateY(-50%); color: #f59e0b; pointer-events: auto;"
-					onclick={() => onStashSelect?.(s.index)}
-					onkeydown={(e) => {
-						if (e.key === 'Enter' || e.key === ' ') {
-							e.preventDefault();
-							onStashSelect?.(s.index);
-						}
-					}}
-					role="button"
-					tabindex="-1"
-					aria-label="Stash {s.index}">S{s.index}</span
-				>
-			{/each}
-		</div>
-	{/if}
+	<div class="absolute inset-0" style="pointer-events: none;">
+		{#each visibleStashLabels as s (s.index)}
+			<span
+				class="absolute text-xs font-bold font-mono leading-none select-none"
+				style="left: {s.left}px; top: {s.top}px; transform: translateY(-50%); color: #f59e0b;"
+				>S{s.index}</span
+			>
+		{/each}
+	</div>
 </div>

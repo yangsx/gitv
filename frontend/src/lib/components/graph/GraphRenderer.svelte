@@ -15,7 +15,6 @@
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
-		onStashSelect?: (_stashIndex: number) => void;
 	}
 
 	let {
@@ -28,8 +27,7 @@
 		visibleEnd,
 		selectedOid = null,
 		comparisonOid = null,
-		onSelect,
-		onStashSelect
+		onSelect
 	}: Props = $props();
 
 	let useWgpu = $derived($renderer === 'wgpu');
@@ -47,7 +45,6 @@
 		{selectedOid}
 		{comparisonOid}
 		{onSelect}
-		{onStashSelect}
 	/>
 {:else}
 	<CommitGraph
@@ -61,6 +58,5 @@
 		{selectedOid}
 		{comparisonOid}
 		{onSelect}
-		{onStashSelect}
 	/>
 {/if}

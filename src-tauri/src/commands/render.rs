@@ -35,6 +35,7 @@ pub struct RenderNode {
     pub is_selected: bool,
     pub is_comparison: bool,
     pub is_merge: bool,
+    pub is_stash: bool,
     pub sel_color_r: u8,
     pub sel_color_g: u8,
     pub sel_color_b: u8,
@@ -177,6 +178,9 @@ fn render_inner(wgpu_state: &WgpuState, input: &RenderGraphInput) -> Result<Vec<
             }
             if n.is_comparison {
                 flags |= NodeInstance::COMPARISON;
+            }
+            if n.is_stash {
+                flags |= NodeInstance::IS_STASH;
             }
 
             NodeInstance {

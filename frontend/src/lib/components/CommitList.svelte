@@ -14,7 +14,6 @@
 		matchingOids?: Set<string>;
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
 		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
-		onStashSelect?: (_stashIndex: number) => void;
 		rowHeight?: number;
 		graphWidth?: number;
 	}
@@ -27,7 +26,6 @@
 		matchingOids,
 		onSelect,
 		onContextMenu,
-		onStashSelect,
 		rowHeight = 28,
 		graphWidth = 200
 	}: Props = $props();
@@ -199,7 +197,6 @@
 							{selectedOid}
 							{comparisonOid}
 							{onSelect}
-							{onStashSelect}
 						/>
 					</div>
 				{/if}

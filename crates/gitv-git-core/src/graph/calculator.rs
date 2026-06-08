@@ -219,6 +219,13 @@ const TRITANOPIA_PALETTE: &[Color] = &[
     },
 ];
 
+const STASH_COLOR: Color = Color {
+    r: 245,
+    g: 158,
+    b: 11,
+    a: 255,
+};
+
 fn palette_for(mode: GraphPalette) -> &'static [Color] {
     match mode {
         GraphPalette::Default => BRANCH_PALETTE,
@@ -392,16 +399,40 @@ impl GraphCalculator {
         }
 
         let total_columns = if lanes.is_empty() { 0 } else { lanes.len() };
-        let total_rows = sorted.len();
-
-        let mut stash_markers = self.place_stash_markers(&graph_data);
 
         self.assign_colors_to_nodes(&commits, &mut graph_data);
         let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
         let mut edges = self.rebuild_edges_with_colors(&sorted, &graph_data);
+        let (mut stash_markers, extra_cols) = self.insert_stash_nodes(&mut nodes, &mut edges);
+        let total_rows = nodes
+            .iter()
+            .map(|n| n.row)
+            .max()
+            .map(|r| r + 1)
+            .unwrap_or(0);
+        let total_columns = total_columns + extra_cols;
+
+        let stash_commits: Vec<CommitInfo> = stash_markers
+            .iter()
+            .map(|sm| {
+                let stash = &self.stashes[sm.stash_index];
+                CommitInfo {
+                    oid: stash.oid,
+                    short_oid: stash.oid.short_hex(),
+                    message: stash.message.clone(),
+                    summary: stash.message.clone(),
+                    author: stash.author.clone(),
+                    committer: stash.author.clone(),
+                    author_time: stash.time,
+                    commit_time: stash.time,
+                    parent_oids: vec![stash.parent_oid],
+                    refs: vec![],
+                }
+            })
+            .collect();
 
         if self.options.orientation == GraphOrientation::BottomToTop {
-            let max_row = total_rows.saturating_sub(1);
+            let max_row = nodes.iter().map(|n| n.row).max().unwrap_or(0);
             for node in &mut nodes {
                 node.row = max_row - node.row;
             }
@@ -423,6 +454,7 @@ impl GraphCalculator {
             total_columns,
             orientation: self.options.orientation,
             total_rows,
+            stash_commits,
         }
     }
 
@@ -612,21 +644,95 @@ impl GraphCalculator {
             .collect()
     }
 
-    fn place_stash_markers(&self, graph_data: &HashMap<Oid, CommitGraphData>) -> Vec<StashMarker> {
-        self.stashes
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, stash)| {
-                graph_data.get(&stash.parent_oid).map(|gd| StashMarker {
-                    row: gd.row,
-                    column: gd.column,
-                    stash_index: idx,
-                    stash_oid: stash.oid,
-                    parent_oid: stash.parent_oid,
-                    message: stash.message.clone(),
-                })
-            })
-            .collect()
+    fn insert_stash_nodes(
+        &self,
+        nodes: &mut Vec<NodePosition>,
+        edges: &mut Vec<Edge>,
+    ) -> (Vec<StashMarker>, usize) {
+        let node_map: HashMap<Oid, &NodePosition> = nodes.iter().map(|n| (n.oid, n)).collect();
+        let mut by_parent: Vec<(usize, &StashEntry, usize, usize)> = Vec::new();
+        for (idx, stash) in self.stashes.iter().enumerate() {
+            if let Some(parent) = node_map.get(&stash.parent_oid) {
+                by_parent.push((idx, stash, parent.row, parent.column));
+            }
+        }
+        by_parent.sort_by_key(|(_, _, row, _)| *row);
+
+        let base_max_col = nodes.iter().map(|n| n.column).max().unwrap_or(0);
+        let mut extra_cols: usize = 0;
+        let mut parent_branch_col: HashMap<Oid, usize> = HashMap::new();
+
+        let mut stash_markers: Vec<StashMarker> = Vec::new();
+        for (idx, stash, parent_row, parent_col) in &by_parent {
+            let after_parent = stash_markers
+                .iter()
+                .filter(|sm: &&StashMarker| sm.parent_oid == stash.parent_oid)
+                .count();
+            let insert_row = parent_row + after_parent;
+
+            let branch_col = match parent_branch_col.entry(stash.parent_oid) {
+                std::collections::hash_map::Entry::Occupied(e) => *e.get(),
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    extra_cols += 1;
+                    let col = base_max_col + extra_cols;
+                    e.insert(col);
+                    col
+                }
+            };
+
+            for node in nodes.iter_mut() {
+                if node.row >= insert_row {
+                    node.row += 1;
+                }
+            }
+            for edge in edges.iter_mut() {
+                if edge.from_row >= insert_row {
+                    edge.from_row += 1;
+                }
+                if edge.to_row >= insert_row {
+                    edge.to_row += 1;
+                }
+            }
+
+            let parent_new_row = nodes
+                .iter()
+                .find(|n| n.oid == stash.parent_oid)
+                .map(|n| n.row)
+                .unwrap_or(*parent_row + 1);
+
+            nodes.push(NodePosition {
+                oid: stash.oid,
+                row: insert_row,
+                column: branch_col,
+                is_merge: false,
+                is_stash: true,
+                color: STASH_COLOR,
+                is_dimmed: false,
+                is_highlighted: false,
+            });
+
+            edges.push(Edge {
+                from_row: insert_row,
+                from_col: branch_col,
+                to_row: parent_new_row,
+                to_col: *parent_col,
+                edge_type: EdgeType::Straight,
+                color: STASH_COLOR,
+                is_dimmed: false,
+                edge_style: EdgeStyle::Dashed,
+            });
+
+            stash_markers.push(StashMarker {
+                row: insert_row,
+                column: branch_col,
+                stash_index: *idx,
+                stash_oid: stash.oid,
+                parent_oid: stash.parent_oid,
+                message: stash.message.clone(),
+            });
+        }
+
+        (stash_markers, extra_cols)
     }
 
     fn assign_colors_to_nodes(
@@ -691,6 +797,7 @@ impl GraphCalculator {
                     row: gd.row,
                     column: gd.column,
                     is_merge: gd.is_merge,
+                    is_stash: false,
                     color: gd.color,
                     is_dimmed: false,
                     is_highlighted: false,
@@ -753,6 +860,7 @@ impl GraphCalculator {
             total_columns: 0,
             orientation: self.options.orientation,
             total_rows: 0,
+            stash_commits: Vec::new(),
         }
     }
 }
