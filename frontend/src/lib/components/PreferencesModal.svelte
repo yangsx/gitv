@@ -9,6 +9,7 @@
 		diffMode,
 		diffWhitespace,
 		showStashes,
+		renderer,
 		theme,
 		fontSize,
 		highContrast,
@@ -100,6 +101,11 @@
 
 	function toggleShowStashes() {
 		showStashes.update((v) => !v);
+		savePreferences();
+	}
+
+	function setRenderer(r: 'wgpu' | 'canvas2d') {
+		renderer.set(r);
 		savePreferences();
 	}
 
@@ -324,6 +330,34 @@
 									: 'translate-x-0'}"
 							></span>
 						</button>
+					</div>
+
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.renderer')}</span>
+						<div class="flex gap-1" role="radiogroup" aria-label={$t('preferences.renderer_aria')}>
+							<button
+								class="whitespace-nowrap rounded px-2 py-1 text-xs transition-colors {$renderer ===
+								'wgpu'
+									? 'bg-blue-700/50 text-blue-300'
+									: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+								onclick={() => setRenderer('wgpu')}
+								role="radio"
+								aria-checked={$renderer === 'wgpu'}
+							>
+								{$t('preferences.renderer_wgpu')}
+							</button>
+							<button
+								class="whitespace-nowrap rounded px-2 py-1 text-xs transition-colors {$renderer ===
+								'canvas2d'
+									? 'bg-blue-700/50 text-blue-300'
+									: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+								onclick={() => setRenderer('canvas2d')}
+								role="radio"
+								aria-checked={$renderer === 'canvas2d'}
+							>
+								{$t('preferences.renderer_canvas2d')}
+							</button>
+						</div>
 					</div>
 				</div>
 			</section>

@@ -2,7 +2,6 @@
 	import { t } from '$lib/stores/locale';
 	import type {
 		GraphLayout,
-		Color,
 		NodePosition,
 		Edge,
 		StashMarker,
@@ -10,6 +9,18 @@
 	} from '$lib/bindings/types';
 	import { showStashes } from '$lib/stores/preferences';
 	import { updateGraphDrawTime } from '$lib/stores/debug';
+	import {
+		colorToCSS,
+		columnCenterX,
+		nodeCenterY,
+		isEdgeVisible,
+		stashX,
+		stashY,
+		SELECTED_COLOR,
+		COMPARISON_COLOR
+	} from '$lib/graph/graph-math';
+
+	const PADDING_LEFT = 12;
 
 	interface Props {
 		layout: GraphLayout;
@@ -45,13 +56,7 @@
 	let prevCanvasW = 0;
 	let prevCanvasH = 0;
 
-	const PADDING_LEFT = 12;
-
 	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
-
-	function colorToCss(c: Color): string {
-		return `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(2)})`;
-	}
 
 	function draw(l: GraphLayout) {
 		if (!canvas) return;
@@ -84,22 +89,18 @@
 		const startRow = visibleStart;
 		const endRow = visibleEnd;
 
-		const colXfn = (col: number) => sPadding + col * sLaneWidth + sLaneWidth / 2;
-		const rowYfn = (row: number) => (row - startRow) * rowHeight + rowHeight / 2;
-
 		for (const edge of l.edges) {
-			if (edge.from_row < startRow && edge.to_row < startRow) continue;
-			if (edge.from_row > endRow && edge.to_row > endRow) continue;
-			drawEdge(ctx, edge, startRow, colXfn, rowYfn);
+			if (!isEdgeVisible(edge, startRow, endRow)) continue;
+			drawEdge(ctx, edge, sLaneWidth, sPadding, startRow, rowHeight);
 		}
 		for (const node of l.nodes) {
 			if (node.row < startRow || node.row > endRow) continue;
-			drawNode(ctx, node, startRow, colXfn, rowYfn, sNodeRadius);
+			drawNode(ctx, node, sLaneWidth, sNodeRadius, sPadding, startRow, rowHeight);
 		}
 		if ($showStashes) {
 			for (const stash of l.stash_markers) {
 				if (stash.row < startRow || stash.row > endRow) continue;
-				drawStashMarker(ctx, stash, startRow, colXfn, rowYfn, sNodeRadius, sc);
+				drawStashMarker(ctx, stash, sLaneWidth, sNodeRadius, sPadding, startRow, rowHeight, sc);
 			}
 		}
 		updateGraphDrawTime(performance.now() - drawStart);
@@ -116,17 +117,18 @@
 		const rect = canvas.getBoundingClientRect();
 		const sc = scale;
 		const sLaneWidth = laneWidth * sc;
+		const sNodeRadius = nodeRadius * sc;
 		const sPadding = PADDING_LEFT * sc;
 		const x = e.clientX - rect.left;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
-		const colXfn = (col: number) => sPadding + col * sLaneWidth + sLaneWidth / 2;
 
 		if (onStashSelect && $showStashes) {
 			for (const stash of layout.stash_markers) {
 				if (stash.row === row) {
-					const markerX = colXfn(stash.column) + nodeRadius * sc + 4 * sc;
-					if (Math.abs(x - markerX) < 20 * sc) {
+					const msx = stashX(stash.column, sLaneWidth, sPadding, sNodeRadius, sc);
+					const msy = stashY(stash.row, visibleStart, rowHeight);
+					if (Math.abs(Math.abs(x - msx)) < 20 * sc && Math.abs(y - msy) < 20 * sc) {
 						onStashSelect(stash.stash_index);
 						return;
 					}
@@ -151,14 +153,14 @@
 		const x = e.clientX - rect.left;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
-		const colXfn = (col: number) => sPadding + col * sLaneWidth + sLaneWidth / 2;
 		const hitRadius = sNodeRadius + 4 * sc;
 
 		if ($showStashes) {
 			for (const stash of layout.stash_markers) {
 				if (stash.row === row) {
-					const markerX = colXfn(stash.column) + sNodeRadius + 4 * sc;
-					if (Math.abs(x - markerX) < hitRadius) {
+					const msx = stashX(stash.column, sLaneWidth, sPadding, sNodeRadius, sc);
+					const msy = stashY(stash.row, visibleStart, rowHeight);
+					if (Math.abs(x - msx) < hitRadius && Math.abs(y - msy) < hitRadius) {
 						tooltip = {
 							x: e.clientX - rect.left + 12,
 							y: e.clientY - rect.top - 8,
@@ -172,9 +174,9 @@
 
 		for (const node of layout.nodes) {
 			if (node.row === row) {
-				const nodeX = colXfn(node.column);
-				const nodeY = (node.row - visibleStart) * rowHeight + rowHeight / 2;
-				if (Math.abs(x - nodeX) < hitRadius && Math.abs(y - nodeY) < hitRadius) {
+				const nx = columnCenterX(node.column, sLaneWidth, sPadding);
+				const ny = nodeCenterY(node.row, visibleStart, rowHeight);
+				if (Math.abs(x - nx) < hitRadius && Math.abs(y - ny) < hitRadius) {
 					const ci = commitMap.get(node.oid);
 					if (ci) {
 						tooltip = {
@@ -205,24 +207,25 @@
 	function drawNode(
 		ctx: CanvasRenderingContext2D,
 		node: NodePosition,
+		sLaneWidth: number,
+		sNodeRadius: number,
+		sPadding: number,
 		startRow: number,
-		colXfn: (_col: number) => number,
-		rowYfn: (_row: number) => number,
-		sNodeRadius: number
+		rh: number
 	) {
-		const x = colXfn(node.column);
-		const y = rowYfn(node.row);
+		const x = columnCenterX(node.column, sLaneWidth, sPadding);
+		const y = nodeCenterY(node.row, startRow, rh);
 
 		if (node.oid === selectedOid) {
 			ctx.beginPath();
 			ctx.arc(x, y, sNodeRadius + 3, 0, Math.PI * 2);
-			ctx.strokeStyle = '#60a5fa';
+			ctx.strokeStyle = SELECTED_COLOR;
 			ctx.lineWidth = 2;
 			ctx.stroke();
 		} else if (node.oid === comparisonOid) {
 			ctx.beginPath();
 			ctx.arc(x, y, sNodeRadius + 3, 0, Math.PI * 2);
-			ctx.strokeStyle = '#a78bfa';
+			ctx.strokeStyle = COMPARISON_COLOR;
 			ctx.lineWidth = 2;
 			ctx.setLineDash([3, 3]);
 			ctx.stroke();
@@ -232,7 +235,7 @@
 		ctx.globalAlpha = node.is_dimmed ? 0.35 : 1.0;
 		ctx.beginPath();
 		ctx.arc(x, y, sNodeRadius, 0, Math.PI * 2);
-		ctx.fillStyle = colorToCss(node.color);
+		ctx.fillStyle = colorToCSS(node.color);
 		ctx.fill();
 		ctx.globalAlpha = 1.0;
 	}
@@ -240,18 +243,19 @@
 	function drawEdge(
 		ctx: CanvasRenderingContext2D,
 		edge: Edge,
+		sLaneWidth: number,
+		sPadding: number,
 		startRow: number,
-		colXfn: (_col: number) => number,
-		rowYfn: (_row: number) => number
+		rh: number
 	) {
-		const x1 = colXfn(edge.from_col);
-		const y1 = rowYfn(edge.from_row);
-		const x2 = colXfn(edge.to_col);
-		const y2 = rowYfn(edge.to_row);
+		const x1 = columnCenterX(edge.from_col, sLaneWidth, sPadding);
+		const y1 = nodeCenterY(edge.from_row, startRow, rh);
+		const x2 = columnCenterX(edge.to_col, sLaneWidth, sPadding);
+		const y2 = nodeCenterY(edge.to_row, startRow, rh);
 
 		ctx.beginPath();
 		ctx.globalAlpha = edge.is_dimmed ? 0.35 : 0.8;
-		ctx.strokeStyle = colorToCss(edge.color);
+		ctx.strokeStyle = colorToCSS(edge.color);
 		ctx.lineWidth = 1.5;
 
 		if (edge.edge_style === 'Dashed') {
@@ -279,14 +283,15 @@
 	function drawStashMarker(
 		ctx: CanvasRenderingContext2D,
 		stash: StashMarker,
-		startRow: number,
-		colXfn: (_col: number) => number,
-		rowYfn: (_row: number) => number,
+		sLaneWidth: number,
 		sNodeRadius: number,
+		sPadding: number,
+		startRow: number,
+		rh: number,
 		sc: number
 	) {
-		const x = colXfn(stash.column) + sNodeRadius + 4 * sc;
-		const y = rowYfn(stash.row);
+		const x = stashX(stash.column, sLaneWidth, sPadding, sNodeRadius, sc);
+		const y = stashY(stash.row, startRow, rh);
 
 		ctx.font = `${10 * sc}px monospace`;
 		ctx.fillStyle = '#f59e0b';

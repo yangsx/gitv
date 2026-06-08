@@ -1,7 +1,7 @@
 <script lang="ts">
 	let {
 		panelHeight = $bindable(300),
-		panelWidth = $bindable(240),
+		rightPanelWidth = $bindable(240),
 		minHeight = 200,
 		maxHeight = Infinity,
 		minWidth = 160,
@@ -11,7 +11,7 @@
 		onDragEnd
 	}: {
 		panelHeight?: number;
-		panelWidth?: number;
+		rightPanelWidth?: number;
 		minHeight?: number;
 		maxHeight?: number;
 		minWidth?: number;
@@ -31,12 +31,12 @@
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
 			}
 		} else {
-			if (e.key === 'ArrowRight') {
+			if (e.key === 'ArrowLeft') {
 				e.preventDefault();
-				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth + 20));
-			} else if (e.key === 'ArrowLeft') {
+				rightPanelWidth = Math.max(minWidth, Math.min(maxWidth, rightPanelWidth + 20));
+			} else if (e.key === 'ArrowRight') {
 				e.preventDefault();
-				panelWidth = Math.max(minWidth, Math.min(maxWidth, panelWidth - 20));
+				rightPanelWidth = Math.max(minWidth, Math.min(maxWidth, rightPanelWidth - 20));
 			}
 		}
 	}
@@ -51,7 +51,7 @@
 
 		const startX = e.clientX;
 		const startY = e.clientY;
-		const startWidth = panelWidth;
+		const startWidth = rightPanelWidth;
 		const startHeight = panelHeight;
 
 		function onMouseMove(e: MouseEvent) {
@@ -59,8 +59,8 @@
 				const delta = startY - e.clientY;
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
 			} else {
-				const delta = e.clientX - startX;
-				panelWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
+				const delta = startX - e.clientX;
+				rightPanelWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
 			}
 		}
 

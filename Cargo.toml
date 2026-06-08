@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "src-tauri",
     "crates/gitv-git-core",
+    "crates/gitv-wgpu-renderer",
 ]
 
 [workspace.package]
@@ -29,6 +30,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 open = "5"
 rayon = "1"
+gitv-wgpu-renderer = { path = "crates/gitv-wgpu-renderer" }
+wgpu = "24"
+bytemuck = "1"
 
 [profile.release]
 lto = true

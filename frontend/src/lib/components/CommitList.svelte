@@ -3,8 +3,8 @@
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, GraphLayout, Highlight } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
-	import CommitGraph from './CommitGraph.svelte';
 	import CommitRow from './CommitRow.svelte';
+	import GraphRenderer from './graph/GraphRenderer.svelte';
 
 	interface Props {
 		commits: CommitInfo[];
@@ -190,7 +190,7 @@
 						style="width: {graphWidth}px;"
 						aria-hidden="true"
 					>
-						<CommitGraph
+						<GraphRenderer
 							{layout}
 							{commits}
 							{rowHeight}

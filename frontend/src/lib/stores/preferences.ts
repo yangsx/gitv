@@ -9,6 +9,7 @@ const DEFAULTS: AppPreferences = {
 	graph_hide_merges: false,
 	graph_orientation: 'top-to-bottom',
 	graph_palette: 'default',
+	renderer: 'wgpu',
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
 	theme: 'dark',
@@ -31,6 +32,7 @@ export const diffWhitespace = writable<
 		| 'ignore-blank-lines'
 );
 export const showStashes = writable(true);
+export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);
 let loadedPrefs: AppPreferences | null = null;
@@ -42,6 +44,7 @@ function toPreferences(): AppPreferences {
 		graph_hide_merges: get(graphHideMerges),
 		graph_orientation: get(graphOrientation),
 		graph_palette: get(graphPalette),
+		renderer: get(renderer),
 		diff_mode: get(diffMode),
 		diff_whitespace: get(diffWhitespace),
 		theme: get(theme),
@@ -56,6 +59,9 @@ function updateFromPreferences(p: AppPreferences) {
 
 	theme.set(p.theme);
 	highContrast.set(p.high_contrast);
+	if (p.renderer === 'wgpu' || p.renderer === 'canvas2d') {
+		renderer.set(p.renderer);
+	}
 	if (p.font_size >= 10 && p.font_size <= 24) {
 		fontSize.set(p.font_size);
 	}

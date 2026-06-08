@@ -67,6 +67,8 @@ pub struct AppPreferences {
     pub graph_hide_merges: bool,
     pub graph_orientation: GraphOrientation,
     pub graph_palette: ColorPalette,
+    #[serde(default = "default_renderer")]
+    pub renderer: String,
     pub diff_mode: DiffMode,
     pub diff_whitespace: DiffWhitespace,
     pub theme: Theme,
@@ -76,6 +78,10 @@ pub struct AppPreferences {
     pub high_contrast: bool,
     #[serde(default)]
     pub language: Language,
+}
+
+fn default_renderer() -> String {
+    "wgpu".to_string()
 }
 
 fn default_font_size() -> f64 {
@@ -89,6 +95,7 @@ impl Default for AppPreferences {
             graph_hide_merges: false,
             graph_orientation: GraphOrientation::TopToBottom,
             graph_palette: ColorPalette::Default,
+            renderer: default_renderer(),
             diff_mode: DiffMode::Normal,
             diff_whitespace: DiffWhitespace::None,
             theme: Theme::Dark,

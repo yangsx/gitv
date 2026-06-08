@@ -115,7 +115,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each groupByCommit() as group (group.oid)}
+					{#each groupByCommit() as group (group.oid + '-' + group.lines[0]?.num)}
 						{#each group.lines as line, i (line.num)}
 							<tr
 								class={currentCommit === group.oid

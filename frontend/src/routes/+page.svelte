@@ -404,17 +404,50 @@
 				is_highlighted: false
 			});
 		}
+		const virtualEdges: import('$lib/bindings/types').Edge[] = [];
+		const headNode = graphLayout.nodes.length > 0 ? graphLayout.nodes[0] : null;
+		if (headNode) {
+			const headRow = headNode.row + virtualCount;
+			const headCol = headNode.column;
+			if (hasUnstaged) {
+				virtualEdges.push({
+					from_row: 0,
+					from_col: 0,
+					to_row: headRow,
+					to_col: headCol,
+					edge_type: 'Straight' as const,
+					color: { r: 251, g: 146, b: 60, a: 200 },
+					is_dimmed: false,
+					edge_style: 'Solid' as const
+				});
+			}
+			if (hasStaged) {
+				virtualEdges.push({
+					from_row: hasUnstaged ? 1 : 0,
+					from_col: 0,
+					to_row: headRow,
+					to_col: headCol,
+					edge_type: 'Straight' as const,
+					color: { r: 74, g: 222, b: 128, a: 200 },
+					is_dimmed: false,
+					edge_style: 'Solid' as const
+				});
+			}
+		}
 		return {
 			...graphLayout,
 			nodes: [
 				...virtualNodes,
 				...graphLayout.nodes.map((n) => ({ ...n, row: n.row + virtualCount }))
 			],
-			edges: graphLayout.edges.map((e) => ({
-				...e,
-				from_row: e.from_row + virtualCount,
-				to_row: e.to_row + virtualCount
-			})),
+			edges: [
+				...virtualEdges,
+				...graphLayout.edges.map((e) => ({
+					...e,
+					from_row: e.from_row + virtualCount,
+					to_row: e.to_row + virtualCount
+				}))
+			],
 			stash_markers: graphLayout.stash_markers.map((s) => ({ ...s, row: s.row + virtualCount })),
 			total_rows: graphLayout.total_rows + virtualCount
 		};

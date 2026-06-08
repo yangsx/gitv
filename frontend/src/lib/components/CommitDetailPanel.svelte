@@ -590,7 +590,7 @@
 
 	<ResizeHandle
 		direction="horizontal"
-		bind:panelWidth={rightPanelWidth}
+		bind:rightPanelWidth={rightPanelWidth}
 		onDragEnd={persistRightPanelWidth}
 	/>
 

@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod state;
+mod wgpu_state;
 
 use std::path::PathBuf;
 
@@ -72,6 +73,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::new())
+        .manage(wgpu_state::WgpuState::new())
         .invoke_handler(tauri::generate_handler![
             commands::args::get_startup_info,
             commands::repository::open_repository,
@@ -98,6 +100,7 @@ pub fn run() {
             commands::reflog_stash::get_stash_diff,
             commands::reflog_stash::get_stash_split_diff,
             commands::reflog_stash::get_blame,
+            commands::render::render_graph,
             commands::saved_searches::save_search,
             commands::saved_searches::list_saved_searches,
             commands::saved_searches::delete_saved_search,

@@ -868,9 +868,12 @@ frontend/
 │   │   │   │   └── StashMarkersToggle.svelte       (Req 38.5: show/hide stash markers)
 │   │   │   └── FullscreenButton.svelte       (Req 33)
 │   │   ├── CommitView/
-│   │   │   ├── CommitGraph.svelte     (GPU-rendered via wgpu)
-│   │   │   ├── CommitList.svelte      (Virtualized, includes "Working Changes" virtual entry)
-│   │   │   └── SynchronizedScroller.svelte  (CSS grid layout, not JS recalculated)
+│   │   │   ├── CommitGraph.svelte     (Canvas 2D fallback renderer)
+│   │   │   ├── graph/                 (GPU-accelerated renderer)
+│   │   │   │   ├── GraphRenderer.svelte  (router: wgpu vs Canvas 2D based on preference)
+│   │   │   │   ├── WgpuGraph.svelte      (GPU-rendered via wgpu offscreen pipeline)
+│   │   │   │   └── graph-math.ts         (shared position/color/hit-test math)
+│   │   │   ├── CommitList.svelte      (Virtualized, scroll sync between graph + rows)
 │   │   ├── DetailPanel/
 │   │   │   ├── CommitDetails.svelte   (full message with markdown rendering)
 │   │   │   ├── FileTree/              (full repo tree at selected commit or HEAD)
@@ -949,52 +952,46 @@ The welcome screen is the first thing users see. It adapts based on whether rece
 <!-- Shortcut modifier adapts to platform (Ctrl vs Cmd) -->
 ```
 
-##### CommitGraph Component
+##### GraphRenderer / CommitGraph / WgpuGraph Components
 
-The commit graph is the most complex UI component, requiring GPU acceleration and virtualization.
+The commit graph is rendered by one of two backends selected via the `renderer` preference store:
 
+- **WgpuGraph** — GPU-accelerated via a Rust wgpu offscreen pipeline. Node/edge positions are sent to the Rust backend (`render_graph` Tauri command), which renders to an RGBA texture and returns pixel data via binary IPC. Lazy GPU init; falls back to Canvas 2D on failure.
+- **CommitGraph** — Canvas 2D fallback, draws directly on a `<canvas>` element using the Canvas 2D API.
+
+Both share position math, color constants, and hit-testing logic from `graph-math.ts`.
+
+**GraphRenderer** (router):
 ```svelte
 <script lang="ts">
-  import type { GraphLayout, Viewport } from "$lib/types";
-  import type { Oid } from "$lib/types";
-
-  let {
-    layout,
-    viewport,
-    selectedCommit = $bindable(null),
-    highlightedCommits = new Set<string>(),
-    dimmedCommits = new Set<string>(),
-    colorMode = "branch" as "branch" | "author",
-    orientation = "top-to-bottom" as "top-to-bottom" | "bottom-to-top",
-    oncommitselect,
-    oncommithover,
-    onstashselect,
-  }: {
-    layout: GraphLayout;
-    viewport: Viewport;
-    selectedCommit?: string | null;
-    highlightedCommits?: Set<string>;
-    dimmedCommits?: Set<string>;
-    colorMode?: "branch" | "author";
-    orientation?: "top-to-bottom" | "bottom-to-top";
-    oncommitselect?: (oid: string) => void;
-    oncommithover?: (oid: string | null) => void;
-    onstashselect?: (stashIndex: number) => void;
-  } = $props();
-
-  let canvasElement: HTMLCanvasElement;
-  // Uses wgpu for rendering via canvas element
-  // - Virtualized: only draws visible nodes/edges
-  // - Caches rendered elements
-  // - 60 FPS during pan/zoom
-  // - Dimmed commits rendered at reduced opacity (Req 56)
-  // - Stash markers rendered with distinct icon on parent commit rows (Req 38)
-  // - Color mode: by-branch (default) or by-author (Req 52)
-  // - Orientation: top-to-bottom (default) or bottom-to-top (Req 57)
+  let { layout, commits, rowHeight, laneWidth, nodeRadius,
+        visibleStart, visibleEnd, selectedOid, comparisonOid,
+        onSelect, onStashSelect }: Props = $props();
+  let useWgpu = $derived($renderer === 'wgpu');
 </script>
 
-<canvas bind:this={canvasElement}></canvas>
+{#if useWgpu}
+  <WgpuGraph {layout} {commits} {rowHeight} ... />
+{:else}
+  <CommitGraph {layout} {commits} {rowHeight} ... />
+{/if}
 ```
+
+**Shared props across both graph components** (from `graph-math.ts`):
+```
+columnCenterX, nodeCenterY, stashX, stashY      — position math
+colorToCSS, SELECT_RGB, COMPARISON_RGB           — color constants
+isEdgeVisible, nodeHitTest, filterVisibleNodes,  — visibility + hit testing
+filterVisibleEdges, filterVisibleStashes
+```
+
+**Key behaviors**:
+- Virtualized: only draws nodes/edges within `[visibleStart, visibleEnd]`
+- Tooltip on hover: shows `short_oid summary` for commits, stash message for stash markers (implemented internally in each component, no `oncommithover` callback)
+- Click on node: routes through `onSelect(oid, ctrlKey)` callback
+- Dimmed commits rendered at reduced opacity (Req 56)
+- Stash markers rendered as "S{index}" labels on parent commit rows (Req 38)
+- Color mode / orientation / hide-merges: controlled via preferences store, not per-component props
 
 ##### CommitList Component
 
@@ -2395,7 +2392,7 @@ graph LR
 
 Unlike gitk (which re-renders the entire commit list on every pixel of a column drag), gitv ensures resize operations never swamp the CPU:
 
-1. **CSS grid layout for alignment**: The `SynchronizedScroller` uses CSS grid to keep the graph and commit list aligned. Resizing columns changes grid column widths — no JavaScript row recalculation needed.
+1. **Virtual scroll for alignment**: The graph canvas and commit rows share the same `translateY` transform inside a flex layout inside `CommitList.svelte`. The graph receives `visibleStart`/`visibleEnd` and `rowHeight` as props, and draws nodes at viewport-relative positions using `(node.row - visibleStart) * rowHeight + rowHeight/2`. Both graph and commit rows scroll together via a single `overflow-y-auto` container.
 2. **GPU viewport resize is cheap**: Changing panel width only updates the wgpu projection matrix (camera frustum), not the vertex buffer. No graph recalculation, no data re-upload.
 3. **requestAnimationFrame gating**: Resize events are throttled to at most one reflow per frame (16ms budget). Intermediate positions are discarded.
 4. **Deferred persistence**: Panel dimensions are written to disk only when the drag gesture ends (`mouseup`), not during intermediate `mousemove` events.
