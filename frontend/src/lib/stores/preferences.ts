@@ -31,7 +31,6 @@ export const diffWhitespace = writable<
 		| 'ignore-all-space'
 		| 'ignore-blank-lines'
 );
-export const showStashes = writable(true);
 export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);

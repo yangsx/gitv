@@ -28,7 +28,6 @@
 		"palette_aria": "Color palette",
 		"hide_merges": "Hide Merge Commits",
 		"hide_merges_aria": "Toggle hide merge commits",
-		"show_stashes": "Show stash markers",
 		"renderer": "Graph Renderer",
 		"renderer_wgpu": "GPU (wgpu)",
 		"renderer_canvas2d": "Canvas 2D",

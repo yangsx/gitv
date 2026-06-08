@@ -1,6 +1,6 @@
 use crate::wgpu_state::WgpuState;
 use gitv_wgpu_renderer::renderer::GraphViewportData;
-use gitv_wgpu_renderer::vertex::{EdgeVertex, NodeInstance};
+use gitv_wgpu_renderer::vertex::{EdgeVertex, NodeInstance, edge_style};
 use serde::Deserialize;
 use tauri::{State, ipc::Response};
 use tracing::instrument;
@@ -63,6 +63,9 @@ fn to_norm(c: u8) -> f32 {
 /// Tessellate edges into quad vertices. Straight edges produce one quad,
 /// cross-column edges are tessellated as quadratic bezier curves.
 /// All positions are in CSS pixels — caller scales by `input.scale`.
+///
+/// `edge_param[0]` = cumulative pixel distance from edge start (for dash pattern).
+/// `edge_param[1]` = style flag from `edge_style` module.
 fn tessellate_edge(
     edge: &RenderEdge,
     row_height: f32,
@@ -83,25 +86,36 @@ fn tessellate_edge(
         if is_dimmed { 0.35 } else { 0.8 },
     ];
 
+    let style_flag = match edge.edge_style.as_str() {
+        "Dashed" => edge_style::DASHED,
+        "Dotted" => edge_style::DOTTED,
+        _ => edge_style::SOLID,
+    };
+
     let half_width = 0.75 * scale;
 
     if edge.from_col == edge.to_col {
+        let total_dist = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
         vec![
             EdgeVertex {
                 position: [x1 - half_width, y1],
                 color,
+                edge_param: [0.0, style_flag],
             },
             EdgeVertex {
                 position: [x1 + half_width, y1],
                 color,
+                edge_param: [0.0, style_flag],
             },
             EdgeVertex {
                 position: [x2 - half_width, y2],
                 color,
+                edge_param: [total_dist, style_flag],
             },
             EdgeVertex {
                 position: [x2 + half_width, y2],
                 color,
+                edge_param: [total_dist, style_flag],
             },
         ]
     } else {
@@ -109,6 +123,8 @@ fn tessellate_edge(
         let cp_y = (y1 + y2) / 2.0;
         let segments = 16usize;
         let mut verts = Vec::with_capacity(segments * 4);
+
+        let mut cum_dist = 0.0f32;
 
         for i in 0..segments {
             let t0 = i as f32 / segments as f32;
@@ -121,25 +137,33 @@ fn tessellate_edge(
 
             let dx = bx1 - bx0;
             let dy = by1 - by0;
-            let len = (dx * dx + dy * dy).sqrt().max(0.001);
-            let perp_x = -dy / len * half_width;
-            let perp_y = dx / len * half_width;
+            let seg_len = (dx * dx + dy * dy).sqrt().max(0.001);
+            let perp_x = -dy / seg_len * half_width;
+            let perp_y = dx / seg_len * half_width;
+
+            let d0 = cum_dist;
+            cum_dist += seg_len;
+            let d1 = cum_dist;
 
             verts.push(EdgeVertex {
                 position: [bx0 - perp_x, by0 - perp_y],
                 color,
+                edge_param: [d0, style_flag],
             });
             verts.push(EdgeVertex {
                 position: [bx0 + perp_x, by0 + perp_y],
                 color,
+                edge_param: [d0, style_flag],
             });
             verts.push(EdgeVertex {
                 position: [bx1 - perp_x, by1 - perp_y],
                 color,
+                edge_param: [d1, style_flag],
             });
             verts.push(EdgeVertex {
                 position: [bx1 + perp_x, by1 + perp_y],
                 color,
+                edge_param: [d1, style_flag],
             });
         }
 

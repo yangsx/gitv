@@ -39,15 +39,26 @@ impl NodeInstance {
     pub const IS_STASH: u32 = 16;
 }
 
-/// Pre-tessellated edge quad vertex (simple position + colour).
+/// Edge style values packed into `edge_param[1]`.
+pub mod edge_style {
+    pub const SOLID: f32 = 0.0;
+    pub const DASHED: f32 = 1.0;
+    pub const DOTTED: f32 = 2.0;
+}
+
+/// Pre-tessellated edge quad vertex.
+///
+/// `edge_param[0]` = cumulative distance from edge start (pixels, for dash pattern).
+/// `edge_param[1]` = style flag (0 = solid, 1 = dashed, 2 = dotted).
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct EdgeVertex {
     pub position: [f32; 2],
     pub color: [f32; 4],
+    pub edge_param: [f32; 2],
 }
 
-pub const EDGE_ATTRIBUTES: [wgpu::VertexAttribute; 2] = [
+pub const EDGE_ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x2,
         offset: 0,
@@ -57,6 +68,11 @@ pub const EDGE_ATTRIBUTES: [wgpu::VertexAttribute; 2] = [
         format: wgpu::VertexFormat::Float32x4,
         offset: 8,
         shader_location: 1,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 24,
+        shader_location: 2,
     },
 ];
 

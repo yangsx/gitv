@@ -8,7 +8,6 @@
 	import {
 		diffMode,
 		diffWhitespace,
-		showStashes,
 		renderer,
 		theme,
 		fontSize,
@@ -96,11 +95,6 @@
 
 	function toggleHideMerges() {
 		graphHideMerges.update((v) => !v);
-		savePreferences();
-	}
-
-	function toggleShowStashes() {
-		showStashes.update((v) => !v);
 		savePreferences();
 	}
 
@@ -307,25 +301,6 @@
 						>
 							<span
 								class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {$graphHideMerges
-									? 'translate-x-4'
-									: 'translate-x-0'}"
-							></span>
-						</button>
-					</div>
-
-					<div class="flex items-center justify-between">
-						<span class="text-gray-300">{$t('preferences.show_stashes')}</span>
-						<button
-							class="relative h-5 w-9 rounded-full transition-colors {$showStashes
-								? 'bg-blue-600'
-								: 'bg-gray-700'}"
-							onclick={toggleShowStashes}
-							role="switch"
-							aria-checked={$showStashes}
-							aria-label={$t('preferences.show_stashes')}
-						>
-							<span
-								class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {$showStashes
 									? 'translate-x-4'
 									: 'translate-x-0'}"
 							></span>

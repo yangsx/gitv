@@ -115,7 +115,7 @@ fn fs_node(in: VOut) -> @location(0) vec4<f32> {
 }
 ";
 
-/// WGSL vertex shader for edges (coloured quads).
+/// WGSL vertex shader for edges (coloured quads with dash/dot support).
 pub const EDGE_VERTEX: &str = r"
 struct Uniforms {
     projection: mat4x4<f32>,
@@ -130,28 +130,49 @@ struct Uniforms {
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(2) edge_param: vec2<f32>,
 };
 
 @vertex
-fn vs_edge(@location(0) position: vec2<f32>, @location(1) color: vec4<f32>) -> VOut {
+fn vs_edge(
+    @location(0) position: vec2<f32>,
+    @location(1) color: vec4<f32>,
+    @location(2) edge_param: vec2<f32>,
+) -> VOut {
     let world_pos = vec2<f32>(position.x, position.y - uniforms.scroll_y);
     var out: VOut;
     out.pos = uniforms.projection * vec4<f32>(world_pos, 0.0, 1.0);
     out.color = color;
+    out.edge_param = edge_param;
     return out;
 }
 ";
 
-/// WGSL fragment shader for edges (pass-through colour with alpha discard).
+/// WGSL fragment shader for edges — solid, dashed, or dotted pattern.
+///
+/// `edge_param.x` = cumulative pixel distance from edge start.
+/// `edge_param.y` = style: 0=solid, 1=dashed, 2=dotted.
 pub const EDGE_FRAGMENT: &str = r"
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(2) edge_param: vec2<f32>,
 };
 
 @fragment
 fn fs_edge(in: VOut) -> @location(0) vec4<f32> {
     if in.color.a < 0.01 { discard; }
+
+    let style = in.edge_param.y;
+    let dist = in.edge_param.x;
+
+    // Dashed: 8px on, 4px off
+    if style > 0.5 && style < 1.5 {
+        if fract(dist / 12.0) > 0.6667 { discard; }
+    } else if style > 1.5 {
+        if fract(dist / 6.0) > 0.3333 { discard; }
+    }
+
     return in.color;
 }
 ";

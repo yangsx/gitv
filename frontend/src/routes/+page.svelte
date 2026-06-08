@@ -1176,11 +1176,11 @@
 				</Sidebar>
 			{/if}
 			<div
-				class="flex-1 overflow-hidden flex flex-col"
+				class="flex-1 min-h-0 overflow-hidden flex flex-col"
 				role="main"
 				aria-label={$t('commit_list.aria')}
 			>
-				<div class="flex-1 overflow-hidden">
+				<div class="flex-1 min-h-0 overflow-hidden">
 					{#if effectiveCommits.length > 0}
 						<CommitList
 							commits={effectiveCommits}

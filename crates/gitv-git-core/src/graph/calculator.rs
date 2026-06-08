@@ -732,6 +732,13 @@ impl GraphCalculator {
             });
         }
 
+        let node_row_map: HashMap<Oid, usize> = nodes.iter().map(|n| (n.oid, n.row)).collect();
+        for marker in &mut stash_markers {
+            if let Some(&row) = node_row_map.get(&marker.stash_oid) {
+                marker.row = row;
+            }
+        }
+
         (stash_markers, extra_cols)
     }
 

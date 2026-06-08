@@ -1,7 +1,7 @@
 use crate::shaders;
 use crate::vertex::{EDGE_ATTRIBUTES, EdgeVertex, GraphUniform, NodeInstance};
 use std::num::NonZero;
-use tracing::{debug, info_span};
+use tracing::{Level, debug, info, info_span, span};
 use wgpu::util::DeviceExt;
 
 const STAGING_BUFFER_COUNT: usize = 2;
@@ -225,6 +225,9 @@ impl WgpuRenderer {
     /// Blocks the current thread for GPU readback (`device.poll(Maintain::Wait)`).
     /// Call from a blocking Tauri command thread.
     pub fn render(&mut self, viewport: &GraphViewportData) -> Result<Vec<u8>, String> {
+        let _render_span = span!(Level::INFO, "wgpu_render").entered();
+        let t_start = std::time::Instant::now();
+
         let width = self.config.width.max(1);
         let height = self.config.height.max(1);
         let unpadded_bpr = width * 4;
@@ -244,6 +247,7 @@ impl WgpuRenderer {
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
         // ── 2. Upload node instances ────────────────────────
+        let t_nodes_start = std::time::Instant::now();
         let node_count = viewport.nodes.len();
         let node_bytes = bytemuck::cast_slice(&viewport.nodes);
         if node_bytes.len() as u64 > self.node_storage.size() {
@@ -261,8 +265,10 @@ impl WgpuRenderer {
         }
         self.node_bind_group =
             Self::create_node_bind_group(&self.device, &self.uniform_buffer, &self.node_storage);
+        let nodes_us = t_nodes_start.elapsed().as_micros() as u64;
 
         // ── 3. Upload edge geometry ─────────────────────────
+        let t_edges_start = std::time::Instant::now();
         let edge_verts = &viewport.edge_vertices;
         let edge_idx = &viewport.edge_indices;
 
@@ -313,8 +319,10 @@ impl WgpuRenderer {
 
         // ── 4. Update edge bind group ───────────────────────
         self.edge_bind_group = Self::create_edge_bind_group(&self.device, &self.uniform_buffer);
+        let edges_us = t_edges_start.elapsed().as_micros() as u64;
 
         // ── 5. Encode render pass ──────────────────────────
+        let t_pass_start = std::time::Instant::now();
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -361,7 +369,10 @@ impl WgpuRenderer {
             }
         }
 
+        let pass_us = t_pass_start.elapsed().as_micros() as u64;
+
         // ── 6. Copy to staging + submit ────────────────────
+        let t_copy_start = std::time::Instant::now();
         let staging = &self.staging_buffers[self.staging_index % STAGING_BUFFER_COUNT];
         self.staging_index += 1;
 
@@ -388,8 +399,10 @@ impl WgpuRenderer {
         );
 
         self.queue.submit([encoder.finish()]);
+        let copy_us = t_copy_start.elapsed().as_micros() as u64;
 
         // ── 7. Readback ───────────────────────────────────
+        let t_readback_start = std::time::Instant::now();
         let (tx, rx) = std::sync::mpsc::channel();
         let slice = staging.slice(..);
         slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -420,6 +433,19 @@ impl WgpuRenderer {
         };
         drop(data);
         staging.unmap();
+
+        let total_us = t_start.elapsed().as_micros() as u64;
+        info!(
+            nodes = node_count,
+            edge_verts = edge_verts.len(),
+            upload_nodes_us = nodes_us,
+            upload_edges_us = edges_us,
+            encode_pass_us = pass_us,
+            copy_submit_us = copy_us,
+            readback_us = t_readback_start.elapsed().as_micros() as u64,
+            total_us,
+            "wgpu render complete"
+        );
 
         Ok(pixels)
     }
@@ -513,7 +539,7 @@ impl WgpuRenderer {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,

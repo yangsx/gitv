@@ -6,6 +6,27 @@
 		outline-offset: 1px;
 		border-radius: 2px;
 	}
+
+	::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-track-piece {
+		background: rgba(255, 255, 255, 0.05);
+	}
+	::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.15);
+		border-radius: 4px;
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.3);
+	}
+	::-webkit-scrollbar-corner {
+		background: transparent;
+	}
 }
 
 .high-contrast {
