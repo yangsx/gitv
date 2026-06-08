@@ -19,7 +19,8 @@ import type {
 	Blame,
 	SavedSearch,
 	WorkingChangesDiff,
-	AppPreferences
+	AppPreferences,
+	InitialData
 } from './types';
 
 async function timedInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -54,6 +55,24 @@ export async function openInNewWindow(path: string): Promise<void> {
 
 export async function getCommits(path: string): Promise<CommitInfo[]> {
 	return timedInvoke<CommitInfo[]>('get_commits', { path, filter: null });
+}
+
+export async function getInitialData(
+	path: string,
+	options?: {
+		hide_merges?: boolean;
+		orientation?: string;
+		color_mode?: string;
+		palette?: string;
+	}
+): Promise<InitialData> {
+	return timedInvoke<InitialData>('get_initial_data', {
+		path,
+		hide_merges: options?.hide_merges ?? false,
+		orientation: options?.orientation ?? 'top-to-bottom',
+		color_mode: options?.color_mode ?? 'by-branch',
+		palette: options?.palette ?? null
+	});
 }
 
 export async function getGraphLayout(

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
+rayon = { workspace = true }
 dirs = { workspace = true }
 gix = { workspace = true }
 gix-diff = { workspace = true }

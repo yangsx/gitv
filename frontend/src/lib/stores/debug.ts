@@ -6,6 +6,11 @@ export interface IpcTiming {
 	timestamp: number;
 }
 
+export interface LoadPhaseTiming {
+	phase: string;
+	durationMs: number;
+}
+
 interface DebugState {
 	visible: boolean;
 	fps: number;
@@ -17,6 +22,8 @@ interface DebugState {
 	graphStashMarkers: number;
 	graphColumns: number;
 	memoryUsed: number;
+	graphDrawTimeMs: number;
+	loadPhaseTimings: LoadPhaseTiming[];
 }
 
 const initialState: DebugState = {
@@ -29,7 +36,9 @@ const initialState: DebugState = {
 	graphEdges: 0,
 	graphStashMarkers: 0,
 	graphColumns: 0,
-	memoryUsed: 0
+	memoryUsed: 0,
+	graphDrawTimeMs: 0,
+	loadPhaseTimings: []
 };
 
 export const debug = writable<DebugState>(initialState);
@@ -73,6 +82,14 @@ export function updateDebugGraphStats(
 
 export function updateDebugCommitCounts(total: number, visible: number) {
 	debug.update((d) => ({ ...d, totalCommits: total, visibleCommits: visible }));
+}
+
+export function updateGraphDrawTime(ms: number) {
+	debug.update((d) => ({ ...d, graphDrawTimeMs: ms }));
+}
+
+export function updateLoadPhaseTimings(timings: LoadPhaseTiming[]) {
+	debug.update((d) => ({ ...d, loadPhaseTimings: timings }));
 }
 
 export function toggleDebug() {

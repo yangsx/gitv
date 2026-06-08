@@ -135,7 +135,7 @@
 			{commit.short_oid}
 		</span>
 		<span class="flex shrink-0 gap-1 overflow-hidden">
-			{#each commit.refs as ref (ref.Branch?.name ?? ref.Tag?.name ?? ref.Remote?.name ?? '')}
+			{#each commit.refs as ref (ref.Branch ? 'b:' + ref.Branch.name : ref.Tag ? 't:' + ref.Tag.name : ref.Remote ? 'r:' + ref.Remote.remote + '/' + ref.Remote.name : '')}
 				{@const label = refLabel(ref)}
 				{#if label}
 					<span

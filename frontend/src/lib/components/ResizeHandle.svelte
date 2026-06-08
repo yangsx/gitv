@@ -87,7 +87,6 @@
 	aria-orientation={isVertical() ? 'horizontal' : 'vertical'}
 	aria-label={isVertical() ? 'Resize detail panel' : 'Resize file list'}
 	tabindex={0}
-
 	onmousedown={onMouseDown}
 	onkeydown={onKeyDown}
 >

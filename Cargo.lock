@@ -1691,6 +1691,7 @@ dependencies = [
  "gix-object",
  "postcard",
  "proptest",
+ "rayon",
  "regex",
  "roaring",
  "serde",

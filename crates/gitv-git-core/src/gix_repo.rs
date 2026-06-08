@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{TimeZone, Utc};
+use rayon::prelude::*;
 
 use crate::error::{DiffError, GitError};
 use crate::models::*;
@@ -105,6 +106,7 @@ impl Repository for GixRepository {
     }
 
     fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError> {
+        let _span = tracing::debug_span!("commit", %oid).entered();
         let repo = self.thread_local();
         let gix_oid = oid_to_gix_object_id(&oid);
         let obj = repo
@@ -115,9 +117,7 @@ impl Repository for GixRepository {
             .map_err(|e| GitError::InvalidObject(e.to_string()))?;
         let tree_id = commit.tree_id().map_err(|e| GitError::Gix(e.to_string()))?;
         let tree_oid = gix_id_to_oid(&tree_id);
-        let refs = build_ref_map(&repo)?;
-        let commit_refs = refs.get(&oid).cloned().unwrap_or_default();
-        let info = commit_to_commit_info(&oid, &commit, commit_refs);
+        let info = commit_to_commit_info(&oid, &commit, Vec::new());
         let message = commit
             .message_raw()
             .map_err(|e| GitError::Gix(e.to_string()))?
@@ -142,32 +142,44 @@ impl Repository for GixRepository {
             .map(|p| tree_for_oid(&repo, p).map_err(|e| GitError::Gix(e.to_string())))
             .transpose()?;
 
+        let _tree_span = tracing::debug_span!("tree_diff").entered();
         let gix_changes = repo
             .diff_tree_to_tree(from_tree.as_ref(), Some(&to_tree), None)
             .map_err(|e| GitError::Gix(e.to_string()))?;
+        let change_count = gix_changes.len();
+        drop(_tree_span);
 
-        let mut changed_files = Vec::new();
-        for change in &gix_changes {
-            let Some((path, old_path, change_type, is_binary, is_submodule)) =
-                change_to_file_change_parts(change)
-            else {
-                continue;
-            };
-            let (additions, deletions) = if is_binary || is_submodule {
-                (0, 0)
-            } else {
-                count_lines_for_change(&repo, change)
-            };
-            changed_files.push(FileChange {
-                path,
-                old_path,
-                change_type,
-                additions,
-                deletions,
-                is_binary,
-                is_submodule,
-            });
-        }
+        let _line_span = tracing::debug_span!("build_file_list", count = change_count).entered();
+        let changed_files: Vec<FileChange> = gix_changes
+            .par_iter()
+            .filter_map(|change| {
+                let (path, old_path, change_type, is_binary, is_submodule) =
+                    change_to_file_change_parts(change)?;
+                if is_binary || is_submodule {
+                    return Some(FileChange {
+                        path,
+                        old_path,
+                        change_type,
+                        additions: 0,
+                        deletions: 0,
+                        is_binary,
+                        is_submodule,
+                    });
+                }
+                let repo = self.thread_local();
+                let (additions, deletions) = count_lines_for_change(&repo, change);
+                Some(FileChange {
+                    path,
+                    old_path,
+                    change_type,
+                    additions,
+                    deletions,
+                    is_binary,
+                    is_submodule,
+                })
+            })
+            .collect();
+        drop(_line_span);
 
         Ok(CommitDetails {
             info,
@@ -1860,22 +1872,20 @@ fn count_lines_for_change(
     repo: &gix::Repository,
     change: &gix::object::tree::diff::ChangeDetached,
 ) -> (usize, usize) {
-    let location = change.location();
-
-    match change {
+    let (source_id, dest_id) = match change {
         gix::object::tree::diff::ChangeDetached::Addition { id, entry_mode, .. } => {
             if is_entry_mode_submodule(*entry_mode) {
                 return (0, 0);
             }
-            let line_count = count_blob_lines(repo, id);
-            (line_count, 0)
+            let lines = count_blob_lines(repo, id);
+            return (lines, 0);
         }
         gix::object::tree::diff::ChangeDetached::Deletion { id, entry_mode, .. } => {
             if is_entry_mode_submodule(*entry_mode) {
                 return (0, 0);
             }
-            let line_count = count_blob_lines(repo, id);
-            (0, line_count)
+            let lines = count_blob_lines(repo, id);
+            return (0, lines);
         }
         gix::object::tree::diff::ChangeDetached::Modification {
             previous_id,
@@ -1888,7 +1898,7 @@ fn count_lines_for_change(
             {
                 return (0, 0);
             }
-            diff_line_counts(repo, location, previous_id, id)
+            (previous_id, id)
         }
         gix::object::tree::diff::ChangeDetached::Rewrite {
             source_id,
@@ -1900,9 +1910,15 @@ fn count_lines_for_change(
             if is_entry_mode_submodule(*source_entry_mode) || is_entry_mode_submodule(*entry_mode) {
                 return (0, 0);
             }
-            diff_line_counts(repo, location, source_id, id)
+            (source_id, id)
         }
-    }
+    };
+    let old_lines = count_blob_lines(repo, source_id);
+    let new_lines = count_blob_lines(repo, dest_id);
+    (
+        new_lines.saturating_sub(old_lines),
+        old_lines.saturating_sub(new_lines),
+    )
 }
 
 fn count_blob_lines(repo: &gix::Repository, id: &gix::hash::ObjectId) -> usize {
@@ -1920,76 +1936,6 @@ fn count_blob_lines(repo: &gix::Repository, id: &gix::hash::ObjectId) -> usize {
         } else {
             1
         }
-}
-
-fn diff_line_counts(
-    repo: &gix::Repository,
-    location: &gix::bstr::BStr,
-    source_id: &gix::hash::ObjectId,
-    dest_id: &gix::hash::ObjectId,
-) -> (usize, usize) {
-    let mut cache = match repo.diff_resource_cache_for_tree_diff() {
-        Ok(c) => c,
-        Err(_) => return (0, 0),
-    };
-
-    if cache
-        .set_resource(
-            *source_id,
-            gix_object::tree::EntryKind::Blob,
-            location,
-            gix_diff::blob::ResourceKind::OldOrSource,
-            &repo.objects,
-        )
-        .is_err()
-    {
-        return (0, 0);
-    }
-
-    if cache
-        .set_resource(
-            *dest_id,
-            gix_object::tree::EntryKind::Blob,
-            location,
-            gix_diff::blob::ResourceKind::NewOrDestination,
-            &repo.objects,
-        )
-        .is_err()
-    {
-        return (0, 0);
-    }
-
-    let mut additions = 0usize;
-    let mut deletions = 0usize;
-
-    let mut diff_platform = gix::object::blob::diff::Platform {
-        resource_cache: &mut cache,
-    };
-
-    let result = diff_platform.lines(|line_change| {
-        match line_change {
-            gix::object::blob::diff::lines::Change::Addition { lines } => {
-                additions += lines.len();
-            }
-            gix::object::blob::diff::lines::Change::Deletion { lines } => {
-                deletions += lines.len();
-            }
-            gix::object::blob::diff::lines::Change::Modification {
-                lines_before,
-                lines_after,
-            } => {
-                deletions += lines_before.len();
-                additions += lines_after.len();
-            }
-        }
-        Ok::<(), std::convert::Infallible>(())
-    });
-
-    if result.is_err() {
-        return (0, 0);
-    }
-
-    (additions, deletions)
 }
 
 fn compute_hunks_for_change(
@@ -3053,7 +2999,7 @@ mod tests {
     fn diff_summary_modification() {
         let temp = TempRepo::new();
         let oid1 = temp.commit_file("a.txt", "hello", "first commit");
-        let oid2 = temp.commit_file("a.txt", "hello world", "modify a");
+        let oid2 = temp.commit_file("a.txt", "hello world\nline2\nline3", "modify a");
         let repo = GixRepository::open(temp.path()).expect("open");
         let summary = repo
             .diff_summary(Some(oid1), oid2, WhitespaceMode::None)

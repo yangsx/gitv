@@ -96,7 +96,10 @@
 
 	$effect(() => {
 		if (!orderedCommits.length) return;
-		if (!selectedOid) { selectedIdx = 0; return; }
+		if (!selectedOid) {
+			selectedIdx = 0;
+			return;
+		}
 		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
 		if (idx >= 0) selectedIdx = idx;
 	});

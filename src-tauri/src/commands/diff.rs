@@ -1,31 +1,34 @@
-use gitv_git_core::gix_repo::GixRepository;
+use crate::state::AppState;
 use gitv_git_core::models::{DiffMode, Oid, WhitespaceMode};
 use gitv_git_core::repository::Repository;
 use std::path::PathBuf;
+use tauri::State;
 use tracing::instrument;
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_commit_details"))]
+#[instrument(skip(state, path), fields(command = "get_commit_details"))]
 pub fn get_commit_details(
+    state: State<'_, AppState>,
     path: String,
     oid: String,
 ) -> Result<gitv_git_core::models::CommitDetails, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
     repo.commit(commit_oid).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_diff"))]
+#[instrument(skip(state, path), fields(command = "get_diff"))]
 pub fn get_diff(
+    state: State<'_, AppState>,
     path: String,
     from: Option<String>,
     to: String,
     whitespace: Option<String>,
 ) -> Result<gitv_git_core::models::DiffSummary, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let from_oid = from
         .map(|s| Oid::from_hex(&s))
         .transpose()
@@ -37,8 +40,10 @@ pub fn get_diff(
 }
 
 #[tauri::command]
-#[instrument(skip(path, file_path), fields(command = "get_file_diff"))]
+#[allow(clippy::too_many_arguments)]
+#[instrument(skip(state, path, file_path), fields(command = "get_file_diff"))]
 pub fn get_file_diff(
+    state: State<'_, AppState>,
     path: String,
     from: Option<String>,
     to: String,
@@ -48,7 +53,7 @@ pub fn get_file_diff(
     full: Option<bool>,
 ) -> Result<gitv_git_core::models::FileDiff, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let from_oid = from
         .map(|s| Oid::from_hex(&s))
         .transpose()
@@ -73,13 +78,14 @@ pub fn get_file_diff(
 }
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_file_tree"))]
+#[instrument(skip(state, path), fields(command = "get_file_tree"))]
 pub fn get_file_tree(
+    state: State<'_, AppState>,
     path: String,
     at_commit: Option<String>,
 ) -> Result<gitv_git_core::models::FileTreeNode, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let oid = at_commit
         .map(|s| Oid::from_hex(&s))
         .transpose()
@@ -96,27 +102,29 @@ fn parse_diff_mode(s: Option<&str>) -> DiffMode {
 }
 
 #[tauri::command]
-#[instrument(skip(path, file_path), fields(command = "get_file_history"))]
+#[instrument(skip(state, path, file_path), fields(command = "get_file_history"))]
 pub fn get_file_history(
+    state: State<'_, AppState>,
     path: String,
     file_path: String,
     max_count: Option<usize>,
 ) -> Result<Vec<gitv_git_core::models::FileHistoryEntry>, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     repo.file_history(std::path::Path::new(&file_path), max_count)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-#[instrument(skip(path, file_path), fields(command = "get_blob_content"))]
+#[instrument(skip(state, path, file_path), fields(command = "get_blob_content"))]
 pub fn get_blob_content(
+    state: State<'_, AppState>,
     path: String,
     at_commit: String,
     file_path: String,
 ) -> Result<String, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let oid = Oid::from_hex(&at_commit).map_err(|e| e.to_string())?;
     repo.blob_content(oid, std::path::Path::new(&file_path))
         .map_err(|e| e.to_string())
@@ -132,25 +140,27 @@ fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
 }
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_working_changes"))]
+#[instrument(skip(state, path), fields(command = "get_working_changes"))]
 pub fn get_working_changes(
+    state: State<'_, AppState>,
     path: String,
 ) -> Result<gitv_git_core::models::WorkingChangesDiff, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     repo.working_changes_diff().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_working_changes_diffs"))]
+#[instrument(skip(state, path), fields(command = "get_working_changes_diffs"))]
 pub fn get_working_changes_diffs(
+    state: State<'_, AppState>,
     path: String,
     staged: bool,
     diff_mode: Option<String>,
     whitespace: Option<String>,
 ) -> Result<Vec<gitv_git_core::models::FileDiff>, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
     repo.working_changes_file_diffs(staged, mode, ws)
@@ -158,14 +168,18 @@ pub fn get_working_changes_diffs(
 }
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_working_changes_combined_diff"))]
+#[instrument(
+    skip(state, path),
+    fields(command = "get_working_changes_combined_diff")
+)]
 pub fn get_working_changes_combined_diff(
+    state: State<'_, AppState>,
     path: String,
     diff_mode: Option<String>,
     whitespace: Option<String>,
 ) -> Result<Vec<gitv_git_core::models::FileDiff>, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
     repo.working_changes_combined_diff(mode, ws)

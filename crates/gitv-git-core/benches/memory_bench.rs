@@ -62,7 +62,11 @@ fn make_commits(count: usize) -> Vec<CommitInfo> {
             },
             author_time: Utc::now(),
             commit_time: Utc::now(),
-            parent_oids: if i > 0 { vec![make_oid((i - 1) as u64)] } else { vec![] },
+            parent_oids: if i > 0 {
+                vec![make_oid((i - 1) as u64)]
+            } else {
+                vec![]
+            },
             refs: vec![],
         })
         .collect()
@@ -80,10 +84,7 @@ fn report(label: &str, stats: &dhat::HeapStats) {
          total_allocs           : {:>12}\n  \
          peak_bytes             : {:>12}\n  \
          curr_bytes (after)     : {:>12}",
-        stats.total_bytes,
-        stats.total_blocks,
-        stats.max_bytes,
-        stats.curr_bytes,
+        stats.total_bytes, stats.total_blocks, stats.max_bytes, stats.curr_bytes,
     );
 }
 

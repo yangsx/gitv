@@ -82,6 +82,7 @@ pub fn run() {
             commands::commits::stream_commits,
             commands::commits::get_commits,
             commands::graph::get_graph_layout,
+            commands::graph::get_initial_data,
             commands::search::search_commits,
             commands::diff::get_commit_details,
             commands::diff::get_diff,

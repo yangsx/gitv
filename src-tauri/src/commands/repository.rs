@@ -1,6 +1,6 @@
 use crate::commands::util;
+use crate::state::AppState;
 use gitv_git_core::error::GitError;
-use gitv_git_core::gix_repo::GixRepository;
 use gitv_git_core::models::RecentRepository;
 use gitv_git_core::models::RepositoryInfo;
 use gitv_git_core::repository;
@@ -10,6 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use tauri::State;
 use tracing::instrument;
 
 const RECENT_REPOS_FILENAME: &str = "recent_repos.json";
@@ -67,10 +68,13 @@ pub fn open_repository(path: String) -> Result<RepositoryInfo, String> {
 }
 
 #[tauri::command]
-#[instrument(skip(path), fields(command = "get_refs"))]
-pub fn get_refs(path: String) -> Result<Vec<gitv_git_core::models::Ref>, String> {
+#[instrument(skip(state, path), fields(command = "get_refs"))]
+pub fn get_refs(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<gitv_git_core::models::Ref>, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path)?;
     repo.refs().map_err(|e| e.to_string())
 }
 

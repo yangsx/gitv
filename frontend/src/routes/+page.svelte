@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import {
-		openRepository,
-		getCommits,
 		getGraphLayout,
 		getCommitDetails,
-		getRefs,
+		getInitialData,
 		getWorkingChanges,
 		getStartupInfo,
 		getRecentRepositories,
@@ -61,6 +60,7 @@
 		toggleDebug,
 		tickFps,
 		updateDebugGraphStats,
+		updateLoadPhaseTimings,
 		debugOverlayEnabled,
 		logPath,
 		startMemoryTracking,
@@ -227,59 +227,50 @@
 		error.set(null);
 		loadError = null;
 		try {
-			const info = await openRepository(path);
-			const repoRoot = info.path;
-			repoPath = repoRoot;
-			repoInfo.set(info);
-			saveRecentRepository(repoRoot).catch(() => {});
-			getRecentRepositories().then((r) => (recentRepos = r));
-		} catch (e: unknown) {
-			const code = e instanceof Error ? e.message : String(e);
-			const msg =
-				code === 'not_a_git_repository'
-					? translate('page.not_a_git_repo', { path })
-					: translate('page.open_failed', { path });
-			error.set(msg);
-			operationState.set('Idle');
-			return;
-		}
-
-		try {
-			const loadedCommits = await getCommits(repoPath);
-			commits = loadedCommits;
-			commitCount = loadedCommits.length;
-		} catch (e: unknown) {
-			loadError = e instanceof Error ? e.message : String(e);
-			showToast(translate('page.partial_commits'), 'warning');
-		}
-
-		try {
-			const layout = await getGraphLayout(repoPath, {
+			const data = await getInitialData(path, {
 				hide_merges: $graphHideMerges,
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
 				palette: $graphPalette
 			});
-			graphLayout = layout;
+			console.log('loadRepo: got initial data, repo_info=', data.repo_info);
+			const repoRoot = data.repo_info.path;
+			repoPath = repoRoot;
+			repoInfo.set(data.repo_info);
+			console.log('loadRepo: repoInfo set, $repoInfo should now be', data.repo_info);
+			console.log('loadRepo: $repoInfo value via get', get(repoInfo));
+			repoLoaded = true;
+			commits = data.commits;
+			commitCount = data.commits.length;
+			graphLayout = data.graph_layout;
 			layoutLoaded = true;
+			allRefs = data.refs;
+			workingChangesDiff = data.working_changes;
+			saveRecentRepository(repoRoot).catch(() => {});
+			getRecentRepositories().then((r) => (recentRepos = r));
+			updateLoadPhaseTimings([
+				{ phase: 'load_commits', durationMs: data.timing.load_commits_ms },
+				{ phase: 'graph_calc', durationMs: data.timing.graph_calc_ms },
+				{ phase: 'refs', durationMs: data.timing.refs_ms },
+				{ phase: 'working_changes', durationMs: data.timing.working_changes_ms },
+				{ phase: 'total', durationMs: data.timing.total_ms }
+			]);
+			for (const w of data.warnings) {
+				showToast(w, 'warning');
+			}
 		} catch (e: unknown) {
-			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
-			showToast(translate('page.partial_graph'), 'warning');
+			const code = e instanceof Error ? e.message : String(e);
+			if (code === 'not_a_git_repository') {
+				error.set(translate('page.not_a_git_repo', { path }));
+			} else if (code === 'open_failed') {
+				error.set(translate('page.open_failed', { path }));
+			} else {
+				loadError = code;
+				showToast(translate('page.load_failed'), 'error');
+			}
 		}
 
-		try {
-			allRefs = await getRefs(repoPath);
-		} catch (e: unknown) {
-			loadError = loadError ?? (e instanceof Error ? e.message : String(e));
-		}
-
-		try {
-			workingChangesDiff = await getWorkingChanges(repoPath);
-		} catch {
-			workingChangesDiff = null;
-		}
-
-		if (!loadError) {
+		if (!loadError && commitCount > 0) {
 			showToast(translate('page.count_commits', { count: commitCount }), 'info');
 		}
 		operationState.set('Idle');
@@ -323,6 +314,11 @@
 	}
 
 	let layoutLoaded = $state(false);
+	let repoLoaded = $state(false);
+
+	$effect(() => {
+		console.log('DEBG: $repoInfo changed to', $repoInfo, 'repoLoaded=', repoLoaded);
+	});
 
 	$effect(() => {
 		if (startupComplete && !$repoInfo && !autoDialogShown) {
@@ -455,12 +451,20 @@
 		return displayLayout;
 	});
 
+	let skipInitialLayout = $state(true);
+
 	$effect(() => {
 		void $graphColorMode;
 		void $graphHideMerges;
 		void $graphOrientation;
 		void $graphPalette;
-		if ($repoInfo && layoutLoaded) reloadLayout();
+		if ($repoInfo && layoutLoaded) {
+			if (skipInitialLayout) {
+				skipInitialLayout = false;
+				return;
+			}
+			reloadLayout();
+		}
 	});
 
 	$effect(() => {
@@ -936,83 +940,92 @@
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
 >
-	{#if !$repoInfo}
+	{#if !$repoInfo || !repoLoaded}
 		<div class="flex flex-1 items-center justify-center" role="main">
-			<div class="w-full max-w-md space-y-6 p-8">
-				<div class="space-y-2 text-center">
-					<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
-					<p class="text-gray-400">{$t('page.subtitle')}</p>
+			{#if $operationState === 'LoadingRepo'}
+				<div class="flex flex-col items-center gap-3">
+					<div
+						class="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-blue-500"
+					></div>
+					<span class="text-sm text-gray-500">{$t('page.loading_repo')}</span>
 				</div>
-				<div class="flex justify-center">
-					<button
-						class="rounded bg-blue-600 px-6 py-3 text-sm hover:bg-blue-700"
-						onclick={browseForRepo}
-						aria-label={$t('page.browse_repo')}
-					>
-						{$t('page.browse_repo')}
-					</button>
-				</div>
-				{#if $error}
-					<p class="text-sm text-red-400 text-center" role="alert">{$error}</p>
-				{/if}
-				{#if recentRepos.length > 0}
-					<div class="space-y-2">
-						<h2 class="text-xs font-semibold uppercase tracking-wider text-gray-500">
-							{$t('page.recent_title')}
-						</h2>
-						<ul class="space-y-1">
-							{#each recentRepos as repo (repo.path)}
-								<li>
-									<button
-										class="w-full rounded px-3 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800"
-										onclick={() => {
-											repoPath = repo.path;
-											loadRepo(repo.path);
-										}}
-										aria-label={$t('page.recent_aria', { name: repo.name })}
-									>
-										<span class="font-medium">{repo.name}</span>
-										<span class="ml-2 font-mono text-xs text-gray-600">{repo.path}</span>
-										<span class="ml-auto text-xs text-gray-600"
-											>{formatAbsoluteDate(repo.last_opened)}</span
-										>
-									</button>
-								</li>
-							{/each}
-						</ul>
+			{:else}
+				<div class="w-full max-w-md space-y-6 p-8">
+					<div class="space-y-2 text-center">
+						<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
+						<p class="text-gray-400">{$t('page.subtitle')}</p>
 					</div>
-				{:else}
-					<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
-				{/if}
-				<div class="flex justify-center">
-					<button
-						class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-						onclick={() => (showPreferences = true)}
-						aria-label={$t('page.settings_aria')}
-					>
-						<svg
-							class="h-5 w-5"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-							aria-hidden="true"
+					<div class="flex justify-center">
+						<button
+							class="rounded bg-blue-600 px-6 py-3 text-sm hover:bg-blue-700"
+							onclick={browseForRepo}
+							aria-label={$t('page.browse_repo')}
 						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-							/>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-							/>
-						</svg>
-					</button>
+							{$t('page.browse_repo')}
+						</button>
+					</div>
+					{#if $error}
+						<p class="text-sm text-red-400 text-center" role="alert">{$error}</p>
+					{/if}
+					{#if recentRepos.length > 0}
+						<div class="space-y-2">
+							<h2 class="text-xs font-semibold uppercase tracking-wider text-gray-500">
+								{$t('page.recent_title')}
+							</h2>
+							<ul class="space-y-1">
+								{#each recentRepos as repo (repo.path)}
+									<li>
+										<button
+											class="w-full rounded px-3 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800"
+											onclick={() => {
+												repoPath = repo.path;
+												loadRepo(repo.path);
+											}}
+											aria-label={$t('page.recent_aria', { name: repo.name })}
+										>
+											<span class="font-medium">{repo.name}</span>
+											<span class="ml-2 font-mono text-xs text-gray-600">{repo.path}</span>
+											<span class="ml-auto text-xs text-gray-600"
+												>{formatAbsoluteDate(repo.last_opened)}</span
+											>
+										</button>
+									</li>
+								{/each}
+							</ul>
+						</div>
+					{:else}
+						<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
+					{/if}
+					<div class="flex justify-center">
+						<button
+							class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+							onclick={() => (showPreferences = true)}
+							aria-label={$t('page.settings_aria')}
+						>
+							<svg
+								class="h-5 w-5"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+								aria-hidden="true"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+								/>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+								/>
+							</svg>
+						</button>
+					</div>
 				</div>
-			</div>
+			{/if}
 		</div>
 	{:else}
 		{#if !isFullscreen}
@@ -1147,6 +1160,15 @@
 							graphWidth={savedLayout?.graphWidth ?? 200}
 							{rowHeight}
 						/>
+					{:else if $operationState === 'LoadingRepo'}
+						<div class="flex h-full items-center justify-center" role="status" aria-live="polite">
+							<div class="flex flex-col items-center gap-3">
+								<div
+									class="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-blue-500"
+								></div>
+								<span class="text-sm text-gray-500">{$t('page.loading_repo')}</span>
+							</div>
+						</div>
 					{/if}
 				</div>
 

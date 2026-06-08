@@ -295,6 +295,24 @@ export interface SavedSearch {
 	created_at: string;
 }
 
+export interface LoadTiming {
+	load_commits_ms: number;
+	graph_calc_ms: number;
+	refs_ms: number;
+	working_changes_ms: number;
+	total_ms: number;
+}
+
+export interface InitialData {
+	repo_info: RepositoryInfo;
+	commits: CommitInfo[];
+	graph_layout: GraphLayout;
+	refs: Ref[];
+	working_changes: WorkingChangesDiff | null;
+	timing: LoadTiming;
+	warnings: string[];
+}
+
 export interface WorkingChangesDiff {
 	staged: FileChange[];
 	unstaged: FileChange[];

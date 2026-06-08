@@ -9,6 +9,7 @@
 		CommitInfo
 	} from '$lib/bindings/types';
 	import { showStashes } from '$lib/stores/preferences';
+	import { updateGraphDrawTime } from '$lib/stores/debug';
 
 	interface Props {
 		layout: GraphLayout;
@@ -41,6 +42,8 @@
 	let canvas: HTMLCanvasElement;
 	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 	let scale = $state(1.0);
+	let prevCanvasW = 0;
+	let prevCanvasH = 0;
 
 	const PADDING_LEFT = 12;
 
@@ -54,6 +57,7 @@
 		if (!canvas) return;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
+		const drawStart = performance.now();
 
 		const sc = scale;
 		const sLaneWidth = laneWidth * sc;
@@ -64,11 +68,17 @@
 		const width = l.total_columns * sLaneWidth + sPadding * 2;
 		if (width <= 0 || height <= 0) return;
 
-		canvas.width = width * devicePixelRatio;
-		canvas.height = height * devicePixelRatio;
-		canvas.style.width = `${width}px`;
-		canvas.style.height = `${height}px`;
-		ctx.scale(devicePixelRatio, devicePixelRatio);
+		const cssW = `${width}px`;
+		const cssH = `${height}px`;
+		if (width !== prevCanvasW || height !== prevCanvasH) {
+			canvas.width = width * devicePixelRatio;
+			canvas.height = height * devicePixelRatio;
+			canvas.style.width = cssW;
+			canvas.style.height = cssH;
+			prevCanvasW = width;
+			prevCanvasH = height;
+		}
+		ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 		ctx.clearRect(0, 0, width, height);
 
 		const startRow = visibleStart;
@@ -92,6 +102,7 @@
 				drawStashMarker(ctx, stash, startRow, colXfn, rowYfn, sNodeRadius, sc);
 			}
 		}
+		updateGraphDrawTime(performance.now() - drawStart);
 	}
 
 	$effect(() => {

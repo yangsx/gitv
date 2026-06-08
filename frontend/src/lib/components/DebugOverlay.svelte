@@ -18,6 +18,13 @@
 	);
 	let stateClass = $derived($operationState !== 'Idle' ? 'text-yellow-400' : '');
 	let memoryStr = $derived($debug.memoryUsed > 0 ? formatBytes($debug.memoryUsed) : null);
+	let drawColorClass = $derived(
+		$debug.graphDrawTimeMs > 16
+			? 'text-red-400'
+			: $debug.graphDrawTimeMs > 8
+				? 'text-yellow-400'
+				: ''
+	);
 </script>
 
 {#if $debug.visible && $debugOverlayEnabled}
@@ -49,6 +56,11 @@
 			<span class="text-gray-500">Stashes</span>
 			<span>{$debug.graphStashMarkers}</span>
 
+			<span class="text-gray-500">Draw</span>
+			<span class={drawColorClass}>
+				{formatMs($debug.graphDrawTimeMs)}ms
+			</span>
+
 			<span class="text-gray-500">State</span>
 			<span class={stateClass}>{$operationState}</span>
 
@@ -57,6 +69,20 @@
 				{formatMs($avgIpcTime)}ms
 			</span>
 		</div>
+
+		{#if $debug.loadPhaseTimings.length > 0}
+			<div class="mt-2 border-t border-gray-800 pt-2">
+				<div class="text-gray-500 mb-1">Load Phases</div>
+				<div class="max-h-32 overflow-y-auto">
+					{#each $debug.loadPhaseTimings as p, i (i)}
+						<div class="flex justify-between">
+							<span class="truncate max-w-[180px]">{p.phase}</span>
+							<span>{formatMs(p.durationMs)}ms</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		{#if $recentIpcTimings.length > 0}
 			<div class="mt-2 border-t border-gray-800 pt-2">

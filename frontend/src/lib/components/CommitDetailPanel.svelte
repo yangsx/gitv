@@ -136,22 +136,39 @@
 		}
 
 		const parentOid = details.info.parent_oids[0] ?? null;
-		const promises = details.changed_files.map(async (file) => {
-			try {
-				const diff = await getFileDiff(
-					repoPath,
-					parentOid,
-					details.info.oid,
-					file.path,
-					localDiffMode,
-					localDiffWhitespace
-				);
-				return [file.path, diff] as const;
-			} catch {
-				return [file.path, null] as const;
+		const files = details.changed_files;
+
+		if (files.length > 100) {
+			diffsLoading = false;
+			return;
+		}
+
+		const CONCURRENCY = 4;
+		let next = 0;
+		const results: [string, FileDiff | null][] = [];
+
+		async function worker() {
+			while (next < files.length) {
+				const idx = next++;
+				const file = files[idx];
+				try {
+					const diff = await getFileDiff(
+						repoPath,
+						parentOid,
+						details.info.oid,
+						file.path,
+						localDiffMode,
+						localDiffWhitespace
+					);
+					results.push([file.path, diff]);
+				} catch {
+					results.push([file.path, null]);
+				}
 			}
-		});
-		const results = await Promise.all(promises);
+		}
+
+		await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+
 		const map = new SvelteMap<string, FileDiff>();
 		for (const [path, diff] of results) {
 			if (diff) map.set(path, diff);
@@ -418,7 +435,7 @@
 									oid: details.info.oid.substring(0, 7)
 								})}</span
 							>
-							{#each details.info.refs as r (r.Branch?.name ?? r.Tag?.name ?? r.Remote?.name ?? '')}
+							{#each details.info.refs as r (r.Branch ? 'b:' + r.Branch.name : r.Tag ? 't:' + r.Tag.name : r.Remote ? 'r:' + r.Remote.remote + '/' + r.Remote.name : '')}
 								{#if r.Branch?.is_head}
 									<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
 										{r.Branch.name}

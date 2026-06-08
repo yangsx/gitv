@@ -122,6 +122,7 @@
 		"no_file_selected": "未选择文件",
 		"not_a_git_repo": "{path} 不是一个 Git 仓库",
 		"open_failed": "打开仓库失败：{path}",
+		"load_failed": "加载仓库数据失败",
 		"partial_commits": "部分加载：提交加载失败",
 		"partial_graph": "部分加载：图形加载失败",
 		"count_commits": "已加载 {count} 个提交",
