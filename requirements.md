@@ -517,10 +517,9 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. Stash markers SHALL be visually distinct from branch labels, tag labels, and regular commit nodes (unique icon, color, or shape)
 3. WHEN a stash marker is clicked, THE gitv_Application SHALL display a combined diff in the detail panel (equivalent to `git stash show -p`), using standard +/- diff markers (not gitk's double +/−)
 4. THE detail panel SHALL provide a toggle to split the stash diff into "staged changes" and "unstaged changes" for users who need that distinction
-5. THE toolbar SHALL provide a toggle to show or hide all stash markers in the graph
-6. THE sidebar SHALL display a stash list as a secondary navigation aid — clicking a stash entry SHALL scroll the graph to the corresponding marker
-7. THE stash list SHALL show each stash's index, message, and timestamp
-8. WHEN a stash marker is hovered, THE gitv_Application SHALL display a tooltip with the stash message and a summary of changed files
+5. THE sidebar SHALL display a stash list as a secondary navigation aid — clicking a stash entry SHALL scroll the graph to the corresponding marker
+6. THE stash list SHALL show each stash's index, message, and timestamp
+7. WHEN a stash marker is hovered, THE gitv_Application SHALL display a tooltip with the stash message and a summary of changed files
 
 ### Requirement 39: Persistent Repository Cache
 

@@ -401,11 +401,11 @@ pub enum EdgeType {
 pub struct GraphLayout {
     pub nodes: Vec<NodePosition>,
     pub stash_markers: Vec<StashMarker>,
+    pub stash_commits: Vec<CommitInfo>,
     pub edges: Vec<Edge>,
-    pub max_column: usize,
-    pub branch_colors: HashMap<String, Color>,
-    pub author_colors: HashMap<String, Color>,
+    pub total_columns: usize,
     pub orientation: GraphOrientation,
+    pub total_rows: usize,
 }
 
 impl GraphCalculator {
@@ -865,7 +865,6 @@ frontend/
 │   │   │   ├── ViewToggle.svelte
 │   │   │   │   └── GraphOrientationToggle.svelte  (Req 57)
 │   │   │   │   └── ColorModeToggle.svelte         (Req 52: by-branch / by-author)
-│   │   │   │   └── StashMarkersToggle.svelte       (Req 38.5: show/hide stash markers)
 │   │   │   └── FullscreenButton.svelte       (Req 33)
 │   │   ├── CommitView/
 │   │   │   ├── CommitGraph.svelte     (Canvas 2D fallback renderer)
@@ -979,10 +978,11 @@ Both share position math, color constants, and hit-testing logic from `graph-mat
 
 **Shared props across both graph components** (from `graph-math.ts`):
 ```
-columnCenterX, nodeCenterY, stashX, stashY      — position math
-colorToCSS, SELECT_RGB, COMPARISON_RGB           — color constants
-isEdgeVisible, nodeHitTest, filterVisibleNodes,  — visibility + hit testing
-filterVisibleEdges, filterVisibleStashes
+columnCenterX, nodeCenterY                        — position math
+colorToCSS, SELECT_RGB, COMPARISON_RGB,           — color constants
+  STASH_RGB, STASH_COLOR
+isEdgeVisible, nodeHitTest, filterVisibleNodes,   — visibility + hit testing
+filterVisibleEdges
 ```
 
 **Key behaviors**:
@@ -1559,7 +1559,6 @@ let branchViewMode = $state<BranchViewMode>({
 
 let graphColorMode = $state<"branch" | "author">("branch");
 let graphOrientation = $state<"top-to-bottom" | "bottom-to-top">("top-to-bottom");
-let showStashMarkers = $state<boolean>(true);
 let highlightedCommit = $state<string | null>(null);
 
 let fullscreenMode = $state<"none" | "history" | "diff">("none");
@@ -1864,11 +1863,11 @@ type WhitespaceMode = "none" | "ignore-space-change" | "ignore-all-space" | "ign
 interface GraphLayout {
   nodes: NodePosition[];
   stashMarkers: StashMarker[];
+  stashCommits: CommitInfo[];
   edges: Edge[];
-  maxColumn: number;
-  branchColors: Record<string, string>;
-  authorColors: Record<string, string>;
+  totalColumns: number;
   orientation: GraphOrientation;
+  totalRows: number;
 }
 
 type GraphOrientation = "top-to-bottom" | "bottom-to-top";
@@ -1881,12 +1880,14 @@ interface GraphOptionsPayload {
 }
 
 interface NodePosition {
-  commitOid: Oid;
+  oid: Oid;
   row: number;
   column: number;
-  isMerge: boolean;
-  dimmed: boolean;
-  highlighted: boolean;
+  is_merge: boolean;
+  is_stash: boolean;
+  color: Color;
+  is_dimmed: boolean;
+  is_highlighted: boolean;
 }
 
 interface StashMarker {
