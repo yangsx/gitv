@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { searchCommands, type Command } from '$lib/stores/commands';
+	import { commands as commandsStore, fuzzyMatch, type Command } from '$lib/stores/commands';
+	import { t } from '$lib/stores/locale';
 
 	interface Props {
 		onclose: () => void;
@@ -11,7 +12,19 @@
 	let selectedIndex = $state(0);
 	let inputEl: HTMLInputElement | undefined = $state();
 
-	let results = $derived(searchCommands(query));
+	let results = $derived.by(() => {
+		const all = $commandsStore;
+		if (!query.trim()) return [...all];
+		const scored = all
+			.map((cmd) => ({
+				cmd,
+				score:
+					fuzzyMatch(query, cmd.label) + (cmd.shortcut ? fuzzyMatch(query, cmd.shortcut) * 0.5 : 0)
+			}))
+			.filter((s) => s.score > 0)
+			.sort((a, b) => b.score - a.score);
+		return scored.map((s) => s.cmd);
+	});
 
 	$effect(() => {
 		void query;
@@ -58,7 +71,7 @@
 	style="background: rgba(0,0,0,0.5);"
 	onclick={onBackdropClick}
 	role="dialog"
-	aria-label="Command palette"
+	aria-label={$t('command_palette.aria')}
 	tabindex="-1"
 >
 	<div class="w-full max-w-lg rounded-lg border border-gray-700 bg-gray-900 shadow-2xl">
@@ -81,8 +94,8 @@
 				bind:this={inputEl}
 				bind:value={query}
 				class="flex-1 bg-transparent px-2 py-3 text-sm text-gray-100 outline-none placeholder-gray-500"
-				placeholder="Type a command..."
-				aria-label="Search commands"
+				placeholder={$t('command_palette.placeholder')}
+				aria-label={$t('command_palette.search_aria')}
 			/>
 		</div>
 		<ul class="max-h-64 overflow-y-auto py-1" role="listbox">
@@ -98,7 +111,7 @@
 					>
 						<span>
 							{#if cmd.category}
-								<span class="text-gray-500 mr-1">{cmd.category}:</span>
+								<span class="text-gray-500 mr-1">{$t('shortcut_categories.' + cmd.category)}:</span>
 							{/if}
 							{cmd.label}
 						</span>
@@ -113,7 +126,9 @@
 				</li>
 			{/each}
 			{#if results.length === 0 && query.trim()}
-				<li class="px-3 py-4 text-center text-sm text-gray-500">No matching commands</li>
+				<li class="px-3 py-4 text-center text-sm text-gray-500">
+					{$t('command_palette.no_matches')}
+				</li>
 			{/if}
 		</ul>
 	</div>

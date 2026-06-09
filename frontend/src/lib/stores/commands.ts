@@ -1,3 +1,5 @@
+import { writable, get } from 'svelte/store';
+
 export interface Command {
 	id: string;
 	label: string;
@@ -6,27 +8,33 @@ export interface Command {
 	action: () => void;
 }
 
-const commands: Command[] = [];
+export const commands = writable<Command[]>([]);
 
 export function registerCommand(cmd: Command) {
-	const existing = commands.findIndex((c) => c.id === cmd.id);
-	if (existing >= 0) {
-		commands[existing] = cmd;
-	} else {
-		commands.push(cmd);
-	}
+	commands.update((cmds) => {
+		const existing = cmds.findIndex((c) => c.id === cmd.id);
+		if (existing >= 0) {
+			cmds[existing] = cmd;
+		} else {
+			cmds.push(cmd);
+		}
+		return cmds;
+	});
 }
 
 export function getCommands(): Command[] {
-	return [...commands];
+	return [...get(commands)];
 }
 
 export function unregisterCommandsByPrefix(prefix: string) {
-	for (let i = commands.length - 1; i >= 0; i--) {
-		if (commands[i].id.startsWith(prefix)) {
-			commands.splice(i, 1);
+	commands.update((cmds) => {
+		for (let i = cmds.length - 1; i >= 0; i--) {
+			if (cmds[i].id.startsWith(prefix)) {
+				cmds.splice(i, 1);
+			}
 		}
-	}
+		return cmds;
+	});
 }
 
 export function fuzzyMatch(query: string, text: string): number {
@@ -49,8 +57,9 @@ export function fuzzyMatch(query: string, text: string): number {
 }
 
 export function searchCommands(query: string): Command[] {
-	if (!query.trim()) return getCommands();
-	const scored = getCommands()
+	const all = get(commands);
+	if (!query.trim()) return [...all];
+	const scored = all
 		.map((cmd) => ({
 			cmd,
 			score:

@@ -16,7 +16,7 @@
 	} from '$lib/stores/preferences';
 	import { t, locale, setLocale as setAppLocale } from '$lib/stores/locale';
 	import type { Locale } from '$lib/stores/locale';
-	import { getCommands } from '$lib/stores/commands';
+	import { commands as commandsStore } from '$lib/stores/commands';
 	import { logPath } from '$lib/stores/debug';
 	import { openLogDirectory } from '$lib/bindings/commands';
 
@@ -157,7 +157,7 @@
 		savePreferences();
 	}
 
-	let commands = $derived(getCommands().filter((c) => c.shortcut));
+	let commands = $derived($commandsStore.filter((c) => c.shortcut));
 	let shortcutCategories = $derived(
 		[...new Set(commands.map((c) => c.category ?? ''))].filter(Boolean).sort()
 	);
@@ -497,7 +497,9 @@
 				{:else}
 					{#each shortcutCategories as cat (cat)}
 						<div class="mb-2">
-							<h4 class="text-xs text-gray-500 font-semibold mb-1">{cat}</h4>
+							<h4 class="text-xs text-gray-500 font-semibold mb-1">
+								{$t('shortcut_categories.' + cat)}
+							</h4>
 							<div class="space-y-1">
 								{#each commands.filter((c) => c.category === cat) as cmd (cmd.id)}
 									<div class="flex items-center justify-between">

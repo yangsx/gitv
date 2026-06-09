@@ -415,7 +415,7 @@
 									? 'text-green-300'
 									: 'text-orange-300'}"
 							>
-								{details.info.summary}
+								{$t(details.info.oid === '__staged__' ? 'page.staged' : 'page.unstaged')}
 							</span>
 							<span class="text-xs text-gray-500">
 								{$t(

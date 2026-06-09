@@ -251,6 +251,16 @@
 		"none": "No shortcuts registered",
 		"dismiss_hint": "Press Esc to dismiss"
 	},
+	"shortcut_categories": {
+		"Branch": "Branch",
+		"Debug": "Debug",
+		"File": "File",
+		"Graph": "Graph",
+		"Help": "Help",
+		"Palette": "Palette",
+		"Recent": "Recent",
+		"View": "View"
+	},
 	"command_palette": {
 		"aria": "Command palette",
 		"placeholder": "Type a command...",

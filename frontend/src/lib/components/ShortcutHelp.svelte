@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getCommands } from '$lib/stores/commands';
+	import { commands as commandsStore } from '$lib/stores/commands';
 	import { t } from '$lib/stores/locale';
 
 	interface Props {
@@ -8,7 +8,7 @@
 
 	let { onclose }: Props = $props();
 
-	let commands = $derived(getCommands().filter((c) => c.shortcut));
+	let commands = $derived($commandsStore.filter((c) => c.shortcut));
 	let categories = $derived(
 		[...new Set(commands.map((c) => c.category ?? ''))].filter(Boolean).sort()
 	);
@@ -74,7 +74,9 @@
 			{:else}
 				{#each categories as cat (cat)}
 					<div>
-						<h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">{cat}</h3>
+						<h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+							{$t('shortcut_categories.' + cat)}
+						</h3>
 						<div class="space-y-1">
 							{#each commands.filter((c) => c.category === cat) as cmd (cmd.id)}
 								<div class="flex items-center justify-between py-1">

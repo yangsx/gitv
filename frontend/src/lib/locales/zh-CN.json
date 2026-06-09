@@ -251,6 +251,16 @@
 		"none": "未注册快捷键",
 		"dismiss_hint": "按下 Esc 关闭"
 	},
+	"shortcut_categories": {
+		"Branch": "分支",
+		"Debug": "调试",
+		"File": "文件",
+		"Graph": "图表",
+		"Help": "帮助",
+		"Palette": "调色板",
+		"Recent": "最近",
+		"View": "视图"
+	},
 	"command_palette": {
 		"aria": "命令面板",
 		"placeholder": "输入命令...",

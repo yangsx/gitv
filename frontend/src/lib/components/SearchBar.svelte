@@ -26,6 +26,7 @@
 	let dateTo = $state('');
 	let filePath = $state('');
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let containerRef: HTMLDivElement | undefined = $state();
 
 	function handleInput() {
 		if (debounceTimer) clearTimeout(debounceTimer);
@@ -38,6 +39,10 @@
 			executeSearch();
 		}
 		if (e.key === 'Escape') {
+			if (showOptions) {
+				showOptions = false;
+				return;
+			}
 			inputText = '';
 			authorFilter = '';
 			searchQuery.set(null);
@@ -96,128 +101,143 @@
 		searchQuery.set(null);
 		searchResults.set([]);
 	}
+
+	function handleClickOutside(e: MouseEvent) {
+		if (containerRef && !containerRef.contains(e.target as Node)) {
+			showOptions = false;
+		}
+	}
 </script>
 
-<div class="flex items-center gap-2" role="search" aria-label={$t('search.search_aria')}>
-	<div class="relative flex-1">
-		<input
-			type="text"
-			class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-			placeholder={$t('search.placeholder')}
-			aria-label={$t('search.search_aria')}
-			bind:value={inputText}
-			oninput={handleInput}
-			onkeydown={handleKeydown}
-		/>
-		{#if inputText || authorFilter}
-			<button
-				class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-				onclick={clearSearch}
-				aria-label={$t('search.clear')}
-			>
-				✕
-			</button>
+<svelte:window onclick={handleClickOutside} />
+
+<!-- svelte-ignore binding_property_non_reactive -->
+<div bind:this={containerRef} class="relative" role="search" aria-label={$t('search.search_aria')}>
+	<div class="flex items-center gap-2">
+		<div class="relative flex-1">
+			<input
+				type="text"
+				class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+				placeholder={$t('search.placeholder')}
+				aria-label={$t('search.search_aria')}
+				bind:value={inputText}
+				oninput={handleInput}
+				onkeydown={handleKeydown}
+			/>
+			{#if inputText || authorFilter}
+				<button
+					class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+					onclick={clearSearch}
+					aria-label={$t('search.clear')}
+				>
+					✕
+				</button>
+			{/if}
+		</div>
+
+		<button
+			class="rounded px-2 py-1.5 text-xs {showOptions
+				? 'bg-gray-600 text-gray-200'
+				: 'bg-gray-800 text-gray-400 hover:text-gray-200'} border border-gray-700"
+			onclick={() => (showOptions = !showOptions)}
+			aria-label={$t('search.options_aria')}
+			aria-expanded={showOptions}
+		>
+			{$t('search.opts')}
+		</button>
+
+		{#if $searchQuery}
+			<span class="shrink-0 text-xs text-gray-500" role="status" aria-live="polite">
+				{$t($searchResults.length === 1 ? 'search.matches' : 'search.matches_plural', {
+					count: $searchResults.length
+				})}
+			</span>
 		{/if}
 	</div>
 
-	<button
-		class="rounded px-2 py-1.5 text-xs {showOptions
-			? 'bg-gray-600 text-gray-200'
-			: 'bg-gray-800 text-gray-400 hover:text-gray-200'} border border-gray-700"
-		onclick={() => (showOptions = !showOptions)}
-		aria-label={$t('search.options_aria')}
-		aria-expanded={showOptions}
-	>
-		{$t('search.opts')}
-	</button>
-
-	{#if $searchQuery}
-		<span class="shrink-0 text-xs text-gray-500" role="status" aria-live="polite">
-			{$t($searchResults.length === 1 ? 'search.matches' : 'search.matches_plural', {
-				count: $searchResults.length
-			})}
-		</span>
+	{#if showOptions}
+		<div
+			class="absolute right-0 top-full mt-1 z-50 flex items-center gap-3 rounded-md border border-gray-700 bg-gray-900/95 px-3 py-2 shadow-lg backdrop-blur-sm"
+			role="group"
+			aria-label={$t('search.options_aria')}
+		>
+			<label class="flex items-center gap-1 text-xs text-gray-400">
+				<input type="checkbox" bind:checked={useRegex} onchange={executeSearch} />
+				{$t('search.regex')}
+			</label>
+			<input
+				type="text"
+				class="w-24 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
+				placeholder={$t('search.author_filter')}
+				aria-label={$t('search.author_filter')}
+				bind:value={authorFilter}
+				oninput={handleInput}
+			/>
+			<input
+				type="text"
+				class="w-24 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
+				placeholder={$t('search.sha_prefix')}
+				aria-label={$t('search.sha_prefix')}
+				bind:value={shaPrefix}
+				oninput={handleInput}
+			/>
+			<input
+				type="date"
+				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+				aria-label={$t('search.date_from')}
+				bind:value={dateFrom}
+				oninput={handleInput}
+			/>
+			<input
+				type="date"
+				class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
+				aria-label={$t('search.date_to')}
+				bind:value={dateTo}
+				oninput={handleInput}
+			/>
+			<input
+				type="text"
+				class="w-24 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
+				placeholder={$t('search.file_path')}
+				aria-label={$t('search.file_path')}
+				bind:value={filePath}
+				oninput={handleInput}
+			/>
+			<span class="text-xs text-gray-500">{$t('search.sort_by')}</span>
+			<select
+				class="rounded border border-gray-700 bg-gray-800 px-1.5 py-1 text-xs text-gray-300"
+				aria-label={$t('search.sort_by')}
+				value={$sortBy}
+				onchange={(e) =>
+					sortBy.set((e.target as HTMLSelectElement).value as 'date' | 'author' | 'sha')}
+			>
+				<option value="date">{$t('search.sort_date')}</option>
+				<option value="author">{$t('search.sort_author')}</option>
+				<option value="sha">{$t('search.sort_sha')}</option>
+			</select>
+			<button
+				class="rounded px-1.5 py-1 text-xs border border-gray-700 {$sortAsc
+					? 'bg-gray-600 text-gray-200'
+					: 'bg-gray-800 text-gray-400 hover:text-gray-200'}"
+				onclick={() => sortAsc.update((v) => !v)}
+				aria-label={$sortAsc ? $t('search.sort_desc') : $t('search.sort_asc')}
+			>
+				{$sortAsc ? $t('search.sort_asc') : $t('search.sort_desc')}
+			</button>
+			<button
+				class="rounded px-2 py-1 text-xs border border-gray-700 {$searchShowMode === 'hide-nonhits'
+					? 'bg-blue-600 text-white'
+					: 'bg-gray-800 text-gray-400 hover:text-gray-200'}"
+				onclick={() =>
+					searchShowMode.update((v) => (v === 'hide-nonhits' ? 'insitu' : 'hide-nonhits'))}
+				aria-label={$searchShowMode === 'hide-nonhits'
+					? $t('search.show_nonmatches')
+					: $t('search.hide_nonmatches')}
+			>
+				{$searchShowMode === 'hide-nonhits'
+					? $t('search.show_nonmatches')
+					: $t('search.hide_nonmatches')}
+			</button>
+		</div>
 	{/if}
 </div>
-
-{#if showOptions}
-	<div class="mt-1 flex items-center gap-3" role="group" aria-label={$t('search.options_aria')}>
-		<label class="flex items-center gap-1 text-xs text-gray-400">
-			<input type="checkbox" bind:checked={useRegex} onchange={executeSearch} />
-			{$t('search.regex')}
-		</label>
-		<input
-			type="text"
-			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
-			placeholder={$t('search.author_filter')}
-			aria-label={$t('search.author_filter')}
-			bind:value={authorFilter}
-			oninput={handleInput}
-		/>
-		<input
-			type="text"
-			class="w-28 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
-			placeholder={$t('search.sha_prefix')}
-			aria-label={$t('search.sha_prefix')}
-			bind:value={shaPrefix}
-			oninput={handleInput}
-		/>
-		<input
-			type="date"
-			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-			aria-label={$t('search.date_from')}
-			bind:value={dateFrom}
-			oninput={handleInput}
-		/>
-		<input
-			type="date"
-			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-			aria-label={$t('search.date_to')}
-			bind:value={dateTo}
-			oninput={handleInput}
-		/>
-		<input
-			type="text"
-			class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
-			placeholder={$t('search.file_path')}
-			aria-label={$t('search.file_path')}
-			bind:value={filePath}
-			oninput={handleInput}
-		/>
-		<span class="text-xs text-gray-500">{$t('search.sort_by')}</span>
-		<select
-			class="rounded border border-gray-700 bg-gray-800 px-1.5 py-1 text-xs text-gray-300"
-			aria-label={$t('search.sort_by')}
-			value={$sortBy}
-			onchange={(e) =>
-				sortBy.set((e.target as HTMLSelectElement).value as 'date' | 'author' | 'sha')}
-		>
-			<option value="date">{$t('search.sort_date')}</option>
-			<option value="author">{$t('search.sort_author')}</option>
-			<option value="sha">{$t('search.sort_sha')}</option>
-		</select>
-		<button
-			class="rounded px-1.5 py-1 text-xs border border-gray-700 {$sortAsc
-				? 'bg-gray-600 text-gray-200'
-				: 'bg-gray-800 text-gray-400 hover:text-gray-200'}"
-			onclick={() => sortAsc.update((v) => !v)}
-			aria-label={$sortAsc ? $t('search.sort_desc') : $t('search.sort_asc')}
-		>
-			{$sortAsc ? $t('search.sort_asc') : $t('search.sort_desc')}
-		</button>
-		<button
-			class="rounded px-2 py-1 text-xs border border-gray-700 {$searchShowMode === 'hide-nonhits'
-				? 'bg-blue-600 text-white'
-				: 'bg-gray-800 text-gray-400 hover:text-gray-200'}"
-			onclick={() =>
-				searchShowMode.update((v) => (v === 'hide-nonhits' ? 'insitu' : 'hide-nonhits'))}
-			aria-label={$searchShowMode === 'hide-nonhits'
-				? $t('search.show_nonmatches')
-				: $t('search.hide_nonmatches')}
-		>
-			{$searchShowMode === 'hide-nonhits'
-				? $t('search.show_nonmatches')
-				: $t('search.hide_nonmatches')}
-		</button>
-	</div>
-{/if}

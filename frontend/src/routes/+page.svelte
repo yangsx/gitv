@@ -1068,7 +1068,9 @@
 		</div>
 	{:else}
 		{#if !isFullscreen}
-			<header class="flex items-center gap-3 border-b border-gray-800 px-4 py-2">
+			<header
+				class="relative flex items-center gap-3 overflow-visible border-b border-gray-800 px-4 py-2"
+			>
 				<span class="font-mono text-sm text-gray-400">{$repoInfo.path}</span>
 				{#if selectedBranch}
 					<span class="rounded bg-blue-700/50 px-2 py-0.5 text-xs text-blue-300">
