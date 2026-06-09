@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { t } from '$lib/stores/locale';
-	import type { CommitInfo, GraphLayout, Highlight } from '$lib/bindings/types';
+	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
 	import CommitRow from './CommitRow.svelte';
 	import GraphRenderer from './graph/GraphRenderer.svelte';

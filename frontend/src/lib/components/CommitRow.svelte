@@ -105,6 +105,7 @@
 			></span>
 		</span>
 		<span class="min-w-0 truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			{@html renderSummary()}
 		</span>
 	</button>
@@ -150,7 +151,10 @@
 				{/if}
 			{/each}
 		</span>
-		<span class="min-w-0 truncate">{@html renderSummary()}</span>
+		<span class="min-w-0 truncate">
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+			{@html renderSummary()}
+		</span>
 		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
 		<span class="shrink-0 text-xs text-gray-600">{formatTime(commit.commit_time)}</span>
 	</button>

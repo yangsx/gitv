@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
+	import { SvelteMap } from 'svelte/reactivity';
 	import type {
 		GraphLayout,
 		RenderGraphInput,
@@ -67,11 +68,11 @@
 	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 
 	// Build a lookup from node OID to its render data for hit testing
-	let nodeHitMap = $state(new Map<string, { x: number; y: number; radius: number }>());
+	let nodeHitMap = new SvelteMap<string, { x: number; y: number; radius: number }>();
 
 	function buildNodes(start: number, end: number): RenderNode[] {
 		const result: RenderNode[] = [];
-		nodeHitMap = new Map();
+		nodeHitMap = new SvelteMap();
 		for (const n of layout.nodes) {
 			if (n.row < start || n.row > end) continue;
 			const x = columnCenterX(n.column, laneWidth, PADDING_LEFT);

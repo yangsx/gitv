@@ -9,6 +9,12 @@ function escapeHtml(text: string): string {
 		.replace(/'/g, '&#039;');
 }
 
+const DANGEROUS_PROTOCOLS = /^\s*(javascript|data|vbscript)\s*:/i;
+
+const DANGEROUS_TAGS = /<\/?(?:script|iframe|object|embed|form|input|style|link|meta|base)[^>]*>/gi;
+
+const EVENT_HANDLER_ATTRS = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+
 const marked = new Marked({
 	gfm: true,
 	breaks: true
@@ -16,8 +22,9 @@ const marked = new Marked({
 
 const renderer: RendererObject = {
 	link({ href, title, text }) {
-		const titleAttr = title ? ` title="${title}"` : '';
-		return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+		const safeHref = !href || DANGEROUS_PROTOCOLS.test(href) ? '#' : href;
+		const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+		return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
 	},
 	html({ text }) {
 		return escapeHtml(text);
@@ -29,6 +36,11 @@ const renderer: RendererObject = {
 
 marked.use({ renderer });
 
+function sanitizeHtml(html: string): string {
+	return html.replace(DANGEROUS_TAGS, '').replace(EVENT_HANDLER_ATTRS, '');
+}
+
 export function renderMarkdown(body: string): string {
-	return marked.parse(body, { async: false }) as string;
+	const raw = marked.parse(body, { async: false }) as string;
+	return sanitizeHtml(raw);
 }
