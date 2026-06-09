@@ -1083,24 +1083,9 @@
 						{$t('page.detached_head', { sha: detachedHeadSha })}
 					</span>
 				{/if}
-				{#if uncommittedCount > 0}
-					<span class="rounded bg-amber-700/50 px-2 py-0.5 text-xs text-amber-300">
-						{$t(
-							uncommittedCount === 1
-								? 'page.uncommitted_changes'
-								: 'page.uncommitted_changes_plural',
-							{ count: uncommittedCount }
-						)}
-					</span>
-				{/if}
 				{#if $repoInfo.is_bare}
 					<span class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-400">
 						{$t('page.bare_repo')}
-					</span>
-				{/if}
-				{#if $graphHideMerges}
-					<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-xs text-yellow-300">
-						{$t('page.merges_hidden')}
 					</span>
 				{/if}
 				<button
@@ -1277,6 +1262,19 @@
 			aria-label={$t('page.statusbar_aria')}
 		>
 			<span>{$t('page.commits_label', { count: commitCount })}</span>
+			{#if uncommittedCount > 0}
+				<span class="rounded bg-amber-700/50 px-2 py-0.5 text-amber-300">
+					{$t(
+						uncommittedCount === 1 ? 'page.uncommitted_changes' : 'page.uncommitted_changes_plural',
+						{ count: uncommittedCount }
+					)}
+				</span>
+			{/if}
+			{#if $graphHideMerges}
+				<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-yellow-300">
+					{$t('page.merges_hidden')}
+				</span>
+			{/if}
 			{#if $operationState !== 'Idle'}
 				<span class="text-blue-400">
 					{$t('page.' + $operationState.toLowerCase()) ?? $operationState}
