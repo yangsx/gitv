@@ -1071,25 +1071,6 @@
 			<header
 				class="relative flex items-center gap-3 overflow-visible border-b border-gray-800 px-4 py-2"
 			>
-				<span class="font-mono text-sm text-gray-400">{$repoInfo.path}</span>
-				{#if selectedBranch}
-					<span class="rounded bg-blue-700/50 px-2 py-0.5 text-xs text-blue-300">
-						{selectedBranch}
-					</span>
-				{:else if $repoInfo.head_branch}
-					<span class="rounded bg-green-700/50 px-2 py-0.5 text-xs text-green-300">
-						{$repoInfo.head_branch}
-					</span>
-				{:else if detachedHeadSha}
-					<span class="rounded bg-red-700/50 px-2 py-0.5 text-xs text-red-300">
-						{$t('page.detached_head', { sha: detachedHeadSha })}
-					</span>
-				{/if}
-				{#if $repoInfo.is_bare}
-					<span class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-400">
-						{$t('page.bare_repo')}
-					</span>
-				{/if}
 				<button
 					class="rounded bg-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-600 shrink-0"
 					onclick={browseForRepo}
@@ -1263,6 +1244,25 @@
 			role="status"
 			aria-label={$t('page.statusbar_aria')}
 		>
+			<span class="font-mono text-gray-400">{$repoInfo.path}</span>
+			{#if selectedBranch}
+				<span class="rounded bg-blue-700/50 px-2 py-0.5 text-xs text-blue-300">
+					{selectedBranch}
+				</span>
+			{:else if $repoInfo.head_branch}
+				<span class="rounded bg-green-700/50 px-2 py-0.5 text-xs text-green-300">
+					{$repoInfo.head_branch}
+				</span>
+			{:else if detachedHeadSha}
+				<span class="rounded bg-red-700/50 px-2 py-0.5 text-xs text-red-300">
+					{$t('page.detached_head', { sha: detachedHeadSha })}
+				</span>
+			{/if}
+			{#if $repoInfo.is_bare}
+				<span class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-400">
+					{$t('page.bare_repo')}
+				</span>
+			{/if}
 			<span>{$t('page.commits_label', { count: commitCount })}</span>
 			{#if uncommittedCount > 0}
 				<span class="rounded bg-amber-700/50 px-2 py-0.5 text-amber-300">
