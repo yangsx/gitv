@@ -97,6 +97,8 @@
 	let isDragging = $state(false);
 	let isFullscreen = $state(false);
 	let selectedBranch = $state<string | null>(null);
+	let selectedRemote = $state<string | null>(null);
+	let selectedTag = $state<string | null>(null);
 	let showPreferences = $state(false);
 	let showShortcutHelp = $state(false);
 	let commitCount = $state(0);
@@ -212,6 +214,8 @@
 		workingChangesDiff = null;
 		commitDetails = null;
 		selectedBranch = null;
+		selectedRemote = null;
+		selectedTag = null;
 		selectedStash = null;
 		stashDiff = null;
 		stashSplitDiff = null;
@@ -538,6 +542,8 @@
 	async function onSelectCommit(oid: string, ctrlKey = false) {
 		if (!ctrlKey && oid === $selectedOid) return;
 		selectedBranch = null;
+		selectedRemote = null;
+		selectedTag = null;
 		selectedStash = null;
 		stashDiff = null;
 		stashSplitDiff = null;
@@ -916,6 +922,8 @@
 			}
 			onSelectCommit(ref.Branch.oid);
 			selectedBranch = name;
+			selectedRemote = null;
+			selectedTag = null;
 			focusBranchOid = ref.Branch.oid;
 			reloadLayout();
 		}
@@ -924,8 +932,50 @@
 	function handleTagSelect(name: string) {
 		const ref = allRefs.find((r) => 'Tag' in r && r.Tag?.name === name);
 		if (ref && 'Tag' in ref && ref.Tag) {
+			if (selectedTag === name) {
+				selectedTag = null;
+				focusBranchOid = null;
+				reloadLayout();
+				return;
+			}
+			selectedBranch = null;
+			selectedRemote = null;
 			onSelectCommit(ref.Tag.oid);
+			selectedTag = name;
+			focusBranchOid = ref.Tag.oid;
+			reloadLayout();
 		}
+	}
+
+	function handleRemoteSelect(remote: string, name: string) {
+		const key = `${remote}/${name}`;
+		const ref = allRefs.find(
+			(r) => 'Remote' in r && r.Remote?.remote === remote && r.Remote?.name === name
+		);
+		if (ref && 'Remote' in ref && ref.Remote) {
+			if (selectedRemote === key) {
+				selectedRemote = null;
+				focusBranchOid = null;
+				reloadLayout();
+				return;
+			}
+			selectedBranch = null;
+			selectedTag = null;
+			onSelectCommit(ref.Remote.oid);
+			selectedRemote = key;
+			focusBranchOid = ref.Remote.oid;
+			reloadLayout();
+		}
+	}
+
+	function handleRemoteContextMenu(e: MouseEvent, remote: string, name: string) {
+		const items: ContextMenuItem[] = [
+			{
+				label: translate('page.ctx_copy_remote'),
+				action: () => navigator.clipboard.writeText(`${remote}/${name}`)
+			}
+		];
+		contextMenu = { x: e.clientX, y: e.clientY, items };
 	}
 
 	function handleDragOver(e: DragEvent) {
@@ -1118,9 +1168,13 @@
 						<RefList
 							refs={allRefs}
 							{selectedBranch}
+							{selectedRemote}
+							{selectedTag}
 							onbranchselect={handleBranchSelect}
 							onbranchcontextmenu={handleBranchContextMenu}
 							ontagselect={handleTagSelect}
+							onremoteselect={handleRemoteSelect}
+							onremotecontextmenu={handleRemoteContextMenu}
 						/>
 					{/snippet}
 					{#snippet stash()}
@@ -1248,6 +1302,14 @@
 			{#if selectedBranch}
 				<span class="rounded bg-blue-700/50 px-2 py-0.5 text-xs text-blue-300">
 					{selectedBranch}
+				</span>
+			{:else if selectedRemote}
+				<span class="rounded bg-purple-700/50 px-2 py-0.5 text-xs text-purple-300">
+					{selectedRemote}
+				</span>
+			{:else if selectedTag}
+				<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-xs text-yellow-300">
+					{selectedTag}
 				</span>
 			{:else if $repoInfo.head_branch}
 				<span class="rounded bg-green-700/50 px-2 py-0.5 text-xs text-green-300">

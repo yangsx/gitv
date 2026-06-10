@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
@@ -104,9 +103,14 @@
 
 	$effect(() => {
 		if (!containerEl || !selectedOid || !orderedCommits.length) return;
-		if (!untrack(() => orderedCommits.some((c) => c.oid === selectedOid))) return;
 		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
-		if (idx >= 0) scrollToIndex(idx);
+		if (idx < 0) return;
+		const targetTop = idx * rowHeight;
+		const viewTop = containerEl.scrollTop;
+		const viewBottom = viewTop + containerEl.clientHeight;
+		if (targetTop < viewTop || targetTop + rowHeight > viewBottom) {
+			scrollToIndex(idx, true);
+		}
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -158,13 +162,18 @@
 		}
 	}
 
-	function scrollToIndex(idx: number) {
+	function scrollToIndex(idx: number, center = false) {
 		const targetTop = idx * rowHeight;
-		const viewBottom = containerEl.scrollTop + containerEl.clientHeight;
-		if (targetTop < containerEl.scrollTop) {
-			containerEl.scrollTop = targetTop;
-		} else if (targetTop + rowHeight > viewBottom) {
-			containerEl.scrollTop = targetTop + rowHeight - containerEl.clientHeight;
+		if (center) {
+			containerEl.scrollTop =
+				targetTop - Math.floor(containerEl.clientHeight / 2) + Math.floor(rowHeight / 2);
+		} else {
+			const viewBottom = containerEl.scrollTop + containerEl.clientHeight;
+			if (targetTop < containerEl.scrollTop) {
+				containerEl.scrollTop = targetTop;
+			} else if (targetTop + rowHeight > viewBottom) {
+				containerEl.scrollTop = targetTop + rowHeight - containerEl.clientHeight;
+			}
 		}
 	}
 </script>

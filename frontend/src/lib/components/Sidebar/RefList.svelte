@@ -7,13 +7,21 @@
 		onbranchselect,
 		onbranchcontextmenu,
 		ontagselect,
-		selectedBranch
+		onremoteselect,
+		onremotecontextmenu,
+		selectedBranch,
+		selectedRemote,
+		selectedTag
 	}: {
 		refs: Ref[];
 		onbranchselect?: (_name: string) => void;
 		onbranchcontextmenu?: (_e: MouseEvent, _name: string) => void;
 		ontagselect?: (_name: string) => void;
+		onremoteselect?: (_remote: string, _name: string) => void;
+		onremotecontextmenu?: (_e: MouseEvent, _remote: string, _name: string) => void;
 		selectedBranch?: string | null;
+		selectedRemote?: string | null;
+		selectedTag?: string | null;
 	} = $props();
 
 	let branches = $derived(
@@ -107,7 +115,10 @@
 			<div class="space-y-0.5">
 				{#each tags as tag (tag.name)}
 					<button
-						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 text-gray-300"
+						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {tag.name ===
+						selectedTag
+							? 'bg-blue-900/40 text-blue-300'
+							: 'text-gray-300'}"
 						aria-label={$t('sidebar.tag_aria', { name: tag.name })}
 						onclick={() => ontagselect?.(tag.name)}
 					>
@@ -138,10 +149,40 @@
 			</div>
 			<div class="space-y-0.5">
 				{#each remotes as remote (remote.remote + '/' + remote.name)}
-					<div class="flex items-center gap-1 px-1.5 py-0.5">
+					<button
+						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {remote.remote +
+							'/' +
+							remote.name ===
+						selectedRemote
+							? 'bg-blue-900/40 text-blue-300'
+							: ''}"
+						aria-label={$t('sidebar.remote_aria', {
+							remote: remote.remote,
+							name: remote.name
+						})}
+						onclick={() => onremoteselect?.(remote.remote, remote.name)}
+						oncontextmenu={(e: MouseEvent) => {
+							e.preventDefault();
+							onremotecontextmenu?.(e, remote.remote, remote.name);
+						}}
+					>
+						<svg
+							class="h-3 w-3 shrink-0 text-gray-500"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							aria-hidden="true"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
+						</svg>
 						<span class="text-gray-500">{remote.remote}/</span>
 						<span class="truncate text-gray-300">{remote.name}</span>
-					</div>
+					</button>
 				{/each}
 			</div>
 		</div>

@@ -71,7 +71,10 @@ impl Repository for GixRepository {
 
         let mut tips: Vec<gix::ObjectId> = refs
             .iter()
-            .filter(|(_, refs)| refs.iter().any(|r| matches!(r, Ref::Branch(_))))
+            .filter(|(_, refs)| {
+                refs.iter()
+                    .any(|r| matches!(r, Ref::Branch(_) | Ref::Remote(_) | Ref::Tag(_)))
+            })
             .map(|(oid, _)| oid_to_gix_object_id(oid))
             .collect();
 
@@ -2918,6 +2921,48 @@ mod tests {
         temp.commit_file("c.txt", "!", "third commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let commits = repo.commits(Some(2)).expect("commits");
+        assert_eq!(commits.len(), 2);
+    }
+
+    #[test]
+    fn commits_includes_remote_only_commits() {
+        let temp = TempRepo::new();
+        let first = temp.commit_file("a.txt", "hello", "first commit");
+        temp.commit_file("b.txt", "world", "second commit");
+
+        run_git(
+            temp.path(),
+            &["update-ref", "refs/remotes/origin/main", &first.to_hex()],
+        );
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let commits = repo.commits(None).expect("commits");
+
+        assert!(
+            commits.iter().any(|c| c.oid == first),
+            "remote-only commit should be included via remote ref tip"
+        );
+        assert_eq!(commits.len(), 2);
+    }
+
+    #[test]
+    fn commits_includes_tag_only_commits() {
+        let temp = TempRepo::new();
+        let first = temp.commit_file("a.txt", "hello", "first commit");
+        temp.commit_file("b.txt", "world", "second commit");
+
+        run_git(
+            temp.path(),
+            &["update-ref", "refs/tags/v0.1", &first.to_hex()],
+        );
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let commits = repo.commits(None).expect("commits");
+
+        assert!(
+            commits.iter().any(|c| c.oid == first),
+            "tag-only commit should be included via tag ref tip"
+        );
         assert_eq!(commits.len(), 2);
     }
 
