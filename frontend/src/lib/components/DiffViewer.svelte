@@ -117,7 +117,7 @@
 							lineKind(leftLine) === 'deletion'
 								? 'text-red-400'
 								: 'text-gray-500'}"
-							>{leftLine && lineKind(leftLine) === 'deletion' ? '-' : '&nbsp;'}</span
+							>{leftLine && lineKind(leftLine) === 'deletion' ? '-' : '\u00a0'}</span
 						>
 						<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{leftLine
 								? lineContent(leftLine)
@@ -137,7 +137,7 @@
 							lineKind(rightLine) === 'addition'
 								? 'text-green-400'
 								: 'text-gray-500'}"
-							>{rightLine && lineKind(rightLine) === 'addition' ? '+' : '&nbsp;'}</span
+							>{rightLine && lineKind(rightLine) === 'addition' ? '+' : '\u00a0'}</span
 						>
 						<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{rightLine
 								? lineContent(rightLine)
