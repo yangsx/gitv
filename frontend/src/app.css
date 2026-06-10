@@ -154,3 +154,318 @@
 		scroll-behavior: auto !important;
 	}
 }
+
+/* ===== Light Theme Overrides ===== */
+
+.light {
+	--l-bg-primary: #ffffff;
+	--l-bg-secondary: #f9fafb;
+	--l-bg-tertiary: #f3f4f6;
+	--l-text-primary: #111827;
+	--l-text-secondary: #374151;
+	--l-text-muted: #6b7280;
+	--l-border: #d1d5db;
+	--l-border-subtle: #e5e7eb;
+}
+
+/* --- Backgrounds --- */
+
+.light .bg-gray-900 {
+	background-color: var(--l-bg-primary);
+}
+.light .bg-gray-800 {
+	background-color: var(--l-bg-secondary);
+}
+.light .bg-gray-700 {
+	background-color: var(--l-bg-tertiary);
+}
+.light .bg-gray-600 {
+	background-color: #e5e7eb;
+}
+.light .bg-gray-500 {
+	background-color: #d1d5db;
+}
+
+.light .bg-gray-900\/50 {
+	background-color: color-mix(in srgb, var(--l-bg-primary) 50%, transparent);
+}
+.light .bg-gray-900\/95 {
+	background-color: color-mix(in srgb, var(--l-bg-primary) 95%, transparent);
+}
+.light .bg-gray-800\/30 {
+	background-color: color-mix(in srgb, var(--l-bg-secondary) 30%, transparent);
+}
+.light .bg-gray-800\/50 {
+	background-color: color-mix(in srgb, var(--l-bg-secondary) 50%, transparent);
+}
+.light .bg-gray-800\/60 {
+	background-color: color-mix(in srgb, var(--l-bg-secondary) 60%, transparent);
+}
+.light .bg-gray-800\/70 {
+	background-color: color-mix(in srgb, var(--l-bg-secondary) 70%, transparent);
+}
+.light .bg-gray-800\/90 {
+	background-color: color-mix(in srgb, var(--l-bg-secondary) 90%, transparent);
+}
+.light .bg-gray-700\/50 {
+	background-color: color-mix(in srgb, var(--l-bg-tertiary) 50%, transparent);
+}
+.light .bg-black\/50 {
+	background-color: color-mix(in srgb, #000 30%, transparent);
+}
+
+/* --- Text --- */
+
+.light .text-gray-100 {
+	color: var(--l-text-primary);
+}
+.light .text-gray-200 {
+	color: var(--l-text-primary);
+}
+.light .text-gray-300 {
+	color: var(--l-text-secondary);
+}
+.light .text-gray-400 {
+	color: #6b7280;
+}
+.light .text-gray-500 {
+	color: #4b5563;
+}
+.light .text-gray-600 {
+	color: #374151;
+}
+.light .text-white {
+	color: var(--l-text-primary);
+}
+/* On solid accent backgrounds, force white text regardless of inheritance */
+.light .bg-blue-600,
+.light .bg-blue-700 {
+	color: #ffffff;
+}
+.light .bg-blue-600\/30 {
+	color: #ffffff;
+}
+
+/* Soften saturated blues for light theme */
+.light .bg-blue-600 {
+	background-color: #3b82f6;
+}
+.light .bg-blue-700 {
+	background-color: #2563eb;
+}
+.light .hover\:bg-blue-700:hover {
+	background-color: #1d4ed8;
+}
+.light .hover\:bg-blue-600:hover {
+	background-color: #2563eb;
+}
+
+.light .hover\:text-white:hover {
+	color: var(--l-text-primary);
+}
+.light .hover\:text-gray-200:hover {
+	color: var(--l-text-primary);
+}
+.light .hover\:text-gray-300:hover {
+	color: var(--l-text-secondary);
+}
+.light .hover\:text-gray-100:hover {
+	color: var(--l-text-primary);
+}
+
+.light .placeholder-gray-500::placeholder {
+	color: var(--l-text-muted);
+}
+
+/* --- Hover Backgrounds (light mode needs distinct hover states) --- */
+
+.light .hover\:bg-gray-800:hover {
+	background-color: #e5e7eb;
+}
+.light .hover\:bg-gray-700:hover {
+	background-color: #d1d5db;
+}
+.light .hover\:bg-gray-600:hover {
+	background-color: #9ca3af;
+}
+
+.light .hover\:bg-gray-800\/50:hover {
+	background-color: color-mix(in srgb, #e5e7eb 50%, transparent);
+}
+.light .hover\:bg-gray-800\/70:hover {
+	background-color: color-mix(in srgb, #e5e7eb 70%, transparent);
+}
+
+.light .hover\:bg-amber-700:hover {
+	background-color: #d97706;
+}
+.light .hover\:bg-blue-600\/30:hover {
+	background-color: color-mix(in srgb, #2563eb 30%, transparent);
+}
+
+/* --- Borders --- */
+
+.light .border-gray-700 {
+	border-color: var(--l-border);
+}
+.light .border-gray-800 {
+	border-color: var(--l-border-subtle);
+}
+.light .border-gray-600 {
+	border-color: #9ca3af;
+}
+
+/* --- Accent Backgrounds (light mode → pastel tints) --- */
+
+.light .bg-blue-900\/40 {
+	background-color: color-mix(in srgb, #dbeafe 40%, transparent);
+}
+.light .bg-blue-900\/20 {
+	background-color: color-mix(in srgb, #dbeafe 20%, transparent);
+}
+.light .bg-blue-700\/50 {
+	background-color: color-mix(in srgb, #93c5fd 50%, transparent);
+}
+.light .bg-blue-600\/30 {
+	background-color: color-mix(in srgb, #bfdbfe 30%, transparent);
+}
+.light .bg-green-700\/50 {
+	background-color: color-mix(in srgb, #bbf7d0 50%, transparent);
+}
+.light .bg-green-900\/30 {
+	background-color: color-mix(in srgb, #dcfce7 30%, transparent);
+}
+.light .bg-green-500\/30 {
+	background-color: color-mix(in srgb, #86efac 30%, transparent);
+}
+.light .bg-red-900\/90 {
+	background-color: color-mix(in srgb, #fecaca 90%, transparent);
+}
+.light .bg-red-900\/30 {
+	background-color: color-mix(in srgb, #fecaca 30%, transparent);
+}
+.light .bg-red-700\/50 {
+	background-color: color-mix(in srgb, #fca5a5 50%, transparent);
+}
+.light .bg-red-500\/30 {
+	background-color: color-mix(in srgb, #fca5a5 30%, transparent);
+}
+.light .bg-amber-900\/90 {
+	background-color: color-mix(in srgb, #fde68a 90%, transparent);
+}
+.light .bg-amber-700\/50 {
+	background-color: color-mix(in srgb, #fcd34d 50%, transparent);
+}
+.light .bg-yellow-900\/20 {
+	background-color: color-mix(in srgb, #fef9c3 20%, transparent);
+}
+.light .bg-yellow-700\/50 {
+	background-color: color-mix(in srgb, #fde047 50%, transparent);
+}
+.light .bg-yellow-500\/40 {
+	background-color: color-mix(in srgb, #facc15 40%, transparent);
+}
+.light .bg-indigo-900\/40 {
+	background-color: color-mix(in srgb, #c7d2fe 40%, transparent);
+}
+
+/* Keep green-400, orange-400 as-is (already light enough for light bg) */
+
+/* --- Accent Text (darken for readability on white) --- */
+
+.light .text-blue-300 {
+	color: #2563eb;
+}
+.light .text-blue-400 {
+	color: #3b82f6;
+}
+.light .text-blue-200 {
+	color: #1d4ed8;
+}
+.light .text-indigo-200 {
+	color: #6366f1;
+}
+.light .text-green-300 {
+	color: #15803d;
+}
+.light .text-green-400 {
+	color: #16a34a;
+}
+.light .text-green-500 {
+	color: #22c55e;
+}
+.light .text-yellow-300 {
+	color: #a16207;
+}
+.light .text-yellow-400 {
+	color: #ca8a04;
+}
+.light .text-red-300 {
+	color: #dc2626;
+}
+.light .text-red-400 {
+	color: #ef4444;
+}
+.light .text-red-500 {
+	color: #dc2626;
+}
+.light .text-amber-300 {
+	color: #d97706;
+}
+.light .text-amber-400 {
+	color: #f59e0b;
+}
+.light .text-amber-100 {
+	color: #92400e;
+}
+.light .text-orange-300 {
+	color: #ea580c;
+}
+.light .text-orange-400 {
+	color: #f97316;
+}
+.light .text-purple-400 {
+	color: #a855f7;
+}
+.light .text-red-100 {
+	color: #991b1b;
+}
+
+/* --- Scrollbar (light mode) --- */
+
+.light ::-webkit-scrollbar-track-piece {
+	background: rgba(0, 0, 0, 0.05);
+}
+.light ::-webkit-scrollbar-thumb {
+	background: rgba(0, 0, 0, 0.15);
+}
+.light ::-webkit-scrollbar-thumb:hover {
+	background: rgba(0, 0, 0, 0.3);
+}
+
+/* --- Markdown body (light mode) --- */
+
+.light .markdown-body code,
+.light .markdown-body pre {
+	background-color: rgb(243 244 246 / 0.9);
+}
+.light .markdown-body pre code {
+	background: none;
+}
+.light .markdown-body blockquote {
+	border-left-color: rgb(209 213 219);
+	color: rgb(107 114 128);
+}
+.light .markdown-body hr {
+	border-top-color: rgb(209 213 219);
+}
+.light .markdown-body strong {
+	color: rgb(55 65 81);
+}
+.light .markdown-body a {
+	color: #2563eb;
+	text-decoration-color: rgb(37 99 235 / 0.3);
+}
+.light .markdown-body a:hover {
+	color: #1d4ed8;
+}
