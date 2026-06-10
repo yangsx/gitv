@@ -3,7 +3,8 @@
 ## Project Status
 **In development.** Core application has substantial source code in place:
 - **Backend** (`src-tauri/`): Tauri commands for preferences, graph layout, commits, diff, repo operations, saved searches, file watching, diagnostics
-- **Git core** (`crates/gitv-git-core/`): 77 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
+- **Git core** (`crates/gitv-git-core/`): 99 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
+- **GPU renderer** (`crates/gitv-wgpu-renderer/`): wgpu-based GPU graph renderer with WGSL shaders, Canvas 2D fallback, and user preference toggle
 - **Frontend** (`frontend/`): Svelte 5 + TypeScript with CommitGraph (canvas-based), CommitList, CommitDetailPanel (diff/whitespace controls), PreferencesModal (draggable), Toolbar, SearchBar, Sidebar, FileTree, BlamePanel, CommandPalette, ContextMenu, DebugOverlay
 - **Preferences**: Persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with debounced auto-save, applies to graph/diff/view behavior
 - Architecture design in `design.md`; full requirements in `requirements.md`
@@ -20,9 +21,10 @@
 ```
 src-tauri/            # Rust backend (Tauri commands in src/commands/)
 crates/gitv-git-core/ # Git logic crate (repository, graph, search, stream, watcher, cache, models)
-frontend/             # SvelteKit frontend (src/routes/, src/lib/components/, src/lib/stores/, src/lib/actions/, src/lib/bindings/)
+crates/gitv-wgpu-renderer/ # GPU graph rendering (wgpu + WGSL shaders)
+frontend/             # SvelteKit frontend (src/routes/, src/lib/components/, src/lib/stores/, src/lib/actions/, src/lib/bindings/, src/lib/graph/)
 tests/                # Integration tests + fixtures
-benches/              # criterion benchmarks
+benches/              # (in crates/gitv-git-core/benches/)
 ```
 
 ## Key Design Decisions
@@ -31,13 +33,15 @@ benches/              # criterion benchmarks
 - Commit graph uses GPU-accelerated rendering via wgpu with virtualized viewport
 - Commits are streamed in batches with binary serialization (postcard) to avoid JSON IPC overhead
 - Persistent disk cache for graph layout + metadata — re-open cached repos in <200ms
-- Each tab holds isolated repository state (own connection, filters, scroll position)
+- Each window holds isolated repository state (own connection, filters, scroll position)
 - Branch filtering happens at Git traversal layer, not UI layer
 - SvelteKit with static adapter — single-window desktop app uses `+page.svelte`/`+layout.svelte` conventions; static adapter produces a SPA for Tauri
-- Stashes displayed as single markers on parent commit rows in the graph (not gitk's two-node double-diff display); combined diff by default with optional staged/unstaged split toggle (Req 38)
+- Stashes displayed as proper graph nodes with their own row and a branch-out edge to the parent commit (not gitk's two-node double-diff display); combined diff by default with optional staged/unstaged split toggle (Req 38)
 - Diff viewer supports normal, word-diff, and stat-only modes with whitespace modifiers (Req 54)
 - Graph supports color-by-author mode (Req 52), merge filtering (Req 53), commit dimming (Req 56), and orientation toggle (Req 57)
-- CLI accepts revision ranges (`gitv /repo v1.0..v2.0`) and filter flags (Req 55)
+- Edge interaction: clickable graph edges with bezier hit-testing, hover highlighting, and click-to-navigate (commit ef495f9)
+- Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility, rendered via WGSL shaders on wgpu or Canvas 2D draw calls
+- CLI accepts repo path arguments (`gitv /repo1 /repo2`) and `--log-level`/`--debug-overlay` flags (Req 42, Req 55 revision ranges not yet implemented)
 - CLI argument parsing via `clap`
 - Panel widths/heights are clamped on restore to min/max bounds — prevents unusable layouts from tiling WMs (Req 59)
 - Structured tracing via `tracing` crate with rolling file logs; debug overlay with FPS/memory/IPC timing (Reqs 68-69)
@@ -46,6 +50,16 @@ benches/              # criterion benchmarks
 - Diff/whitespace controls in CommitDetailPanel use local `$state` overrides (not global preference saves); PreferencesModal sets global defaults
 - Preferences dialog is draggable (no backdrop) to allow flexible placement alongside the graph
 - Graph toolbar simplified — toggle buttons (color mode, hide merges, orientation) moved into Preferences dialog; only gear icon remains on toolbar
+- Dual renderer: wgpu GPU (WGSL shaders) with Canvas 2D fallback, user-selectable via `renderer` preference
+- Commit messages: XSS-sanitized Markdown rendering with raw/markdown toggle (Req 48.4)
+- Light theme and high contrast mode supported alongside default dark theme (Req 11.1, Req 14.3)
+- Side-by-side diff view mode persisted as a preference (Req 54.5)
+- Branch/tag/remote click focuses the graph on that ref via `focus_branch_oid`, dimming unrelated commits (Req 3.3, Req 32)
+- Merged branch detection via HEAD ancestor set, displayed as `is_merged` on `BranchRef` in sidebar (Req 3.6)
+- Locale support: English and Simplified Chinese with auto-detect on first launch (Req 21)
+- Merged initial IPC: `getInitialData` combines repo info, commits, graph layout, refs, working changes, and timing in a single call (commit d4fe74a)
+- Parallelized diff loading with 4 concurrent workers for faster commit detail display
+- Repo switch: all selection state is cleared and CommitList is force-remounted via `{#key}` to prevent stale internal state from the previous repo
 
 ## Tech Stack
 | Layer | Tool |

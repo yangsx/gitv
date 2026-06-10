@@ -513,7 +513,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 #### Acceptance Criteria
 
-1. THE commit graph SHALL display each stash as a single visual marker (stash icon/badge) placed on the row of the commit the stash was created from (its parent commit)
+1. THE commit graph SHALL display each stash as a proper graph node with its own row and a branch-out edge connecting to the parent commit (distinct from gitk's two-node double-diff display)
 2. Stash markers SHALL be visually distinct from branch labels, tag labels, and regular commit nodes (unique icon, color, or shape)
 3. WHEN a stash marker is clicked, THE gitv_Application SHALL display a combined diff in the detail panel (equivalent to `git stash show -p`), using standard +/- diff markers (not gitk's double +/−)
 4. THE detail panel SHALL provide a toggle to split the stash diff into "staged changes" and "unstaged changes" for users who need that distinction
@@ -655,20 +655,6 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 1. THE gitv_Application SHALL display the total commit count in the status bar when no filter is active
 2. WHEN a filter is active, THE gitv_Application SHALL display both the matching commit count and the total commit count (e.g., "142 of 10,847 commits")
 3. THE commit count SHALL update as streaming data loads (showing loaded count while loading)
-
-### Requirement 51: Auto-Update
-
-**User Story:** As a developer, I want gitv to notify me when a new version is available, so that I can stay up to date without manually checking.
-
-#### Acceptance Criteria
-
-1. THE gitv_Application SHALL check for updates on launch (asynchronously, without blocking the UI)
-2. WHEN a new version is available, THE gitv_Application SHALL display a non-intrusive notification in the status bar
-3. THE update check SHALL be disabled if the application has no network connectivity (per Req 40.3)
-4. THE settings SHALL allow users to disable automatic update checks
-5. THE update notification SHALL NOT auto-download or auto-install updates
-
----
 
 > Requirements 52-58 added to close feature gaps with gitk (all read-only display/filtering features).
 

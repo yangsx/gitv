@@ -364,37 +364,68 @@ pub enum GraphColorMode {
     ByAuthor,
 }
 
+pub enum ColorPalette {
+    Default,
+    Deuteranopia,
+    Protanopia,
+    Tritanopia,
+}
+
+pub enum Theme {
+    Dark,
+    Light,
+}
+
+pub enum Language {
+    En,
+    ZhCn,
+}
+
 /// Node position in the graph (row = i-coordinate, column = j-coordinate)
 pub struct NodePosition {
-    pub commit_oid: Oid,
+    pub oid: Oid,
     pub row: usize,
     pub column: usize,
     pub is_merge: bool,
-    pub dimmed: bool,
-    pub highlighted: bool,
+    pub is_stash: bool,
+    pub color: Color,
+    pub is_dimmed: bool,
+    pub is_highlighted: bool,
 }
 
-/// Stash marker placed on a commit row in the graph
+/// Stash node placed in the graph with its own row and a branch-out edge to parent
 pub struct StashMarker {
+    pub row: usize,
+    pub column: usize,
     pub stash_index: usize,
     pub stash_oid: Oid,
-    pub parent_commit_oid: Oid,
-    pub row: usize,
+    pub parent_oid: Oid,
     pub message: String,
-    pub file_summary: Vec<StashFileSummary>,
 }
 
-/// Edge between commits
+/// Edge between commits in graph coordinates
 pub struct Edge {
-    pub from: Oid,
-    pub to: Oid,
+    pub from_row: usize,
+    pub from_col: usize,
+    pub to_row: usize,
+    pub to_col: usize,
     pub edge_type: EdgeType,
-    pub column: usize,
+    pub color: Color,
+    pub is_dimmed: bool,
+    pub edge_style: EdgeStyle,
 }
 
 pub enum EdgeType {
-    ParentChild,
+    Straight,
+    Branch,
     Merge,
+}
+
+/// Non-color visual indicator for branch type (accessibility)
+pub enum EdgeStyle {
+    Solid,
+    Dashed,
+    Dotted,
 }
 
 /// Complete graph layout ready for rendering
@@ -669,8 +700,8 @@ async fn get_graph_layout(
 /// IPC-safe graph options (Req 52, 53, 57)
 pub struct GraphOptionsPayload {
     pub hide_merges: bool,
-    pub orientation: String,
-    pub color_mode: String,
+    pub orientation: GraphOrientation,
+    pub color_mode: GraphColorMode,
 }
 
 #[tauri::command]
@@ -732,10 +763,10 @@ pub enum FileContentsPayload {
 // ===== Persistence Commands (Req 59, Req 41) =====
 
 #[tauri::command]
-async fn save_settings(settings: AppSettings) -> Result<(), String>;
+async fn get_preferences() -> Result<AppPreferences, String>;
 
 #[tauri::command]
-async fn load_settings() -> Result<AppSettings, String>;
+async fn save_preferences(prefs: AppPreferences) -> Result<(), String>;
 
 #[tauri::command]
 async fn save_layout(layout: PersistedLayout) -> Result<(), String>;
@@ -743,16 +774,20 @@ async fn save_layout(layout: PersistedLayout) -> Result<(), String>;
 #[tauri::command]
 async fn load_layout() -> Result<Option<PersistedLayout>, String>;
 
-/// Application settings persisted across sessions
-pub struct AppSettings {
-    pub theme: String,
-    pub font_size: u32,
-    pub graph_orientation: String,
-    pub graph_color_mode: String,
-    pub auto_update_enabled: bool,
-    pub color_palette: String,
-    pub language: String,
-    pub keyboard_shortcuts: Option<HashMap<String, String>>,
+/// Application preferences persisted across sessions
+pub struct AppPreferences {
+    pub graph_color_mode: GraphColorMode,
+    pub graph_hide_merges: bool,
+    pub graph_orientation: GraphOrientation,
+    pub graph_palette: ColorPalette,
+    pub renderer: String,           // "wgpu" | "canvas2d"
+    pub diff_mode: DiffMode,
+    pub diff_whitespace: DiffWhitespace,
+    pub diff_view_mode: DiffViewMode,
+    pub theme: Theme,
+    pub font_size: f64,
+    pub high_contrast: bool,
+    pub language: Language,
 }
 
 // ===== Saved Searches (Req 41) =====
@@ -780,18 +815,7 @@ pub struct DebugMetricsPayload {
     pub gpu_vertex_count: u32,
 }
 
-// ===== Auto-Update (Req 51) =====
-
-#[tauri::command]
-async fn check_for_update() -> Result<Option<UpdateInfo>, String>;
-
-pub struct UpdateInfo {
-    pub latest_version: String,
-    pub release_url: String,
-    pub release_notes: String,
-}
 ```
-
 ### CLI Argument Parsing (Req 42, Req 55)
 
 ```rust
@@ -800,31 +824,22 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(name = "gitv", about = "Modern Git visualization tool")]
 struct Cli {
-    /// Repository path to open
-    repo_path: Option<String>,
+    /// Repository path(s) to open
+    repo_paths: Vec<PathBuf>,
 
-    /// Revision range (e.g., HEAD~10..HEAD, v1.0..v2.0, main...feature)
-    revision_range: Option<String>,
+    /// Set log level (e.g., debug, trace)
+    #[arg(long = "log-level")]
+    log_level: Option<String>,
 
-    /// Filter by branch name pattern
-    #[arg(long)]
-    branches: Option<String>,
-
-    /// Filter by author pattern
-    #[arg(long)]
-    author: Option<String>,
-
-    /// Filter by file path (use -- to separate)
-    #[arg(long = "")]
-    path: Option<String>,
+    /// Show debug overlay
+    #[arg(long = "debug-overlay")]
+    debug_overlay: bool,
 }
 
 // Resolution logic:
-// 1. If no args: show welcome screen (existing instance or new)
-// 2. If repo_path only: open that repo with full history
-// 3. If repo_path + revision_range: open repo with range filter pre-applied
-// 4. If additional flags (--branches, --author, --): apply as initial filters
-// 5. Invalid revision ranges: show error, fall back to full history
+// 1. If no args: show welcome screen
+// 2. If repo paths given: open those repos
+// 3. Future: --branches, --author, revision ranges (Req 55 not yet implemented)
 ```
 
 ### Frontend Components (Svelte)
@@ -955,7 +970,7 @@ The welcome screen is the first thing users see. It adapts based on whether rece
 
 The commit graph is rendered by one of two backends selected via the `renderer` preference store:
 
-- **WgpuGraph** — GPU-accelerated via a Rust wgpu offscreen pipeline. Node/edge positions are sent to the Rust backend (`render_graph` Tauri command), which renders to an RGBA texture and returns pixel data via binary IPC. Lazy GPU init; falls back to Canvas 2D on failure.
+- **WgpuGraph** — GPU-accelerated via a Rust wgpu offscreen pipeline. Node/edge positions are sent to the Rust backend (`render_graph` Tauri command), which renders to an RGBA texture and returns pixel data via binary IPC. Edge interaction (hover/click) handled client-side via shared `edge-interaction.ts` module. Lazy GPU init; falls back to Canvas 2D on failure.
 - **CommitGraph** — Canvas 2D fallback, draws directly on a `<canvas>` element using the Canvas 2D API.
 
 Both share position math, color constants, and hit-testing logic from `graph-math.ts`.
@@ -1138,8 +1153,7 @@ Two-commit diff comparison for arbitrary commit pairs.
   } = $props();
 
   // Secondary navigation: clicking a stash scrolls the graph to the
-  // corresponding stash marker on the parent commit's row.
-  // The primary stash display is the marker in the commit graph.
+  // corresponding stash node in the commit graph.
 </script>
 ```
 
@@ -1230,7 +1244,8 @@ pub struct ReflogEntry {
 
 // ===== Stash =====
 
-/// A stash entry — displayed as a single marker on the parent commit's row in the graph.
+/// A stash entry — the metadata for a stash. In the graph, stashes appear as
+/// proper graph nodes with their own row and a branch-out edge to the parent commit.
 /// Unlike gitk, we show one marker per stash (not two nodes) and a combined diff (not double +/-).
 pub struct StashEntry {
     pub index: usize,
@@ -1862,16 +1877,16 @@ type WhitespaceMode = "none" | "ignore-space-change" | "ignore-all-space" | "ign
 
 interface GraphLayout {
   nodes: NodePosition[];
-  stashMarkers: StashMarker[];
-  stashCommits: CommitInfo[];
+  stash_markers: StashMarker[];
+  stash_commits: CommitInfo[];
   edges: Edge[];
-  totalColumns: number;
+  total_columns: number;
   orientation: GraphOrientation;
-  totalRows: number;
+  total_rows: number;
 }
 
 type GraphOrientation = "top-to-bottom" | "bottom-to-top";
-type GraphColorMode = "branch" | "author";
+type GraphColorMode = "by-branch" | "by-author";
 
 interface GraphOptionsPayload {
   hideMerges: boolean;
@@ -1891,36 +1906,35 @@ interface NodePosition {
 }
 
 interface StashMarker {
-  stashIndex: number;
-  stashOid: Oid;
-  parentCommitOid: Oid;
   row: number;
+  column: number;
+  stash_index: number;
+  stash_oid: string;
+  parent_oid: string;
   message: string;
-  fileSummary: StashFileSummary[];
-}
-
-interface StashFileSummary {
-  path: string;
-  changeType: "added" | "modified" | "deleted";
 }
 
 interface Edge {
-  from: Oid;
-  to: Oid;
-  edgeType: "parent-child" | "merge";
-  column: number;
+  from_row: number;
+  from_col: number;
+  to_row: number;
+  to_col: number;
+  edge_type: 'Straight' | 'Branch' | 'Merge';
+  color: Color;
+  is_dimmed: boolean;
+  edge_style: 'Solid' | 'Dashed' | 'Dotted';
 }
 
 // ===== Stash =====
 
 interface StashEntry {
   index: number;
-  oid: Oid;
-  parentOid: Oid;
+  oid: string;
+  parent_oid: string;
   message: string;
   author: Author;
   time: string;
-  fileSummary: StashFileSummary[];
+  file_summary: StashFileSummary[];
 }
 
 // ===== Reflog =====
@@ -2816,7 +2830,7 @@ gitv/
 
 ### Phase 5: Reflog, Stash, and Extended Features
 - Reflog panel
-- Stash list and combined diff viewing (single marker per stash in graph, not gitk's two-node display)
+- Stash list and combined diff viewing (stash as graph node with branch-out edge, not gitk's two-node display)
 - Stash split diff toggle (staged/unstaged)
 - File history and blame
 - Saved searches / named filters
