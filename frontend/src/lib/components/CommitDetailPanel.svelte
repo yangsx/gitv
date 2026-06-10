@@ -527,7 +527,9 @@
 									{$t('commit_detail.blame')}
 								</button>
 							</div>
-							{#if diff}
+							{#if localDiffMode === 'stat-only'}
+								<!-- stats shown in header above -->
+							{:else if diff}
 								{#if diff.is_submodule}
 									<div class="px-4 py-3 text-xs text-orange-400">
 										{diff.hunks
