@@ -1,3 +1,7 @@
 /target/
 src-tauri/gen/
 .DS_Store
+.github
+.kiro
+.vscode
+bak
