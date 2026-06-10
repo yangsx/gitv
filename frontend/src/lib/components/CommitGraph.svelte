@@ -11,8 +11,10 @@
 		COMPARISON_COLOR,
 		STASH_COLOR
 	} from '$lib/graph/graph-math';
+	import { computeVisibleEdgeCoords, edgeHitTest, edgeFarOid } from '$lib/graph/edge-interaction';
 
 	const PADDING_LEFT = 12;
+	const EDGE_HIT_TOLERANCE = 6;
 
 	interface Props {
 		layout: GraphLayout;
@@ -25,6 +27,7 @@
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
+		onEdgeNavigate?: (_oid: string) => void;
 	}
 
 	let {
@@ -37,7 +40,8 @@
 		visibleEnd,
 		selectedOid,
 		comparisonOid = null,
-		onSelect
+		onSelect,
+		onEdgeNavigate
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -45,8 +49,14 @@
 	let scale = $state(1.0);
 	let prevCanvasW = 0;
 	let prevCanvasH = 0;
+	let hoveredEdgeIdx = $state<number | null>(null);
+	let selectedEdgeIdx = $state<number | null>(null);
 
 	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
+
+	let visibleEdgeData = $derived(
+		computeVisibleEdgeCoords(layout, visibleStart, visibleEnd, rowHeight, laneWidth, PADDING_LEFT)
+	);
 
 	function draw(l: GraphLayout) {
 		if (!canvas) return;
@@ -81,7 +91,10 @@
 
 		for (const edge of l.edges) {
 			if (!isEdgeVisible(edge, startRow, endRow)) continue;
-			drawEdge(ctx, edge, sLaneWidth, sPadding, startRow, rowHeight);
+			const edgeIdx = l.edges.indexOf(edge);
+			const isSelected = edgeIdx === selectedEdgeIdx;
+			const isHovered = edgeIdx === hoveredEdgeIdx && !isSelected;
+			drawEdge(ctx, edge, sLaneWidth, sPadding, startRow, rowHeight, isHovered, isSelected);
 		}
 		const stashIdxMap = new Map(l.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
 		for (const node of l.nodes) {
@@ -94,20 +107,53 @@
 	$effect(() => {
 		void visibleStart;
 		void visibleEnd;
+		void hoveredEdgeIdx;
+		void selectedEdgeIdx;
 		draw(layout);
 	});
 
+	function handleEdgeClick(mx: number, my: number): boolean {
+		for (const { edge, idx, coords } of visibleEdgeData) {
+			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {
+				if (selectedEdgeIdx === idx) {
+					const farOid = edgeFarOid(edge, layout, selectedOid ?? null);
+					if (farOid) {
+						onEdgeNavigate?.(farOid);
+						onSelect?.(farOid, false);
+					}
+					selectedEdgeIdx = null;
+				} else {
+					selectedEdgeIdx = idx;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
 	function handleClick(e: MouseEvent) {
-		if (!onSelect) return;
 		const rect = canvas.getBoundingClientRect();
-		const y = e.clientY - rect.top;
-		const row = Math.floor(y / rowHeight) + visibleStart;
+		const mx = e.clientX - rect.left;
+		const my = e.clientY - rect.top;
+		const sc = scale;
+		const sLaneWidth = laneWidth * sc;
+		const sNodeRadius = nodeRadius * sc;
+		const sPadding = PADDING_LEFT * sc;
+		const hitRadius = sNodeRadius + 4 * sc;
 
 		for (const node of layout.nodes) {
-			if (node.row === row) {
+			if (node.row < visibleStart || node.row > visibleEnd) continue;
+			const nx = columnCenterX(node.column, sLaneWidth, sPadding);
+			const ny = nodeCenterY(node.row, visibleStart, rowHeight);
+			if (Math.abs(mx - nx) < hitRadius && Math.abs(my - ny) < hitRadius) {
+				selectedEdgeIdx = null;
 				onSelect?.(node.oid, e.ctrlKey || e.metaKey);
 				return;
 			}
+		}
+
+		if (!handleEdgeClick(mx, my)) {
+			selectedEdgeIdx = null;
 		}
 	}
 
@@ -144,16 +190,26 @@
 							};
 						}
 					}
+					hoveredEdgeIdx = null;
 					return;
 				}
 			}
 		}
 
+		let newHovered: number | null = null;
+		for (const { idx, coords } of visibleEdgeData) {
+			if (edgeHitTest(x, y, coords, EDGE_HIT_TOLERANCE)) {
+				newHovered = idx;
+				break;
+			}
+		}
+		hoveredEdgeIdx = newHovered;
 		tooltip = null;
 	}
 
 	function handleMouseLeave() {
 		tooltip = null;
+		hoveredEdgeIdx = null;
 	}
 
 	function handleWheel(e: WheelEvent) {
@@ -226,7 +282,9 @@
 		sLaneWidth: number,
 		sPadding: number,
 		startRow: number,
-		rh: number
+		rh: number,
+		isHovered: boolean,
+		isSelected: boolean
 	) {
 		const x1 = columnCenterX(edge.from_col, sLaneWidth, sPadding);
 		const y1 = nodeCenterY(edge.from_row, startRow, rh);
@@ -234,9 +292,9 @@
 		const y2 = nodeCenterY(edge.to_row, startRow, rh);
 
 		ctx.beginPath();
-		ctx.globalAlpha = edge.is_dimmed ? 0.35 : 0.8;
+		ctx.globalAlpha = edge.is_dimmed ? 0.35 : isSelected ? 1.0 : isHovered ? 0.9 : 0.8;
 		ctx.strokeStyle = colorToCSS(edge.color);
-		ctx.lineWidth = 1.5;
+		ctx.lineWidth = isSelected ? 3.5 : isHovered ? 2.5 : 1.5;
 
 		if (edge.edge_style === 'Dashed') {
 			ctx.setLineDash([6, 3]);

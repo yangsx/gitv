@@ -13,11 +13,19 @@
 		nodeCenterY,
 		isEdgeVisible,
 		nodeHitTest,
+		colorToCSS,
 		SELECT_RGB,
 		COMPARISON_RGB
 	} from '$lib/graph/graph-math';
+	import {
+		computeVisibleEdgeCoords,
+		edgeHitTest,
+		edgeFarOid,
+		drawEdgeHighlight
+	} from '$lib/graph/edge-interaction';
 
 	const PADDING_LEFT = 12;
+	const EDGE_HIT_TOLERANCE = 6;
 
 	interface Props {
 		layout: GraphLayout;
@@ -30,6 +38,7 @@
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
+		onEdgeNavigate?: (_oid: string) => void;
 	}
 
 	let {
@@ -42,7 +51,8 @@
 		visibleEnd,
 		selectedOid = null,
 		comparisonOid = null,
-		onSelect
+		onSelect,
+		onEdgeNavigate
 	}: Props = $props();
 
 	let canvasEl: HTMLCanvasElement;
@@ -53,6 +63,13 @@
 	let containerHeight = $derived(Math.round((visibleEnd - visibleStart) * rowHeight));
 
 	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
+
+	let hoveredEdgeIdx = $state<number | null>(null);
+	let selectedEdgeIdx = $state<number | null>(null);
+
+	let visibleEdgeData = $derived(
+		computeVisibleEdgeCoords(layout, visibleStart, visibleEnd, rowHeight, laneWidth, PADDING_LEFT)
+	);
 
 	let visibleStashLabels = $derived.by(() => {
 		const stashIdxMap = new Map(layout.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
@@ -67,7 +84,6 @@
 
 	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 
-	// Build a lookup from node OID to its render data for hit testing
 	let nodeHitMap = new SvelteMap<string, { x: number; y: number; radius: number }>();
 
 	function buildNodes(start: number, end: number): RenderNode[] {
@@ -100,10 +116,17 @@
 		return result;
 	}
 
-	function buildEdges(start: number, end: number): RenderEdge[] {
+	function buildEdges(
+		start: number,
+		end: number,
+		skipIdx1: number | null = null,
+		skipIdx2: number | null = null
+	): RenderEdge[] {
 		const result: RenderEdge[] = [];
-		for (const e of layout.edges) {
+		for (let i = 0; i < layout.edges.length; i++) {
+			const e = layout.edges[i];
 			if (!isEdgeVisible(e, start, end)) continue;
+			if (i === skipIdx1 || i === skipIdx2) continue;
 			result.push({
 				from_row: e.from_row,
 				from_col: e.from_col,
@@ -156,7 +179,7 @@
 			padding_left: PADDING_LEFT,
 			node_radius: nodeRadius,
 			nodes: buildNodes(visibleStart, visibleEnd),
-			edges: buildEdges(visibleStart, visibleEnd)
+			edges: buildEdges(visibleStart, visibleEnd, selectedEdgeIdx, hoveredEdgeIdx)
 		};
 
 		try {
@@ -179,8 +202,22 @@
 				data[i] = src[i];
 			}
 			ctx.putImageData(imageData, 0, 0);
+
+			overdrawEdgeHighlights();
 		} catch (err) {
 			console.warn('wgpu render failed, falling back:', err);
+		}
+	}
+
+	function overdrawEdgeHighlights() {
+		if (!ctx || (hoveredEdgeIdx === null && selectedEdgeIdx === null)) return;
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		for (const { edge, idx, coords } of visibleEdgeData) {
+			if (idx === selectedEdgeIdx) {
+				drawEdgeHighlight(ctx, coords, colorToCSS(edge.color), 3.5);
+			} else if (idx === hoveredEdgeIdx) {
+				drawEdgeHighlight(ctx, coords, colorToCSS(edge.color), 2.5);
+			}
 		}
 	}
 
@@ -190,8 +227,29 @@
 		void layout;
 		void selectedOid;
 		void comparisonOid;
+		void hoveredEdgeIdx;
+		void selectedEdgeIdx;
 		scheduleRender();
 	});
+
+	function handleEdgeClick(mx: number, my: number): boolean {
+		for (const { edge, idx, coords } of visibleEdgeData) {
+			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {
+				if (selectedEdgeIdx === idx) {
+					const farOid = edgeFarOid(edge, layout, selectedOid ?? null);
+					if (farOid) {
+						onEdgeNavigate?.(farOid);
+						onSelect?.(farOid, false);
+					}
+					selectedEdgeIdx = null;
+				} else {
+					selectedEdgeIdx = idx;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
 
 	function handleClick(e: MouseEvent) {
 		const rect = canvasEl.getBoundingClientRect();
@@ -199,9 +257,13 @@
 		const my = e.clientY - rect.top;
 		for (const [oid, pos] of nodeHitMap) {
 			if (nodeHitTest(mx, my, pos.x, pos.y, pos.radius)) {
+				selectedEdgeIdx = null;
 				onSelect?.(oid, e.ctrlKey || e.metaKey);
 				return;
 			}
+		}
+		if (!handleEdgeClick(mx, my)) {
+			selectedEdgeIdx = null;
 		}
 	}
 
@@ -234,16 +296,26 @@
 							};
 						}
 					}
+					hoveredEdgeIdx = null;
 					return;
 				}
 			}
 		}
 
+		let newHovered: number | null = null;
+		for (const { idx, coords } of visibleEdgeData) {
+			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {
+				newHovered = idx;
+				break;
+			}
+		}
+		hoveredEdgeIdx = newHovered;
 		tooltip = null;
 	}
 
 	function handleMouseLeave() {
 		tooltip = null;
+		hoveredEdgeIdx = null;
 	}
 </script>
 

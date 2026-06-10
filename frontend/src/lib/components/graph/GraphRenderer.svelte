@@ -15,6 +15,7 @@
 		selectedOid?: string | null;
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
+		onEdgeNavigate?: (_oid: string) => void;
 	}
 
 	let {
@@ -27,7 +28,8 @@
 		visibleEnd,
 		selectedOid = null,
 		comparisonOid = null,
-		onSelect
+		onSelect,
+		onEdgeNavigate
 	}: Props = $props();
 
 	let useWgpu = $derived($renderer === 'wgpu');
@@ -45,6 +47,7 @@
 		{selectedOid}
 		{comparisonOid}
 		{onSelect}
+		{onEdgeNavigate}
 	/>
 {:else}
 	<CommitGraph
@@ -58,5 +61,6 @@
 		{selectedOid}
 		{comparisonOid}
 		{onSelect}
+		{onEdgeNavigate}
 	/>
 {/if}

@@ -229,6 +229,8 @@
 		operationState.set('LoadingRepo');
 		error.set(null);
 		loadError = null;
+		skipInitialLayout = true;
+		layoutLoaded = false;
 		try {
 			const data = await getInitialData(path, {
 				hide_merges: $graphHideMerges,
@@ -236,12 +238,9 @@
 				color_mode: $graphColorMode,
 				palette: $graphPalette
 			});
-			console.log('loadRepo: got initial data, repo_info=', data.repo_info);
 			const repoRoot = data.repo_info.path;
 			repoPath = repoRoot;
 			repoInfo.set(data.repo_info);
-			console.log('loadRepo: repoInfo set, $repoInfo should now be', data.repo_info);
-			console.log('loadRepo: $repoInfo value via get', get(repoInfo));
 			repoLoaded = true;
 			commits = data.commits;
 			commitCount = data.commits.length;
@@ -318,10 +317,6 @@
 
 	let layoutLoaded = $state(false);
 	let repoLoaded = $state(false);
-
-	$effect(() => {
-		console.log('DEBG: $repoInfo changed to', $repoInfo, 'repoLoaded=', repoLoaded);
-	});
 
 	$effect(() => {
 		if (startupComplete && !$repoInfo && !autoDialogShown) {

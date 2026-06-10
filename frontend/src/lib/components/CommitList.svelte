@@ -15,6 +15,7 @@
 		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
 		rowHeight?: number;
 		graphWidth?: number;
+		onEdgeNavigate?: (_oid: string) => void;
 	}
 
 	let {
@@ -26,7 +27,8 @@
 		onSelect,
 		onContextMenu,
 		rowHeight = 28,
-		graphWidth = 200
+		graphWidth = 200,
+		onEdgeNavigate
 	}: Props = $props();
 
 	let highlightsByOid = $derived(new Map($searchResults.map((r) => [r.commit_oid, r.highlights])));
@@ -176,6 +178,11 @@
 			}
 		}
 	}
+
+	function handleEdgeNavigate(oid: string) {
+		const idx = orderedCommits.findIndex((c) => c.oid === oid);
+		if (idx >= 0) scrollToIndex(idx, true);
+	}
 </script>
 
 <div class="flex h-full min-h-0" role="listbox" aria-label={$t('commit_list.aria')}>
@@ -206,6 +213,7 @@
 							{selectedOid}
 							{comparisonOid}
 							{onSelect}
+							onEdgeNavigate={onEdgeNavigate ?? handleEdgeNavigate}
 						/>
 					</div>
 				{/if}
