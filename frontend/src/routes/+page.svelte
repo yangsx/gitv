@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import {
 		getGraphLayout,
@@ -221,7 +222,6 @@
 		stashSplitDiff = null;
 		stashSplitMode = false;
 		focusBranchOid = null;
-		layoutLoaded = false;
 		getRecentRepositories().then((r) => (recentRepos = r));
 	}
 
@@ -229,8 +229,18 @@
 		operationState.set('LoadingRepo');
 		error.set(null);
 		loadError = null;
-		skipInitialLayout = true;
-		layoutLoaded = false;
+		selectedOid.set(null);
+		comparisonOid.set(null);
+		focusBranchOid = null;
+		selectedBranch = null;
+		selectedRemote = null;
+		selectedTag = null;
+		selectedStash = null;
+		stashDiff = null;
+		stashSplitDiff = null;
+		stashSplitMode = false;
+		commitDetails = null;
+		detailsLoading = false;
 		try {
 			const data = await getInitialData(path, {
 				hide_merges: $graphHideMerges,
@@ -245,7 +255,6 @@
 			commits = data.commits;
 			commitCount = data.commits.length;
 			graphLayout = data.graph_layout;
-			layoutLoaded = true;
 			allRefs = data.refs;
 			workingChangesDiff = data.working_changes;
 			saveRecentRepository(repoRoot).catch(() => {});
@@ -315,7 +324,6 @@
 		}
 	}
 
-	let layoutLoaded = $state(false);
 	let repoLoaded = $state(false);
 
 	$effect(() => {
@@ -489,20 +497,16 @@
 		return displayLayout;
 	});
 
-	let skipInitialLayout = $state(true);
-
 	$effect(() => {
 		void $graphColorMode;
 		void $graphHideMerges;
 		void $graphOrientation;
 		void $graphPalette;
-		if ($repoInfo && layoutLoaded) {
-			if (skipInitialLayout) {
-				skipInitialLayout = false;
-				return;
+		untrack(() => {
+			if (get(repoInfo)) {
+				reloadLayout();
 			}
-			reloadLayout();
-		}
+		});
 	});
 
 	$effect(() => {
@@ -1199,17 +1203,19 @@
 			>
 				<div class="flex-1 min-h-0 overflow-hidden">
 					{#if effectiveCommits.length > 0}
-						<CommitList
-							commits={effectiveCommits}
-							layout={effectiveLayout}
-							selectedOid={$selectedOid}
-							comparisonOid={$comparisonOid}
-							matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
-							onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
-							onContextMenu={handleCommitContextMenu}
-							graphWidth={savedLayout?.graphWidth ?? 200}
-							{rowHeight}
-						/>
+						{#key $repoInfo?.path ?? ''}
+							<CommitList
+								commits={effectiveCommits}
+								layout={effectiveLayout}
+								selectedOid={$selectedOid}
+								comparisonOid={$comparisonOid}
+								matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
+								onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
+								onContextMenu={handleCommitContextMenu}
+								graphWidth={savedLayout?.graphWidth ?? 200}
+								{rowHeight}
+							/>
+						{/key}
 					{:else if $operationState === 'LoadingRepo'}
 						<div class="flex h-full items-center justify-center" role="status" aria-live="polite">
 							<div class="flex flex-col items-center gap-3">
