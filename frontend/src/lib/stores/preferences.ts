@@ -12,6 +12,7 @@ const DEFAULTS: AppPreferences = {
 	renderer: 'wgpu',
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
+	diff_view_mode: 'unified',
 	theme: 'dark',
 	font_size: 13,
 	high_contrast: false,
@@ -31,6 +32,9 @@ export const diffWhitespace = writable<
 		| 'ignore-all-space'
 		| 'ignore-blank-lines'
 );
+export const diffViewMode = writable<'unified' | 'side-by-side'>(
+	DEFAULTS.diff_view_mode as 'unified' | 'side-by-side'
+);
 export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);
@@ -46,6 +50,7 @@ function toPreferences(): AppPreferences {
 		renderer: get(renderer),
 		diff_mode: get(diffMode),
 		diff_whitespace: get(diffWhitespace),
+		diff_view_mode: get(diffViewMode),
 		theme: get(theme),
 		font_size: get(fontSize),
 		high_contrast: get(highContrast),
@@ -66,6 +71,9 @@ function updateFromPreferences(p: AppPreferences) {
 	}
 	diffMode.set(p.diff_mode);
 	diffWhitespace.set(p.diff_whitespace);
+	if (p.diff_view_mode === 'unified' || p.diff_view_mode === 'side-by-side') {
+		diffViewMode.set(p.diff_view_mode);
+	}
 	if (p.graph_color_mode === 'by-branch' || p.graph_color_mode === 'by-author') {
 		graphColorMode.set(p.graph_color_mode);
 	}

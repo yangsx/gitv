@@ -7,6 +7,7 @@
 	} from '$lib/stores/repository';
 	import {
 		diffMode,
+		diffViewMode,
 		diffWhitespace,
 		renderer,
 		theme,
@@ -118,6 +119,11 @@
 		savePreferences();
 	}
 
+	function setDiffViewMode(mode: 'unified' | 'side-by-side') {
+		diffViewMode.set(mode);
+		savePreferences();
+	}
+
 	function setDiffWhitespace(
 		ws: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
 	) {
@@ -134,6 +140,7 @@
 	const orientations = ['top-to-bottom', 'bottom-to-top'] as const;
 	const palettes = ['default', 'deuteranopia', 'protanopia', 'tritanopia'] as const;
 	const diffModes = ['normal', 'word-diff', 'stat-only'] as const;
+	const viewModes = ['unified', 'side-by-side'] as const;
 	const modeKey = (v: 'normal' | 'word-diff' | 'stat-only'): string =>
 		v === 'word-diff' ? 'word_diff' : v === 'stat-only' ? 'stat_only' : v;
 	const whitespaceModes = [
@@ -345,6 +352,33 @@
 					{$t('preferences.section_diff')}
 				</h3>
 				<div class="space-y-2">
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.view_layout')}</span>
+						<div
+							class="flex gap-1"
+							role="radiogroup"
+							aria-label={$t('preferences.view_layout_aria')}
+						>
+							{#each viewModes as v (v)}
+								<button
+									class="whitespace-nowrap rounded px-2 py-1 text-xs transition-colors {$diffViewMode ===
+									v
+										? 'bg-blue-700/50 text-blue-300'
+										: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+									onclick={() => setDiffViewMode(v)}
+									role="radio"
+									aria-checked={$diffViewMode === v}
+								>
+									{$t(
+										v === 'unified'
+											? 'preferences.layout_unified'
+											: 'preferences.layout_side_by_side'
+									)}
+								</button>
+							{/each}
+						</div>
+					</div>
+
 					<div class="flex items-center justify-between">
 						<span class="text-gray-300">{$t('preferences.default_mode')}</span>
 						<div class="flex gap-1" role="radiogroup" aria-label={$t('preferences.diff_mode_aria')}>

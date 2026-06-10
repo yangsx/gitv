@@ -46,6 +46,14 @@ pub enum DiffWhitespace {
     IgnoreBlankLines,
 }
 
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum DiffViewMode {
+    #[default]
+    Unified,
+    SideBySide,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Theme {
@@ -71,6 +79,8 @@ pub struct AppPreferences {
     pub renderer: String,
     pub diff_mode: DiffMode,
     pub diff_whitespace: DiffWhitespace,
+    #[serde(default)]
+    pub diff_view_mode: DiffViewMode,
     pub theme: Theme,
     #[serde(default = "default_font_size")]
     pub font_size: f64,
@@ -98,6 +108,7 @@ impl Default for AppPreferences {
             renderer: default_renderer(),
             diff_mode: DiffMode::Normal,
             diff_whitespace: DiffWhitespace::None,
+            diff_view_mode: DiffViewMode::Unified,
             theme: Theme::Dark,
             font_size: default_font_size(),
             high_contrast: false,

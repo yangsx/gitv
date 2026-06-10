@@ -196,6 +196,13 @@ pub enum DiffMode {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub enum DiffViewMode {
+    #[default]
+    Unified,
+    SideBySide,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub enum WhitespaceMode {
     #[default]
     None,

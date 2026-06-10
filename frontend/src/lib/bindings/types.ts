@@ -328,6 +328,7 @@ export interface AppPreferences {
 	renderer: 'wgpu' | 'canvas2d';
 	diff_mode: 'normal' | 'word-diff' | 'stat-only';
 	diff_whitespace: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines';
+	diff_view_mode: 'unified' | 'side-by-side';
 	theme: 'dark' | 'light';
 	font_size: number;
 	high_contrast: boolean;

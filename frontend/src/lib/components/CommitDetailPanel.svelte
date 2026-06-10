@@ -11,7 +11,7 @@
 	import BlamePanel from './BlamePanel.svelte';
 	import ResizeHandle from './ResizeHandle.svelte';
 	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
-	import { diffMode, diffWhitespace } from '$lib/stores/preferences';
+	import { diffMode, diffViewMode, diffWhitespace } from '$lib/stores/preferences';
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import { untrack } from 'svelte';
@@ -33,11 +33,11 @@
 	let rawMessage = $state(false);
 	let localDiffMode = $state($diffMode);
 	let localDiffWhitespace = $state($diffWhitespace);
+	let localViewMode = $state<'unified' | 'side-by-side'>($diffViewMode);
 	let fileTree = $state<FileTreeNode | null>(null);
 	let loadingTree = $state(false);
 	let blameFilePath = $state<string | null>(null);
 	let rightPanelWidth = $state(getClampedLayout().rightPanelWidth);
-	let viewMode = $state<'unified' | 'side-by-side'>('unified');
 
 	let fileDiffs = new SvelteMap<string, FileDiff>();
 	let diffsLoading = $state(false);
@@ -105,6 +105,7 @@
 		fileDiffs.clear();
 		localDiffMode = $diffMode;
 		localDiffWhitespace = $diffWhitespace;
+		localViewMode = $diffViewMode;
 		untrack(() => {
 			loadAllDiffs();
 		});
@@ -252,13 +253,17 @@
 		>
 			<button
 				class="whitespace-nowrap rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
-				onclick={() => (viewMode = viewMode === 'unified' ? 'side-by-side' : 'unified')}
+				onclick={() => (localViewMode = localViewMode === 'unified' ? 'side-by-side' : 'unified')}
 				aria-label={$t('commit_detail.toggle_view_mode', {
 					mode:
-						viewMode === 'unified' ? $t('commit_detail.unified') : $t('commit_detail.side_by_side')
+						localViewMode === 'unified'
+							? $t('commit_detail.unified')
+							: $t('commit_detail.side_by_side')
 				})}
 			>
-				{viewMode === 'unified' ? $t('commit_detail.unified') : $t('commit_detail.side_by_side')}
+				{localViewMode === 'unified'
+					? $t('commit_detail.unified')
+					: $t('commit_detail.side_by_side')}
 			</button>
 			<div class="flex items-center gap-1">
 				<span class="text-[10px] text-gray-500">{$t('commit_detail.mode_label')}</span>
@@ -544,7 +549,7 @@
 									</div>
 								{:else if diff.hunks.length > 0}
 									<div class="p-2">
-										<DiffViewer hunks={diff.hunks} {viewMode} />
+										<DiffViewer hunks={diff.hunks} viewMode={localViewMode} />
 									</div>
 								{:else}
 									<div class="px-4 py-3 text-xs text-gray-500">
