@@ -2411,21 +2411,8 @@ fn hunks_to_word_diff(hunks: Vec<Hunk>) -> Vec<Hunk> {
                         });
                         i += 1;
                     }
-                    DiffLine::Context {
-                        content,
-                        old_line,
-                        new_line,
-                    } => {
-                        let segments = vec![WordDiffSegment {
-                            text: content.clone(),
-                            kind: WordDiffKind::Unchanged,
-                        }];
-                        word_lines.push(DiffLine::WordDiff {
-                            content: content.clone(),
-                            old_line: *old_line,
-                            new_line: *new_line,
-                            segments,
-                        });
+                    DiffLine::Context { .. } => {
+                        word_lines.push(lines[i].clone());
                         i += 1;
                     }
                     DiffLine::WordDiff { .. } => {
@@ -2445,86 +2432,87 @@ fn hunks_to_word_diff(hunks: Vec<Hunk>) -> Vec<Hunk> {
         .collect()
 }
 
-fn compute_word_segments(old: &str, new: &str) -> Vec<WordDiffSegment> {
-    let old_words = tokenize_words(old);
-    let new_words = tokenize_words(new);
+pub(crate) fn compute_word_segments(old: &str, new: &str) -> Vec<WordDiffSegment> {
+    let old_tokens = tokenize_words(old);
+    let new_tokens = tokenize_words(new);
+
+    let lcs = longest_common_subsequence(&old_tokens, &new_tokens);
 
     let mut segments = Vec::new();
     let mut old_idx = 0usize;
     let mut new_idx = 0usize;
 
-    while old_idx < old_words.len() || new_idx < new_words.len() {
-        match (old_words.get(old_idx), new_words.get(new_idx)) {
-            (Some(ow), Some(nw)) if ow == nw => {
-                segments.push(WordDiffSegment {
-                    text: ow.clone(),
-                    kind: WordDiffKind::Unchanged,
-                });
-                old_idx += 1;
-                new_idx += 1;
-            }
-            (Some(_), None) => {
-                segments.push(WordDiffSegment {
-                    text: old_words[old_idx].clone(),
-                    kind: WordDiffKind::Removed,
-                });
-                old_idx += 1;
-            }
-            (None, Some(_)) => {
-                segments.push(WordDiffSegment {
-                    text: new_words[new_idx].clone(),
-                    kind: WordDiffKind::Added,
-                });
-                new_idx += 1;
-            }
-            (None, None) => break,
-            (Some(_), Some(_)) => {
-                let ahead_old =
-                    find_in_range(&new_words, new_idx + 1..new_idx + 4, &old_words[old_idx]);
-                let ahead_new =
-                    find_in_range(&old_words, old_idx + 1..old_idx + 4, &new_words[new_idx]);
-
-                if let Some(ao) = ahead_old {
-                    for word in new_words.iter().take(ao).skip(new_idx) {
-                        segments.push(WordDiffSegment {
-                            text: word.clone(),
-                            kind: WordDiffKind::Added,
-                        });
-                    }
-                    new_idx = ao;
-                } else if let Some(an) = ahead_new {
-                    for word in old_words.iter().take(an).skip(old_idx) {
-                        segments.push(WordDiffSegment {
-                            text: word.clone(),
-                            kind: WordDiffKind::Removed,
-                        });
-                    }
-                    old_idx = an;
-                } else {
-                    segments.push(WordDiffSegment {
-                        text: old_words[old_idx].clone(),
-                        kind: WordDiffKind::Removed,
-                    });
-                    segments.push(WordDiffSegment {
-                        text: new_words[new_idx].clone(),
-                        kind: WordDiffKind::Added,
-                    });
-                    old_idx += 1;
-                    new_idx += 1;
-                }
-            }
+    for lcs_token in &lcs {
+        while old_idx < old_tokens.len() && &old_tokens[old_idx] != lcs_token {
+            segments.push(WordDiffSegment {
+                text: old_tokens[old_idx].clone(),
+                kind: WordDiffKind::Removed,
+            });
+            old_idx += 1;
         }
+        while new_idx < new_tokens.len() && &new_tokens[new_idx] != lcs_token {
+            segments.push(WordDiffSegment {
+                text: new_tokens[new_idx].clone(),
+                kind: WordDiffKind::Added,
+            });
+            new_idx += 1;
+        }
+        segments.push(WordDiffSegment {
+            text: lcs_token.clone(),
+            kind: WordDiffKind::Unchanged,
+        });
+        old_idx += 1;
+        new_idx += 1;
+    }
+    while old_idx < old_tokens.len() {
+        segments.push(WordDiffSegment {
+            text: old_tokens[old_idx].clone(),
+            kind: WordDiffKind::Removed,
+        });
+        old_idx += 1;
+    }
+    while new_idx < new_tokens.len() {
+        segments.push(WordDiffSegment {
+            text: new_tokens[new_idx].clone(),
+            kind: WordDiffKind::Added,
+        });
+        new_idx += 1;
     }
 
     merge_adjacent_segments(segments)
 }
 
-fn find_in_range(
-    words: &[String],
-    mut range: std::ops::Range<usize>,
-    target: &str,
-) -> Option<usize> {
-    range.find(|&i| i < words.len() && words[i] == target)
+fn longest_common_subsequence(a: &[String], b: &[String]) -> Vec<String> {
+    let m = a.len();
+    let n = b.len();
+    let mut dp = vec![vec![0usize; n + 1]; m + 1];
+
+    for i in 1..=m {
+        for j in 1..=n {
+            dp[i][j] = if a[i - 1] == b[j - 1] {
+                dp[i - 1][j - 1] + 1
+            } else {
+                dp[i - 1][j].max(dp[i][j - 1])
+            };
+        }
+    }
+
+    let mut result = Vec::new();
+    let mut i = m;
+    let mut j = n;
+    while i > 0 && j > 0 {
+        if a[i - 1] == b[j - 1] {
+            result.push(a[i - 1].clone());
+            i -= 1;
+            j -= 1;
+        } else if dp[i - 1][j] >= dp[i][j - 1] {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    result.reverse();
+    result
 }
 
 fn tokenize_words(text: &str) -> Vec<String> {
@@ -3139,6 +3127,228 @@ mod tests {
     }
 
     #[test]
+    fn word_diff_basic_segments() {
+        let segments = super::compute_word_segments("hello world", "hello earth");
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].text, "hello ");
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[1].text, "world");
+        assert_eq!(segments[1].kind, WordDiffKind::Removed);
+        assert_eq!(segments[2].text, "earth");
+        assert_eq!(segments[2].kind, WordDiffKind::Added);
+    }
+
+    #[test]
+    fn word_diff_identical_lines() {
+        let segments = super::compute_word_segments("same content", "same content");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+    }
+
+    #[test]
+    fn word_diff_completely_different() {
+        let segments = super::compute_word_segments("abc", "xyz");
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].kind, WordDiffKind::Removed);
+        assert_eq!(segments[1].kind, WordDiffKind::Added);
+    }
+
+    #[test]
+    fn word_diff_empty_new() {
+        let segments = super::compute_word_segments("something", "");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].kind, WordDiffKind::Removed);
+    }
+
+    #[test]
+    fn word_diff_empty_old() {
+        let segments = super::compute_word_segments("", "something");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].kind, WordDiffKind::Added);
+    }
+
+    #[test]
+    fn word_diff_insertion_in_middle() {
+        let segments = super::compute_word_segments("foo bar", "foo baz bar");
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[0].text, "foo ");
+        assert_eq!(segments[1].kind, WordDiffKind::Added);
+        assert_eq!(segments[1].text, "baz ");
+        assert_eq!(segments[2].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[2].text, "bar");
+    }
+
+    #[test]
+    fn word_diff_change_at_line_boundary() {
+        let segments = super::compute_word_segments("a b c", "a x c");
+        assert_eq!(segments.len(), 4);
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[0].text, "a ");
+        assert_eq!(segments[1].kind, WordDiffKind::Removed);
+        assert_eq!(segments[1].text, "b");
+        assert_eq!(segments[2].kind, WordDiffKind::Added);
+        assert_eq!(segments[2].text, "x");
+        assert_eq!(segments[3].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[3].text, " c");
+    }
+
+    #[test]
+    fn word_diff_contiguous_deletion() {
+        let old = "unstaged_item_to_file_diff(&repo, &self.path, &iw_item, &mode, &whitespace)?";
+        let new = "unstaged_item_to_file_diff(&repo, &iw_item, &mode, &whitespace)?";
+        let segments = super::compute_word_segments(old, new);
+
+        let removed_count = segments
+            .iter()
+            .filter(|s| s.kind == WordDiffKind::Removed)
+            .count();
+        assert_eq!(
+            removed_count, 1,
+            "deleted text should be a single contiguous Removed segment, not fragmented"
+        );
+
+        let added_count = segments
+            .iter()
+            .filter(|s| s.kind == WordDiffKind::Added)
+            .count();
+        assert_eq!(
+            added_count, 0,
+            "no tokens should be marked Added since new is a subsequence of old"
+        );
+    }
+
+    #[test]
+    fn word_diff_html_insert_attrs() {
+        let segments =
+            super::compute_word_segments("<header>", "<header relative overflow-visible>");
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].text, "<header");
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[1].text, " relative overflow-visible");
+        assert_eq!(segments[1].kind, WordDiffKind::Added);
+        assert_eq!(segments[2].text, ">");
+        assert_eq!(segments[2].kind, WordDiffKind::Unchanged);
+    }
+
+    #[test]
+    fn word_diff_html_change_attr_val() {
+        let segments =
+            super::compute_word_segments(r#"<header class="foo">"#, r#"<header class="bar">"#);
+        assert_eq!(segments.len(), 4);
+        assert_eq!(segments[0].text, r#"<header class=""#);
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[1].text, "foo");
+        assert_eq!(segments[1].kind, WordDiffKind::Removed);
+        assert_eq!(segments[2].text, "bar");
+        assert_eq!(segments[2].kind, WordDiffKind::Added);
+        assert_eq!(segments[3].text, r#"">"#);
+        assert_eq!(segments[3].kind, WordDiffKind::Unchanged);
+    }
+
+    #[test]
+    fn word_diff_html_mixed_change_and_insert() {
+        let segments = super::compute_word_segments(
+            r#"<header class="foo">"#,
+            r#"<header class="bar" relative overflow-visible>"#,
+        );
+        assert_eq!(segments.len(), 6);
+        assert_eq!(segments[0].text, r#"<header class=""#);
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[1].text, "foo");
+        assert_eq!(segments[1].kind, WordDiffKind::Removed);
+        assert_eq!(segments[2].text, "bar");
+        assert_eq!(segments[2].kind, WordDiffKind::Added);
+        assert_eq!(segments[3].text, "\"");
+        assert_eq!(segments[3].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[4].text, " relative overflow-visible");
+        assert_eq!(segments[4].kind, WordDiffKind::Added);
+        assert_eq!(segments[5].text, ">");
+        assert_eq!(segments[5].kind, WordDiffKind::Unchanged);
+    }
+
+    #[test]
+    fn word_diff_html_attribute_reorder() {
+        let segments =
+            super::compute_word_segments(r#"<div id="x" class="y">"#, r#"<div class="y" id="x">"#);
+        let removed_count = segments
+            .iter()
+            .filter(|s| s.kind == WordDiffKind::Removed)
+            .count();
+        let added_count = segments
+            .iter()
+            .filter(|s| s.kind == WordDiffKind::Added)
+            .count();
+        assert!(
+            removed_count > 0 && added_count > 0,
+            "attribute reorder should show Removed and Added segments"
+        );
+        let unchanged: String = segments
+            .iter()
+            .filter(|s| s.kind == WordDiffKind::Unchanged)
+            .map(|s| s.text.as_str())
+            .collect();
+        assert!(
+            unchanged.contains("<div"),
+            "common prefix <div should be Unchanged"
+        );
+    }
+
+    #[test]
+    fn word_diff_hyphenated_value_change() {
+        let segments =
+            super::compute_word_segments("<div overflow-visible>", "<div overflow-hidden>");
+        assert_eq!(segments.len(), 4);
+        assert_eq!(segments[0].text, "<div overflow-");
+        assert_eq!(segments[0].kind, WordDiffKind::Unchanged);
+        assert_eq!(segments[1].text, "visible");
+        assert_eq!(segments[1].kind, WordDiffKind::Removed);
+        assert_eq!(segments[2].text, "hidden");
+        assert_eq!(segments[2].kind, WordDiffKind::Added);
+        assert_eq!(segments[3].text, ">");
+        assert_eq!(segments[3].kind, WordDiffKind::Unchanged);
+    }
+
+    #[test]
+    fn word_diff_context_lines_stay_context() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "line1\nline2\nline3", "first");
+        let oid2 = temp.commit_file("a.txt", "line1\nmodified\nline3", "second");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let diff = repo
+            .file_diff(
+                Some(oid1),
+                oid2,
+                std::path::Path::new("a.txt"),
+                DiffMode::WordDiff,
+                WhitespaceMode::None,
+            )
+            .expect("file_diff");
+
+        let context_count = diff
+            .hunks
+            .iter()
+            .flat_map(|h| &h.lines)
+            .filter(|l| matches!(l, DiffLine::Context { .. }))
+            .count();
+        let word_diff_count = diff
+            .hunks
+            .iter()
+            .flat_map(|h| &h.lines)
+            .filter(|l| matches!(l, DiffLine::WordDiff { .. }))
+            .count();
+
+        assert!(
+            context_count > 0,
+            "context lines should remain as DiffLine::Context in word-diff mode"
+        );
+        assert!(
+            word_diff_count > 0,
+            "changed line should be DiffLine::WordDiff"
+        );
+    }
+
+    #[test]
     fn whitespace_ignore_blank_lines_filters_blank() {
         let temp = TempRepo::new();
         let oid1 = temp.commit_file("a.txt", "line1\n\n\nline2", "first");
@@ -3193,7 +3403,7 @@ mod tests {
         let repo = GixRepository::open(temp.path()).expect("open");
         let entries = repo.reflog(Some("refs/heads/feature")).expect("reflog");
         assert!(
-            entries.len() >= 1,
+            !entries.is_empty(),
             "should have at least 1 reflog entry for feature branch"
         );
     }

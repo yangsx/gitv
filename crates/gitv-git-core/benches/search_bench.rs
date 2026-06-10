@@ -68,10 +68,8 @@ fn bench_search_query(c: &mut Criterion) {
             let query = SearchQuery {
                 text: Some("fix".into()),
                 use_regex: false,
-                sha_prefix: None,
-                author: None,
-                date_range: None,
                 combine_mode: CombineMode::And,
+                ..Default::default()
             };
             black_box(engine.search(black_box(&query)))
         });
@@ -81,10 +79,8 @@ fn bench_search_query(c: &mut Criterion) {
             let query = SearchQuery {
                 text: Some("fix|add".into()),
                 use_regex: true,
-                sha_prefix: None,
-                author: None,
-                date_range: None,
                 combine_mode: CombineMode::And,
+                ..Default::default()
             };
             black_box(engine.search(black_box(&query)))
         });
@@ -94,10 +90,9 @@ fn bench_search_query(c: &mut Criterion) {
             let query = SearchQuery {
                 text: None,
                 use_regex: false,
-                sha_prefix: None,
                 author: Some("author5".into()),
-                date_range: None,
                 combine_mode: CombineMode::And,
+                ..Default::default()
             };
             black_box(engine.search(black_box(&query)))
         });
@@ -108,9 +103,8 @@ fn bench_search_query(c: &mut Criterion) {
                 text: None,
                 use_regex: false,
                 sha_prefix: Some("00000000".into()),
-                author: None,
-                date_range: None,
                 combine_mode: CombineMode::And,
+                ..Default::default()
             };
             black_box(engine.search(black_box(&query)))
         });

@@ -1038,7 +1038,7 @@ mod tests {
                             e.from_row
                         }
                 });
-                other_oid.map_or(false, |n| n.oid == make_oid(2))
+                other_oid.is_some_and(|n| n.oid == make_oid(2))
             }),
             "child of merge should be connected to merge's first parent"
         );
@@ -1128,7 +1128,7 @@ mod tests {
         let colors: std::collections::HashSet<Color> =
             layout.nodes.iter().map(|n| n.color).collect();
         assert!(
-            colors.len() >= 1,
+            !colors.is_empty(),
             "color-by-author should assign colors to nodes"
         );
     }

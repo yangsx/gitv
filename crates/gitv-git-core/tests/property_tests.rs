@@ -86,7 +86,7 @@ proptest! {
         let row_map: std::collections::HashMap<Oid, usize> =
             layout.nodes.iter().map(|n| (n.oid, n.row)).collect();
         for edge in &layout.edges {
-            assert!(edge.from_row < edge.to_row || edge.from_row == edge.to_row,
+            assert!(edge.from_row <= edge.to_row,
                 "edges should not go backward: from_row={} to_row={}", edge.from_row, edge.to_row);
         }
         let _ = node_oids;
