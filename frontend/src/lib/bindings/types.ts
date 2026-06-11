@@ -332,7 +332,7 @@ export interface AppPreferences {
 	theme: 'dark' | 'light';
 	font_size: number;
 	high_contrast: boolean;
-	language: 'en' | 'zh-cn';
+	language: string;
 }
 
 export interface RenderNode {

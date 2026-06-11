@@ -15,8 +15,13 @@
 		highContrast,
 		savePreferences
 	} from '$lib/stores/preferences';
-	import { t, locale, setLocale as setAppLocale } from '$lib/stores/locale';
-	import type { Locale } from '$lib/stores/locale';
+	import {
+		t,
+		locale,
+		setLocale as setAppLocale,
+		SUPPORTED_LOCALES,
+		getLocaleSelfName
+	} from '$lib/stores/locale';
 	import { commands as commandsStore } from '$lib/stores/commands';
 	import { logPath } from '$lib/stores/debug';
 	import { openLogDirectory } from '$lib/bindings/commands';
@@ -131,7 +136,7 @@
 		savePreferences();
 	}
 
-	function setLanguage(lang: Locale) {
+	function setLanguage(lang: string) {
 		setAppLocale(lang);
 		savePreferences();
 	}
@@ -149,7 +154,7 @@
 		'ignore-all-space',
 		'ignore-blank-lines'
 	] as const;
-	const languages: Locale[] = ['en', 'zh-cn'];
+	const languages = SUPPORTED_LOCALES;
 	const themes = ['dark', 'light'] as const;
 
 	function setTheme(t: 'dark' | 'light') {
@@ -434,21 +439,16 @@
 				</h3>
 				<div class="flex items-center justify-between">
 					<span class="text-gray-300">{$t('preferences.language')}</span>
-					<div class="flex gap-1" role="radiogroup" aria-label={$t('preferences.language_aria')}>
+					<select
+						class="text-gray-200 border border-gray-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+						value={$locale}
+						onchange={(e) => setLanguage((e.target as HTMLSelectElement).value)}
+						aria-label={$t('preferences.language_aria')}
+					>
 						{#each languages as lang (lang)}
-							<button
-								class="whitespace-nowrap rounded px-2 py-1 text-xs transition-colors {$locale ===
-								lang
-									? 'bg-blue-700/50 text-blue-300'
-									: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
-								onclick={() => setLanguage(lang)}
-								role="radio"
-								aria-checked={$locale === lang}
-							>
-								{$t(`preferences.lang_${lang === 'en' ? 'en' : 'zh_cn'}`)}
-							</button>
+							<option value={lang}>{getLocaleSelfName(lang)}</option>
 						{/each}
-					</div>
+					</select>
 				</div>
 			</section>
 

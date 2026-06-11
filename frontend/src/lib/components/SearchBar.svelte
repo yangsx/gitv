@@ -205,7 +205,7 @@
 			/>
 			<span class="text-xs text-gray-500">{$t('search.sort_by')}</span>
 			<select
-				class="rounded border border-gray-700 bg-gray-800 px-1.5 py-1 text-xs text-gray-300"
+				class="rounded border border-gray-700 px-1.5 py-1 text-xs text-gray-300"
 				aria-label={$t('search.sort_by')}
 				value={$sortBy}
 				onchange={(e) =>

@@ -1,4 +1,5 @@
 {
+	"lang_self": "English",
 	"toolbar": {
 		"aria": "Graph controls",
 		"refresh": "Refresh",
@@ -49,8 +50,6 @@
 		"ws_blanks": "Blanks",
 		"language": "Language",
 		"language_aria": "Interface language",
-		"lang_en": "English",
-		"lang_zh_cn": "简体中文",
 		"section_appearance": "Appearance",
 		"theme": "Theme",
 		"theme_aria": "Interface theme",

@@ -72,7 +72,7 @@ Retain commits received before stream failure; retry button; per-file diff error
 ## Low Priority
 
 ### Req 21: Localization — Additional Languages
-- Japanese, German, Spanish, French translations (currently only en/zh-cn)
+- Japanese, German, Spanish, French translation files (architecture now supports discovery — just drop a JSON in `locales/`)
 - Locale-aware date/time/number formatting
 - RTL layout support
 

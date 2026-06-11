@@ -97,7 +97,7 @@
 <div class="space-y-2">
 	<div class="flex items-center gap-1">
 		<select
-			class="flex-1 rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-xs text-gray-300"
+			class="flex-1 rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-300"
 			aria-label={$t('sidebar.select_ref')}
 			bind:value={selectedRef}
 		>
@@ -109,7 +109,7 @@
 
 	<div class="flex items-center gap-1">
 		<select
-			class="flex-1 rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-xs text-gray-300"
+			class="flex-1 rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-300"
 			aria-label={$t('sidebar.reflog_op_type')}
 			bind:value={selectedOpType}
 		>

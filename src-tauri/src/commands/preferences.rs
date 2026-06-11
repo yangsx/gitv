@@ -1,5 +1,5 @@
 use crate::commands::util;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fs;
 use std::path::PathBuf;
 use tracing::instrument;
@@ -61,12 +61,39 @@ pub enum Theme {
     Light,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Debug, Default)]
 pub enum Language {
     #[default]
     En,
     ZhCn,
+    Custom(String),
+}
+
+impl Language {
+    pub fn code(&self) -> &str {
+        match self {
+            Language::En => "en",
+            Language::ZhCn => "zh-cn",
+            Language::Custom(s) => s,
+        }
+    }
+}
+
+impl Serialize for Language {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.code())
+    }
+}
+
+impl<'de> Deserialize<'de> for Language {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Ok(match s.as_str() {
+            "en" => Language::En,
+            "zh-cn" => Language::ZhCn,
+            other => Language::Custom(other.to_string()),
+        })
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

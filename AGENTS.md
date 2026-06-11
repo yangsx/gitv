@@ -56,7 +56,7 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Side-by-side diff view mode persisted as a preference (Req 54.5)
 - Branch/tag/remote click focuses the graph on that ref via `focus_branch_oid`, dimming unrelated commits (Req 3.3, Req 32)
 - Merged branch detection via HEAD ancestor set, displayed as `is_merged` on `BranchRef` in sidebar (Req 3.6)
-- Locale support: English and Simplified Chinese with auto-detect on first launch (Req 21)
+- Locale support: English and Simplified Chinese with auto-detect on first launch (Req 21); extensible via `import.meta.glob` discovery — drop a new JSON in `locales/` to add a language; Rust `Language` enum with `Custom(String)` fallback for forward compatibility; locale file naming uses lowercase stems (`de.json`, `ja.json`) — existing `zh-CN.json` grandfathered
 - Merged initial IPC: `getInitialData` combines repo info, commits, graph layout, refs, working changes, and timing in a single call (commit d4fe74a)
 - Parallelized diff loading with 4 concurrent workers for faster commit detail display
 - Repo switch: all selection state is cleared and CommitList is force-remounted via `{#key}` to prevent stale internal state from the previous repo

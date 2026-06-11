@@ -1,4 +1,5 @@
 {
+	"lang_self": "简体中文",
 	"toolbar": {
 		"aria": "图形控制",
 		"refresh": "刷新",
@@ -49,8 +50,6 @@
 		"ws_blanks": "空行",
 		"language": "语言",
 		"language_aria": "界面语言",
-		"lang_en": "English",
-		"lang_zh_cn": "简体中文",
 		"section_appearance": "外观",
 		"theme": "主题",
 		"theme_aria": "界面主题",

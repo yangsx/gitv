@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { getPreferences, setPreferences } from '$lib/bindings/commands';
 import type { AppPreferences } from '$lib/bindings/types';
 import { graphColorMode, graphHideMerges, graphOrientation, graphPalette } from './repository';
-import { locale, initLocale, setLocale } from './locale';
+import { locale, initLocale, setLocale, SUPPORTED_LOCALES, DEFAULT_LOCALE } from './locale';
 
 const DEFAULTS: AppPreferences = {
 	graph_color_mode: 'by-branch',
@@ -89,8 +89,10 @@ function updateFromPreferences(p: AppPreferences) {
 	) {
 		graphPalette.set(p.graph_palette);
 	}
-	if (p.language === 'en' || p.language === 'zh-cn') {
+	if (SUPPORTED_LOCALES.includes(p.language)) {
 		setLocale(p.language);
+	} else {
+		setLocale(DEFAULT_LOCALE);
 	}
 }
 

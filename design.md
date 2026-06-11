@@ -376,10 +376,21 @@ pub enum Theme {
     Light,
 }
 
+/// Language preference with extensible custom codes.
+/// Known variants serialize as their kebab-case code; unknown codes
+/// round-trip through Custom(String). Frontend discovers available
+/// translations via `import.meta.glob` on `locales/*.json`.
 pub enum Language {
-    En,
-    ZhCn,
+    En,       // "en"
+    ZhCn,     // "zh-cn"
+    Custom(String),
 }
+
+impl Language {
+    pub fn code(&self) -> &str { /* ... */ }
+}
+
+// Custom Serialize/Deserialize: always a plain JSON string ("en", "zh-cn", "de", etc.)
 
 /// Node position in the graph (row = i-coordinate, column = j-coordinate)
 pub struct NodePosition {
@@ -2493,47 +2504,47 @@ pub struct Oid([u8; 20]);
 
 ## Localization Architecture
 
-### Localization Strategy
+### Language Model
+
+Rust uses a `Language` enum with known variants + `Custom(String)` fallback.
+Custom `Serialize`/`Deserialize` maps all variants to plain kebab-case strings.
 
 ```rust
 pub enum Language {
-    English,
-    SimplifiedChinese,
-    Japanese,
-    German,
-    Spanish,
-    French,
-}
-
-pub trait LocalizationProvider {
-    fn translate(&self, key: &str, lang: Language) -> String;
-    fn format_date(&self, date: DateTime<Utc>, lang: Language) -> String;
-    fn format_number(&self, num: usize, lang: Language) -> String;
+    En,       // "en"
+    ZhCn,     // "zh-cn"
+    Custom(String),  // round-trips any code: "de", "fr", "ja", ...
 }
 ```
+
+### Locale Discovery
+
+Frontend discovers available translations at build time via Vite's `import.meta.glob`.
+Dropping a new `{code}.json` in `locales/` makes it available — no code changes needed.
+
+```typescript
+const localeModules = import.meta.glob('/src/lib/locales/*.json', { eager: true });
+export const SUPPORTED_LOCALES: string[] = /* extracted from glob paths */;
+```
+
+### Adding a New Language
+
+1. Add `{code}.json` to `frontend/src/lib/locales/` (include `"lang_self": "Native Name"`)
+2. (Optional) Add a typed variant to Rust `Language` enum for compile-time matching
+3. Done — the language appears in Preferences automatically
 
 ### Locale Files Structure
 
 ```
-frontend/src/locales/
-├── en.json
-├── zh-CN.json
-├── ja.json
-├── de.json
-├── es.json
-└── fr.json
+frontend/src/lib/locales/
+├── en.json      # English (default fallback)
+└── zh-CN.json   # Simplified Chinese
 ```
 
-### RTL Support
+### System Locale Detection
 
-For right-to-left languages (Arabic, Hebrew - future support):
-
-```typescript
-interface LayoutConfig {
-  direction: "ltr" | "rtl";
-  textAlign: "left" | "right";
-}
-```
+`navigator.language` is matched against `SUPPORTED_LOCALES` with fuzzy prefix matching
+(e.g., `zh-Hans-CN` → `zh-cn`, `de-DE` → `de`). Falls back to `en` if no match.
 
 ---
 
