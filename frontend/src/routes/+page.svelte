@@ -76,6 +76,7 @@
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 	import { initPreferences, theme, fontSize, highContrast } from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
+	import { computeHideMergeLayout } from '$lib/graph/hide-merges';
 
 	let repoPath = $state('');
 	let startupComplete = $state(false);
@@ -83,6 +84,7 @@
 	let recentRepos = $state<RecentRepository[]>([]);
 	let commits = $state<CommitInfo[]>([]);
 	let graphLayout = $state<GraphLayout | null>(null);
+	let layoutGeneration = 0;
 	let commitDetails = $state<CommitDetails | null>(null);
 	let detailsLoading = $state(false);
 	let savedLayout = typeof window !== 'undefined' ? getClampedLayout() : null;
@@ -102,7 +104,6 @@
 	let selectedTag = $state<string | null>(null);
 	let showPreferences = $state(false);
 	let showShortcutHelp = $state(false);
-	let commitCount = $state(0);
 
 	let uncommittedCount = $derived(
 		workingChangesDiff ? workingChangesDiff.staged.length + workingChangesDiff.unstaged.length : 0
@@ -243,7 +244,6 @@
 		detailsLoading = false;
 		try {
 			const data = await getInitialData(path, {
-				hide_merges: $graphHideMerges,
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
 				palette: $graphPalette
@@ -253,7 +253,6 @@
 			repoInfo.set(data.repo_info);
 			repoLoaded = true;
 			commits = data.commits;
-			commitCount = data.commits.length;
 			graphLayout = data.graph_layout;
 			allRefs = data.refs;
 			workingChangesDiff = data.working_changes;
@@ -309,16 +308,18 @@
 	async function reloadLayout() {
 		if (!repoPath) return;
 		operationState.set('ApplyingFilter');
+		const gen = ++layoutGeneration;
 		try {
-			graphLayout = await getGraphLayout(repoPath, {
-				hide_merges: $graphHideMerges,
+			const result = await getGraphLayout(repoPath, {
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
 				palette: $graphPalette,
 				focus_branch_oid: focusBranchOid
 			});
-		} catch {
-			// keep existing layout
+			if (gen !== layoutGeneration) return;
+			graphLayout = result;
+		} catch (e) {
+			console.error('Failed to reload graph layout:', e);
 		} finally {
 			if ($operationState === 'ApplyingFilter') operationState.set('Idle');
 		}
@@ -491,15 +492,22 @@
 		return result;
 	});
 
+	let hideMergeLayout = $derived(computeHideMergeLayout(displayLayout, $graphHideMerges));
+
 	let effectiveLayout = $derived.by(() => {
 		if ($searchShowMode === 'hide-nonhits' && $matchingOids.size > 0) return null;
 		if ($sortBy !== 'date' || $sortAsc) return null;
-		return displayLayout;
+		return hideMergeLayout;
 	});
+
+	let displayedCommits = $derived(
+		$graphHideMerges ? effectiveCommits.filter((c) => c.parent_oids.length <= 1) : effectiveCommits
+	);
+
+	let commitCount = $derived(displayedCommits.length);
 
 	$effect(() => {
 		void $graphColorMode;
-		void $graphHideMerges;
 		void $graphOrientation;
 		void $graphPalette;
 		untrack(() => {
@@ -1202,10 +1210,10 @@
 				aria-label={$t('commit_list.aria')}
 			>
 				<div class="flex-1 min-h-0 overflow-hidden">
-					{#if effectiveCommits.length > 0}
+					{#if displayedCommits.length > 0}
 						{#key $repoInfo?.path ?? ''}
 							<CommitList
-								commits={effectiveCommits}
+								commits={displayedCommits}
 								layout={effectiveLayout}
 								selectedOid={$selectedOid}
 								comparisonOid={$comparisonOid}

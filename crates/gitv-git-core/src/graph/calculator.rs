@@ -520,16 +520,23 @@ impl GraphCalculator {
             .collect();
 
         let mut resolve: HashMap<Oid, Oid> = HashMap::new();
-        for commit in &self.commits {
-            if commit.parent_oids.len() <= 1 {
-                continue;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for commit in &self.commits {
+                if commit.parent_oids.len() <= 1 {
+                    continue;
+                }
+                let first_parent = match commit.parent_oids.first() {
+                    Some(p) => *p,
+                    None => continue,
+                };
+                let resolved = Self::resolve_to_non_merge(&first_parent, &merge_oids, &resolve);
+                if resolve.get(&commit.oid) != Some(&resolved) {
+                    resolve.insert(commit.oid, resolved);
+                    changed = true;
+                }
             }
-            let first_parent = match commit.parent_oids.first() {
-                Some(p) => *p,
-                None => continue,
-            };
-            let resolved = Self::resolve_to_non_merge(&first_parent, &merge_oids, &resolve);
-            resolve.insert(commit.oid, resolved);
         }
 
         let mut result: Vec<CommitInfo> = self
