@@ -28,7 +28,7 @@ impl AppState {
 
         if !cache.contains_key(repo_path) {
             let repo = self.get_repo(repo_path)?;
-            let commits = repo.commits(None).map_err(|e| e.to_string())?;
+            let commits = repo.commits(None, &[]).map_err(|e| e.to_string())?;
             let engine = SearchEngine::new(commits);
             cache.insert(repo_path.clone(), engine);
         }

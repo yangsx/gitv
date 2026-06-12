@@ -65,7 +65,11 @@ impl Repository for GixRepository {
         })
     }
 
-    fn commits(&self, max_count: Option<usize>) -> Result<Vec<CommitInfo>, GitError> {
+    fn commits(
+        &self,
+        max_count: Option<usize>,
+        extra_tips: &[Oid],
+    ) -> Result<Vec<CommitInfo>, GitError> {
         let repo = self.thread_local();
         let refs = build_ref_map(&repo)?;
 
@@ -77,6 +81,10 @@ impl Repository for GixRepository {
             })
             .map(|(oid, _)| oid_to_gix_object_id(oid))
             .collect();
+
+        for extra in extra_tips {
+            tips.push(oid_to_gix_object_id(extra));
+        }
 
         if tips.is_empty() {
             let head_id = match repo.head_id() {
@@ -2905,7 +2913,7 @@ mod tests {
         temp.commit_file("a.txt", "hello", "first commit");
         temp.commit_file("b.txt", "world", "second commit");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let commits = repo.commits(None).expect("commits");
+        let commits = repo.commits(None, &[]).expect("commits");
         assert_eq!(commits.len(), 2);
         assert_eq!(commits[0].summary, "second commit");
         assert_eq!(commits[1].summary, "first commit");
@@ -2920,7 +2928,7 @@ mod tests {
         temp.commit_file("b.txt", "world", "second commit");
         temp.commit_file("c.txt", "!", "third commit");
         let repo = GixRepository::open(temp.path()).expect("open");
-        let commits = repo.commits(Some(2)).expect("commits");
+        let commits = repo.commits(Some(2), &[]).expect("commits");
         assert_eq!(commits.len(), 2);
     }
 
@@ -2936,7 +2944,7 @@ mod tests {
         );
 
         let repo = GixRepository::open(temp.path()).expect("open");
-        let commits = repo.commits(None).expect("commits");
+        let commits = repo.commits(None, &[]).expect("commits");
 
         assert!(
             commits.iter().any(|c| c.oid == first),
@@ -2957,7 +2965,7 @@ mod tests {
         );
 
         let repo = GixRepository::open(temp.path()).expect("open");
-        let commits = repo.commits(None).expect("commits");
+        let commits = repo.commits(None, &[]).expect("commits");
 
         assert!(
             commits.iter().any(|c| c.oid == first),

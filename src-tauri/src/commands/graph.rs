@@ -32,7 +32,11 @@ fn get_ref_snapshot(repo: &dyn Repository) -> HashMap<String, Oid> {
         .collect()
 }
 
-fn load_commits(repo: &dyn Repository, repo_path: &Path) -> Result<Vec<CommitInfo>, String> {
+fn load_commits(
+    repo: &dyn Repository,
+    repo_path: &Path,
+    extra_tips: &[Oid],
+) -> Result<Vec<CommitInfo>, String> {
     let cache = match RepositoryCache::open(repo_path) {
         Ok(c) => Some(c),
         Err(e) => {
@@ -53,7 +57,7 @@ fn load_commits(repo: &dyn Repository, repo_path: &Path) -> Result<Vec<CommitInf
         }
     }
     let commits = repo
-        .commits(None)
+        .commits(None, extra_tips)
         .map_err(|e| format!("failed to load commits: {e}"))?;
     if let Some(ref cache) = cache {
         let snapshot = get_ref_snapshot(repo);
@@ -98,9 +102,24 @@ pub fn get_initial_data(
     let repo = state.get_repo(&repo_path)?;
     let repo_info = repo.info().map_err(|e| e.to_string())?;
 
+    let mut warnings: Vec<String> = Vec::new();
+
     let t0 = Instant::now();
-    let commits =
-        load_commits(&*repo, &repo_path).map_err(|e| format!("failed to load commits: {e}"))?;
+
+    let stashes = match repo.stash_list() {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = format!("failed to load stashes: {e}");
+            tracing::warn!("{msg}");
+            warnings.push(msg);
+            Vec::new()
+        }
+    };
+
+    let stash_parent_tips: Vec<Oid> = stashes.iter().map(|s| s.parent_oid).collect();
+
+    let commits = load_commits(&*repo, &repo_path, &stash_parent_tips)
+        .map_err(|e| format!("failed to load commits: {e}"))?;
     let load_commits_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     let mut refs_map: HashMap<Oid, Vec<Ref>> = HashMap::new();
@@ -130,18 +149,6 @@ pub fn get_initial_data(
         orientation,
         color_mode,
         palette: graph_palette,
-    };
-
-    let mut warnings: Vec<String> = Vec::new();
-
-    let stashes = match repo.stash_list() {
-        Ok(s) => s,
-        Err(e) => {
-            let msg = format!("failed to load stashes: {e}");
-            tracing::warn!("{msg}");
-            warnings.push(msg);
-            Vec::new()
-        }
     };
 
     let t1 = Instant::now();
@@ -199,7 +206,11 @@ pub fn get_graph_layout(
 ) -> Result<gitv_git_core::graph::GraphLayout, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
-    let commits = load_commits(&*repo, &repo_path)?;
+
+    let stashes = repo.stash_list().map_err(|e| e.to_string())?;
+    let stash_parent_tips: Vec<Oid> = stashes.iter().map(|s| s.parent_oid).collect();
+
+    let commits = load_commits(&*repo, &repo_path, &stash_parent_tips)?;
 
     let mut refs_map: HashMap<Oid, Vec<Ref>> = HashMap::new();
     for c in &commits {
@@ -232,7 +243,6 @@ pub fn get_graph_layout(
         palette: graph_palette,
     };
 
-    let stashes = repo.stash_list().map_err(|e| e.to_string())?;
     let calc = GraphCalculator::new(commits, refs_map, stashes, options);
     let mut layout = calc.calculate_layout();
 

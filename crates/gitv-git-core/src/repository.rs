@@ -5,7 +5,11 @@ use std::path::Path;
 
 pub trait Repository {
     fn info(&self) -> Result<RepositoryInfo, GitError>;
-    fn commits(&self, max_count: Option<usize>) -> Result<Vec<CommitInfo>, GitError>;
+    fn commits(
+        &self,
+        max_count: Option<usize>,
+        extra_tips: &[Oid],
+    ) -> Result<Vec<CommitInfo>, GitError>;
     fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError>;
     fn refs(&self) -> Result<Vec<Ref>, GitError>;
     fn stash_list(&self) -> Result<Vec<StashEntry>, GitError>;

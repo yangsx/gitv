@@ -628,7 +628,7 @@
 	async function onStashSelect(stash: StashEntry) {
 		selectedStash = stash;
 		comparisonOid.set(null);
-		selectedOid.set(stash.parent_oid);
+		selectedOid.set(stash.oid);
 		commitDetails = null;
 		detailsLoading = true;
 		operationState.set('LoadingDetails');

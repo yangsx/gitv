@@ -9,6 +9,7 @@ pub struct CommitStream {
     exhausted: bool,
     walk_initialized: bool,
     head_consumed: usize,
+    extra_tips: Vec<Oid>,
 }
 
 impl CommitStream {
@@ -20,7 +21,13 @@ impl CommitStream {
             exhausted: false,
             walk_initialized: false,
             head_consumed: 0,
+            extra_tips: Vec::new(),
         }
+    }
+
+    pub fn with_extra_tips(mut self, extra_tips: Vec<Oid>) -> Self {
+        self.extra_tips = extra_tips;
+        self
     }
 
     pub fn has_more(&self) -> bool {
@@ -29,7 +36,7 @@ impl CommitStream {
 
     pub fn next_batch(&mut self, count: usize) -> Result<Option<Vec<CommitInfo>>, GitError> {
         if !self.walk_initialized {
-            self.buffer = self.repo.commits(None)?;
+            self.buffer = self.repo.commits(None, &self.extra_tips)?;
             self.walk_initialized = true;
             if self.buffer.is_empty() {
                 self.exhausted = true;
