@@ -254,6 +254,9 @@
 			repoPath = repoRoot;
 			repoInfo.set(data.repo_info);
 			repoLoaded = true;
+			if (data.repo_info.head_commit) {
+				onSelectCommit(data.repo_info.head_commit);
+			}
 			commits = data.commits;
 			graphLayout = data.graph_layout;
 			allRefs = data.refs;
