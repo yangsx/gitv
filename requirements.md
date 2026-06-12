@@ -175,7 +175,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 5. THE gitv_Application SHALL provide a status bar showing repository information
 6. THE gitv_Application SHALL support customizable font sizes for commit messages and diffs
 7. THE gitv_Application SHALL provide a preferences/settings button accessible from both the welcome screen and the main layout
-8. THE settings modal SHALL include: theme selection, font size, keyboard shortcut customization, and language selection
+8. THE settings modal SHALL include: theme selection, font size, and language selection
 
 ### Requirement 12: Repository Status Display
 
@@ -199,7 +199,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. THE gitv_Application SHALL support navigating between commits using arrow keys
 3. THE gitv_Application SHALL support jumping to the next/previous branch in the commit list
 4. THE gitv_Application SHALL display a keyboard shortcut help dialog
-5. THE gitv_Application SHALL support customizable keyboard shortcuts
+5. THE gitv_Application SHALL display keyboard shortcuts in a read-only help dialog
 
 ### Requirement 14: Accessibility
 
@@ -883,7 +883,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 4. THE gitv_Application SHALL write logs to a rotating file in the platform-appropriate log directory, with a maximum file size of 10MB and at most 3 rotated files
 5. EACH Tauri IPC command invocation SHALL be traced with its name, input parameters (excluding repo path for brevity), duration, and result (ok/error)
 6. THE frontend SHALL forward `console.warn` and `console.error` to the Rust logging subsystem so that all logs are in one place
-7. THE settings modal SHALL display the log file path so users can locate it for bug reports
+7. THE application SHALL display the log file path in an info dialog so users can locate it for bug reports
 
 ### Requirement 69: Debug and Performance Overlay
 
@@ -909,5 +909,5 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 2. THE gitv_Application SHALL install a frontend error handler that captures: error message, stack trace, browser/webview version, and current route/component
 3. WHEN a crash occurs, THE gitv_Application SHALL write the diagnostic information to a crash log file in the platform-appropriate log directory, separate from the rotating log file
 4. THE gitv_Application SHALL retain at most 5 crash log files, evicting the oldest
-5. THE settings modal SHALL display a button to open the log directory, making it easy for users to attach logs to bug reports
+5. THE application SHALL display a button to open the log directory in an info dialog, making it easy for users to attach logs to bug reports
 6. THE gitv_Application SHALL NOT include any personally identifiable information or repository content in crash logs (only metadata: paths, SHAs, error messages, stack traces)

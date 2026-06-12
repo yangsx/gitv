@@ -4,9 +4,10 @@
 	interface Props {
 		onopensettings?: () => void;
 		onrefresh?: () => void;
+		onopeninfo?: () => void;
 	}
 
-	let { onopensettings, onrefresh }: Props = $props();
+	let { onopensettings, onrefresh, onopeninfo }: Props = $props();
 </script>
 
 <div class="flex items-center gap-1" role="toolbar" aria-label={$t('toolbar.aria')}>
@@ -43,6 +44,21 @@
 				stroke-linejoin="round"
 				stroke-width="2"
 				d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+			/>
+		</svg>
+	</button>
+	<button
+		class="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+		onclick={onopeninfo}
+		title={$t('toolbar.info')}
+		aria-label={$t('toolbar.info_aria')}
+	>
+		<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+			<path
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				stroke-width="2"
+				d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
 			/>
 		</svg>
 	</button>

@@ -5,7 +5,16 @@
 		"refresh": "刷新",
 		"refresh_aria": "刷新仓库",
 		"preferences": "打开偏好设置",
-		"preferences_aria": "打开偏好设置"
+		"preferences_aria": "打开偏好设置",
+		"info": "信息",
+		"info_aria": "打开信息对话框"
+	},
+	"info": {
+		"title": "信息",
+		"version": "版本",
+		"author": "作者",
+		"license": "许可证",
+		"close_aria": "关闭信息对话框"
 	},
 	"preferences": {
 		"title": "偏好设置",

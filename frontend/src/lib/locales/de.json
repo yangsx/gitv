@@ -5,7 +5,16 @@
 		"refresh": "Aktualisieren",
 		"refresh_aria": "Repository aktualisieren",
 		"preferences": "Einstellungen öffnen",
-		"preferences_aria": "Einstellungen öffnen"
+		"preferences_aria": "Einstellungen öffnen",
+		"info": "Info",
+		"info_aria": "Info-Dialog öffnen"
+	},
+	"info": {
+		"title": "Info",
+		"version": "Version",
+		"author": "Autor",
+		"license": "Lizenz",
+		"close_aria": "Info-Dialog schließen"
 	},
 	"preferences": {
 		"title": "Einstellungen",

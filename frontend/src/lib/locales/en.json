@@ -5,7 +5,16 @@
 		"refresh": "Refresh",
 		"refresh_aria": "Refresh repository",
 		"preferences": "Open preferences",
-		"preferences_aria": "Open preferences"
+		"preferences_aria": "Open preferences",
+		"info": "Info",
+		"info_aria": "Open info dialog"
+	},
+	"info": {
+		"title": "Info",
+		"version": "Version",
+		"author": "Author",
+		"license": "License",
+		"close_aria": "Close info dialog"
 	},
 	"preferences": {
 		"title": "Preferences",

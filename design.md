@@ -1179,14 +1179,30 @@ Two-commit diff comparison for arbitrary commit pairs.
   } = $props();
 
   // Sections:
-  // Appearance: theme (dark/light), font size slider, color palette dropdown (Req 49.3)
+  // Appearance: theme (dark/light), font size number input, color palette dropdown (Req 49.3)
   // Graph: default orientation, default color mode (by-branch / by-author)
   // Behavior: auto-update check toggle (Req 51.4)
-  // Shortcuts: keyboard shortcut customization table (Req 13.5)
   // Language: language selection dropdown (Req 21.3)
-  // Advanced: log file path display (Req 68.7), "Open Log Directory" button (Req 70.5),
-  //   debug overlay toggle for release builds (Req 69.7)
   // Focus trap: Escape closes modal, Tab cycles within modal (Req 67.3)
+</script>
+```
+
+##### InfoDialog Component
+
+```svelte
+<script lang="ts">
+  let {
+    onclose,
+  }: {
+    onclose?: () => void;
+  } = $props();
+
+  // Draggable modal (no backdrop) accessible from toolbar ℹ button
+  // Sections:
+  // App Info: app name, version (via Tauri API), license
+  // Keyboard Shortcuts: read-only categorized shortcut display (Req 13.4)
+  // Logging: log file path display (Req 68.7), "Open Log Directory" button (Req 70.5)
+  // Focus: Escape closes dialog
 </script>
 ```
 

@@ -5,7 +5,7 @@
 - **Backend** (`src-tauri/`): Tauri commands for preferences, graph layout, commits, diff, repo operations, saved searches, file watching, diagnostics
 - **Git core** (`crates/gitv-git-core/`): 99 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
 - **GPU renderer** (`crates/gitv-wgpu-renderer/`): wgpu-based GPU graph renderer with WGSL shaders, Canvas 2D fallback, and user preference toggle
-- **Frontend** (`frontend/`): Svelte 5 + TypeScript with CommitGraph (canvas-based), CommitList, CommitDetailPanel (diff/whitespace controls), PreferencesModal (draggable), Toolbar, SearchBar, Sidebar, FileTree, BlamePanel, CommandPalette, ContextMenu, DebugOverlay
+- **Frontend** (`frontend/`): Svelte 5 + TypeScript with CommitGraph (canvas-based), CommitList, CommitDetailPanel (diff/whitespace controls), PreferencesModal (draggable), InfoDialog (draggable — shortcuts, logging, app info), Toolbar, SearchBar, Sidebar, FileTree, BlamePanel, CommandPalette, ContextMenu, DebugOverlay
 - **Preferences**: Persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with debounced auto-save, applies to graph/diff/view behavior
 - Architecture design in `design.md`; full requirements in `requirements.md`
 
@@ -49,7 +49,7 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Preferences persisted as JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with atomic writes; debounced frontend auto-save (300ms) avoids excessive I/O
 - Diff/whitespace controls in CommitDetailPanel use local `$state` overrides (not global preference saves); PreferencesModal sets global defaults
 - Preferences dialog is draggable (no backdrop) to allow flexible placement alongside the graph
-- Graph toolbar simplified — toggle buttons (color mode, hide merges, orientation) moved into Preferences dialog; only gear icon remains on toolbar
+- Graph toolbar simplified — toggle buttons (color mode, hide merges, orientation) moved into Preferences dialog; gear and info (ℹ) icons remain on toolbar
 - Dual renderer: wgpu GPU (WGSL shaders) with Canvas 2D fallback, user-selectable via `renderer` preference
 - Commit messages: XSS-sanitized Markdown rendering with raw/markdown toggle (Req 48.4)
 - Light theme and high contrast mode supported alongside default dark theme (Req 11.1, Req 14.3)

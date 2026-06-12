@@ -74,6 +74,7 @@
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
+	import InfoDialog from '$lib/components/InfoDialog.svelte';
 	import { initPreferences, theme, fontSize, highContrast } from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
 	import { computeHideMergeLayout } from '$lib/graph/hide-merges';
@@ -104,6 +105,7 @@
 	let selectedTag = $state<string | null>(null);
 	let showPreferences = $state(false);
 	let showShortcutHelp = $state(false);
+	let showInfo = $state(false);
 
 	let uncommittedCount = $derived(
 		workingChangesDiff ? workingChangesDiff.staged.length + workingChangesDiff.unstaged.length : 0
@@ -655,7 +657,7 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'o' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+		if ((e.key === 'O' || e.key === 'o') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
 			e.preventDefault();
 			browseForRepoNewWindow();
 			return;
@@ -693,7 +695,8 @@
 			return;
 		}
 		if (e.key === 'Escape') {
-			if (showCommandPalette || contextMenu || showShortcutHelp || showPreferences) return;
+			if (showCommandPalette || contextMenu || showShortcutHelp || showPreferences || showInfo)
+				return;
 			if (isFullscreen) {
 				isFullscreen = false;
 				return;
@@ -708,7 +711,7 @@
 			handleBranchSelect(branchNames[nextIdx]);
 			return;
 		}
-		if (e.key === 'b' && e.altKey && e.shiftKey && branchNames.length > 0) {
+		if ((e.key === 'B' || e.key === 'b') && e.altKey && e.shiftKey && branchNames.length > 0) {
 			e.preventDefault();
 			const currentIdx = selectedBranch ? branchNames.indexOf(selectedBranch) : branchNames.length;
 			const prevIdx = currentIdx > 0 ? currentIdx - 1 : branchNames.length - 1;
@@ -881,6 +884,14 @@
 					: branchNames.length;
 				const prevIdx = currentIdx > 0 ? currentIdx - 1 : branchNames.length - 1;
 				handleBranchSelect(branchNames[prevIdx]);
+			}
+		});
+		registerCommand({
+			id: 'show-info',
+			label: translate('toolbar.info'),
+			category: 'Help',
+			action: () => {
+				showInfo = true;
 			}
 		});
 	}
@@ -1092,7 +1103,7 @@
 					{:else}
 						<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
 					{/if}
-					<div class="flex justify-center">
+					<div class="flex justify-center gap-1">
 						<button
 							class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
 							onclick={() => (showPreferences = true)}
@@ -1116,6 +1127,26 @@
 									stroke-linejoin="round"
 									stroke-width="2"
 									d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+								/>
+							</svg>
+						</button>
+						<button
+							class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+							onclick={() => (showInfo = true)}
+							aria-label={$t('toolbar.info_aria')}
+						>
+							<svg
+								class="h-5 w-5"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+								aria-hidden="true"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
 								/>
 							</svg>
 						</button>
@@ -1147,7 +1178,11 @@
 						{repo.name}
 					</button>
 				{/each}
-				<Toolbar onrefresh={manualRefresh} onopensettings={() => (showPreferences = true)} />
+				<Toolbar
+					onrefresh={manualRefresh}
+					onopensettings={() => (showPreferences = true)}
+					onopeninfo={() => (showInfo = true)}
+				/>
 				{#if graphLayout}
 					<AuthorLegend layout={graphLayout} />
 				{/if}
@@ -1362,6 +1397,9 @@
 	{/if}
 	{#if showShortcutHelp}
 		<ShortcutHelp onclose={() => (showShortcutHelp = false)} />
+	{/if}
+	{#if showInfo}
+		<InfoDialog onclose={() => (showInfo = false)} />
 	{/if}
 	{#if showCommandPalette}
 		<CommandPalette onclose={() => (showCommandPalette = false)} />

@@ -22,9 +22,6 @@
 		SUPPORTED_LOCALES,
 		getLocaleSelfName
 	} from '$lib/stores/locale';
-	import { commands as commandsStore } from '$lib/stores/commands';
-	import { logPath } from '$lib/stores/debug';
-	import { openLogDirectory } from '$lib/bindings/commands';
 
 	interface Props {
 		onclose: () => void;
@@ -165,14 +162,15 @@
 	function setFontSize(e: Event) {
 		const target = e.target as HTMLInputElement;
 		const val = parseInt(target.value, 10);
-		fontSize.set(val);
+		if (isNaN(val)) {
+			target.value = String($fontSize);
+			return;
+		}
+		const clamped = Math.max(10, Math.min(24, val));
+		target.value = String(clamped);
+		fontSize.set(clamped);
 		savePreferences();
 	}
-
-	let commands = $derived($commandsStore.filter((c) => c.shortcut));
-	let shortcutCategories = $derived(
-		[...new Set(commands.map((c) => c.category ?? ''))].filter(Boolean).sort()
-	);
 </script>
 
 <svelte:window onkeydown={handleKeydown} onmousemove={onMouseMove} onmouseup={onMouseUp} />
@@ -479,21 +477,17 @@
 					</div>
 					<div class="flex items-center justify-between">
 						<span class="text-gray-300">{$t('preferences.font_size')}</span>
-						<div class="flex items-center gap-2">
-							<span class="text-gray-500 text-xs">10</span>
-							<input
-								type="range"
-								min="10"
-								max="24"
-								step="1"
-								value={$fontSize}
-								oninput={setFontSize}
-								class="w-24 h-1 appearance-none bg-gray-700 rounded-full cursor-pointer accent-blue-500"
-								aria-label={$t('preferences.font_size_aria')}
-							/>
-							<span class="text-gray-500 text-xs">24</span>
-							<span class="w-6 text-right text-gray-300 text-xs">{$fontSize}</span>
-						</div>
+						<input
+							type="number"
+							min="10"
+							max="24"
+							step="1"
+							value={$fontSize}
+							onchange={setFontSize}
+							title="10–24"
+							class="w-16 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+							aria-label={$t('preferences.font_size_aria')}
+						/>
 					</div>
 					<div class="flex items-center justify-between">
 						<span class="text-gray-300">{$t('preferences.high_contrast')}</span>
@@ -517,63 +511,6 @@
 						</button>
 					</div>
 				</div>
-			</section>
-
-			<div class="border-t border-gray-800"></div>
-
-			<!-- Keyboard Shortcuts Section -->
-			<section>
-				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">
-					{$t('preferences.section_shortcuts')}
-				</h3>
-				{#if commands.length === 0}
-					<p class="text-gray-500 italic">{$t('preferences.no_shortcuts')}</p>
-				{:else}
-					{#each shortcutCategories as cat (cat)}
-						<div class="mb-2">
-							<h4 class="text-xs text-gray-500 font-semibold mb-1">
-								{$t('shortcut_categories.' + cat)}
-							</h4>
-							<div class="space-y-1">
-								{#each commands.filter((c) => c.category === cat) as cmd (cmd.id)}
-									<div class="flex items-center justify-between">
-										<span class="text-gray-300 text-xs">{cmd.label}</span>
-										<kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-xs text-gray-400">
-											{cmd.shortcut}
-										</kbd>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/each}
-				{/if}
-			</section>
-
-			<div class="border-t border-gray-800"></div>
-
-			<!-- Logging Section -->
-			<section>
-				<h3 class="font-semibold uppercase tracking-wider text-gray-500 mb-2">
-					{$t('preferences.section_logging')}
-				</h3>
-				{#if $logPath}
-					<div class="space-y-2">
-						<div class="flex items-center gap-2">
-							<span class="text-gray-400 shrink-0">{$t('preferences.log_path')}</span>
-							<span class="truncate text-gray-300 text-[11px]" title={$logPath}>
-								{$logPath}
-							</span>
-						</div>
-						<button
-							class="rounded bg-gray-700 px-2.5 py-1 text-xs text-gray-200 hover:bg-gray-600 transition-colors"
-							onclick={() => openLogDirectory().catch(() => {})}
-						>
-							{$t('preferences.open_log_dir')}
-						</button>
-					</div>
-				{:else}
-					<p class="text-gray-500 italic">{$t('preferences.log_unavailable')}</p>
-				{/if}
 			</section>
 		</div>
 	</div>
