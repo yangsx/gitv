@@ -46,6 +46,38 @@
 	let blobPath = $state<string | null>(null);
 
 	let scrollContainer: HTMLDivElement | undefined = $state();
+	let highlightedFileIndex = $state(-1);
+	let scrollRaf: number | null = null;
+
+	function onDiffScroll() {
+		if (scrollRaf !== null) return;
+		scrollRaf = requestAnimationFrame(() => {
+			scrollRaf = null;
+			if (!scrollContainer) return;
+			const containerTop = scrollContainer.getBoundingClientRect().top;
+			let currentIndex = -1;
+			for (let i = 0; i < details.changed_files.length; i++) {
+				const section = scrollContainer.querySelector(`#diff-${i}`);
+				if (!section) continue;
+				const sectionTop = section.getBoundingClientRect().top;
+				if (sectionTop <= containerTop + 1) {
+					currentIndex = i;
+				} else {
+					break;
+				}
+			}
+			highlightedFileIndex = currentIndex;
+		});
+	}
+
+	$effect(() => {
+		if (highlightedFileIndex >= 0) {
+			const btn = document.querySelector<HTMLElement>(
+				`#file-list-panel button[data-file-index="${highlightedFileIndex}"]`
+			);
+			btn?.scrollIntoView({ block: 'nearest' });
+		}
+	});
 
 	function persistRightPanelWidth() {
 		updateLayout({ rightPanelWidth });
@@ -102,6 +134,7 @@
 		blameFilePath = null;
 		blobContent = null;
 		blobPath = null;
+		highlightedFileIndex = -1;
 		fileDiffs.clear();
 		localDiffMode = $diffMode;
 		localDiffWhitespace = $diffWhitespace;
@@ -395,7 +428,7 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 overflow-y-auto" bind:this={scrollContainer}>
+		<div class="flex-1 overflow-y-auto" bind:this={scrollContainer} onscroll={onDiffScroll}>
 			{#if activeTab === 'tree' && blobLoading}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					{$t('commit_detail.loading_content')}
@@ -646,7 +679,11 @@
 				</button>
 				{#each details.changed_files as file, i (file.path)}
 					<button
-						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
+						data-file-index={i}
+						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70 {highlightedFileIndex ===
+						i
+							? 'bg-blue-900/40'
+							: ''}"
 						aria-label={file.path +
 							', ' +
 							(CHANGE_LETTERS[file.change_type] ?? '?') +
