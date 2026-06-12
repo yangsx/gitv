@@ -130,6 +130,7 @@
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
 
 	let focusBranchOid = $state<string | null>(null);
+	let refreshSignal = $state(0);
 
 	const STAGED_OID = '__staged__';
 	const UNSTAGED_OID = '__unstaged__';
@@ -328,6 +329,7 @@
 
 	async function manualRefresh() {
 		if (!repoPath) return;
+		refreshSignal++;
 		loadRepo(repoPath);
 	}
 
@@ -669,6 +671,11 @@
 			handleBranchSelect(branchNames[prevIdx]);
 			return;
 		}
+		if ((e.key === 'r' || e.key === 'R') && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			manualRefresh();
+			return;
+		}
 		if (!$selectedOid || !commits.length) return;
 
 		const currentCommit = commits.find((c) => c.oid === $selectedOid);
@@ -730,6 +737,13 @@
 			shortcut: 'Ctrl+Q',
 			category: 'File',
 			action: quitApp
+		});
+		registerCommand({
+			id: 'refresh',
+			label: translate('page.cmd_refresh'),
+			shortcut: 'Ctrl+R',
+			category: 'File',
+			action: manualRefresh
 		});
 
 		unregisterCommandsByPrefix('recent-repo-');
@@ -1178,7 +1192,11 @@
 						/>
 					{/snippet}
 					{#snippet stash()}
-						<StashList {repoPath} onstashselect={(stash) => onSelectCommit(stash.oid)} />
+						<StashList
+							{repoPath}
+							{refreshSignal}
+							onstashselect={(stash) => onSelectCommit(stash.oid)}
+						/>
 					{/snippet}
 					{#snippet reflog()}
 						<ReflogPanel {repoPath} refs={allRefs} onentryselect={(oid) => onSelectCommit(oid)} />

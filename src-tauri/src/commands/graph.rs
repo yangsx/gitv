@@ -22,14 +22,21 @@ fn get_ref_snapshot(repo: &dyn Repository) -> HashMap<String, Oid> {
             return HashMap::new();
         }
     };
-    refs.iter()
+    let mut snapshot: HashMap<String, Oid> = refs
+        .iter()
         .filter_map(|r| match r {
             Ref::Branch(b) => Some((format!("refs/heads/{}", b.name), b.oid)),
             Ref::Tag(t) => Some((format!("refs/tags/{}", t.name), t.oid)),
             Ref::Remote(r) => Some((format!("refs/remotes/{}/{}", r.remote, r.name), r.oid)),
             Ref::Head => None,
         })
-        .collect()
+        .collect();
+    if let Ok(stashes) = repo.stash_list() {
+        for (i, stash) in stashes.iter().enumerate() {
+            snapshot.insert(format!("stash@{{{i}}}"), stash.oid);
+        }
+    }
+    snapshot
 }
 
 fn load_commits(

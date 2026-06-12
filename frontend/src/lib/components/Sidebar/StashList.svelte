@@ -5,9 +5,11 @@
 
 	let {
 		repoPath,
+		refreshSignal,
 		onstashselect
 	}: {
 		repoPath: string;
+		refreshSignal: number;
 		onstashselect?: (_stash: StashEntry) => void;
 	} = $props();
 
@@ -16,6 +18,7 @@
 
 	$effect(() => {
 		void repoPath;
+		void refreshSignal;
 		loadStashes();
 	});
 
