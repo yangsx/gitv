@@ -647,12 +647,12 @@ impl Repository for GixRepository {
             let item = item.map_err(|e| GitError::Gix(e.to_string()))?;
             match item {
                 gix::status::Item::TreeIndex(change) => {
-                    if let Some(fc) = tree_index_change_to_file_change(&change) {
+                    if let Some(fc) = tree_index_change_to_file_change(&repo, &change) {
                         staged.push(fc);
                     }
                 }
                 gix::status::Item::IndexWorktree(iw_item) => {
-                    if let Some(fc) = index_worktree_item_to_file_change(&iw_item) {
+                    if let Some(fc) = index_worktree_item_to_file_change(&repo, &iw_item) {
                         unstaged.push(fc);
                     }
                 }
@@ -1351,7 +1351,10 @@ fn is_entry_mode_submodule(mode: gix_object::tree::EntryMode) -> bool {
     matches!(mode.kind(), gix_object::tree::EntryKind::Commit)
 }
 
-fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<FileChange> {
+fn tree_index_change_to_file_change(
+    repo: &gix::Repository,
+    change: &gix_diff::index::Change,
+) -> Option<FileChange> {
     let is_dir = |mode: gix_index::entry::Mode| mode.contains(gix_index::entry::Mode::DIR);
     let is_sub = |mode: gix_index::entry::Mode| mode.contains(gix_index::entry::Mode::COMMIT);
 
@@ -1359,57 +1362,85 @@ fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<
         gix_diff::index::ChangeRef::Addition {
             entry_mode,
             location,
+            id,
             ..
         } => {
             if is_dir(*entry_mode) {
                 return None;
             }
+            let sub = is_sub(*entry_mode);
             Some(FileChange {
                 path: PathBuf::from(location.to_string()),
                 old_path: None,
-                change_type: if is_sub(*entry_mode) {
+                change_type: if sub {
                     ChangeType::SubmoduleUpdated
                 } else {
                     ChangeType::Added
                 },
-                additions: 0,
+                additions: if sub {
+                    0
+                } else {
+                    let oid = gix::ObjectId::from(&**id);
+                    count_blob_lines(repo, &oid)
+                },
                 deletions: 0,
                 is_binary: false,
-                is_submodule: is_sub(*entry_mode),
+                is_submodule: sub,
             })
         }
         gix_diff::index::ChangeRef::Deletion {
             entry_mode,
             location,
+            id,
             ..
         } => {
             if is_dir(*entry_mode) {
                 return None;
             }
+            let sub = is_sub(*entry_mode);
             Some(FileChange {
                 path: PathBuf::from(location.to_string()),
                 old_path: None,
-                change_type: if is_sub(*entry_mode) {
+                change_type: if sub {
                     ChangeType::SubmoduleUpdated
                 } else {
                     ChangeType::Deleted
                 },
                 additions: 0,
-                deletions: 0,
+                deletions: if sub {
+                    0
+                } else {
+                    let oid = gix::ObjectId::from(&**id);
+                    count_blob_lines(repo, &oid)
+                },
                 is_binary: false,
-                is_submodule: is_sub(*entry_mode),
+                is_submodule: sub,
             })
         }
         gix_diff::index::ChangeRef::Modification {
             previous_entry_mode,
             entry_mode,
             location,
+            previous_id,
+            id,
             ..
         } => {
             if is_dir(*previous_entry_mode) || is_dir(*entry_mode) {
                 return None;
             }
             let sub = is_sub(*previous_entry_mode) || is_sub(*entry_mode);
+            let (additions, deletions) = if sub {
+                (0, 0)
+            } else {
+                let old_oid = gix::ObjectId::from(&**previous_id);
+                let new_oid = gix::ObjectId::from(&**id);
+                let old_lines = count_blob_lines(repo, &old_oid);
+                let new_lines = count_blob_lines(repo, &new_oid);
+                (
+                    new_lines.saturating_sub(old_lines),
+                    old_lines.saturating_sub(new_lines),
+                )
+            };
             Some(FileChange {
                 path: PathBuf::from(location.to_string()),
                 old_path: None,
@@ -1418,8 +1449,8 @@ fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<
                 } else {
                     ChangeType::Modified
                 },
-                additions: 0,
-                deletions: 0,
+                additions,
+                deletions,
                 is_binary: false,
                 is_submodule: sub,
             })
@@ -1430,12 +1461,26 @@ fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<
             copy,
             source_entry_mode,
             entry_mode,
+            source_id,
+            id,
             ..
         } => {
             if is_dir(*source_entry_mode) || is_dir(*entry_mode) {
                 return None;
             }
             let sub = is_sub(*source_entry_mode) || is_sub(*entry_mode);
+            let (additions, deletions) = if sub {
+                (0, 0)
+            } else {
+                let old_oid = gix::ObjectId::from(&**source_id);
+                let new_oid = gix::ObjectId::from(&**id);
+                let old_lines = count_blob_lines(repo, &old_oid);
+                let new_lines = count_blob_lines(repo, &new_oid);
+                (
+                    new_lines.saturating_sub(old_lines),
+                    old_lines.saturating_sub(new_lines),
+                )
+            };
             Some(FileChange {
                 path: PathBuf::from(location.to_string()),
                 old_path: Some(PathBuf::from(source_location.to_string())),
@@ -1444,8 +1489,8 @@ fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<
                 } else {
                     ChangeType::Renamed
                 },
-                additions: 0,
-                deletions: 0,
+                additions,
+                deletions,
                 is_binary: false,
                 is_submodule: sub,
             })
@@ -1454,41 +1499,78 @@ fn tree_index_change_to_file_change(change: &gix_diff::index::Change) -> Option<
 }
 
 fn index_worktree_item_to_file_change(
+    repo: &gix::Repository,
     item: &gix::status::index_worktree::Item,
 ) -> Option<FileChange> {
+    let workdir = repo.workdir()?;
     match item {
         gix::status::index_worktree::Item::Modification {
             rela_path, entry, ..
-        } => Some(FileChange {
-            path: PathBuf::from(rela_path.to_string()),
-            old_path: None,
-            change_type: ChangeType::Modified,
-            additions: 0,
-            deletions: 0,
-            is_binary: false,
-            is_submodule: entry.mode.contains(gix_index::entry::Mode::COMMIT),
-        }),
+        } => {
+            let sub = entry.mode.contains(gix_index::entry::Mode::COMMIT);
+            let (additions, deletions) = if sub {
+                (0, 0)
+            } else {
+                let old_oid = entry.id;
+                let old_lines = count_blob_lines(repo, &old_oid);
+                let worktree_path = workdir.join(rela_path.to_string());
+                let new_lines = std::fs::read(&worktree_path)
+                    .map(|d| count_lines_in_data(&d))
+                    .unwrap_or(0);
+                (
+                    new_lines.saturating_sub(old_lines),
+                    old_lines.saturating_sub(new_lines),
+                )
+            };
+            Some(FileChange {
+                path: PathBuf::from(rela_path.to_string()),
+                old_path: None,
+                change_type: ChangeType::Modified,
+                additions,
+                deletions,
+                is_binary: false,
+                is_submodule: sub,
+            })
+        }
         gix::status::index_worktree::Item::Rewrite {
             dirwalk_entry,
             source,
             ..
         } => {
-            let source_path = match source {
+            let (source_path, old_lines) = match source {
                 gix::status::index_worktree::RewriteSource::RewriteFromIndex {
                     source_rela_path,
+                    source_entry,
                     ..
-                } => PathBuf::from(source_rela_path.to_string()),
+                } => {
+                    let old_oid = source_entry.id;
+                    let lines = count_blob_lines(repo, &old_oid);
+                    (PathBuf::from(source_rela_path.to_string()), lines)
+                }
                 gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry {
                     source_dirwalk_entry,
                     ..
-                } => PathBuf::from(source_dirwalk_entry.rela_path.to_string()),
+                } => {
+                    let source_worktree = workdir.join(source_dirwalk_entry.rela_path.to_string());
+                    let lines = std::fs::read(&source_worktree)
+                        .map(|d| count_lines_in_data(&d))
+                        .unwrap_or(0);
+                    (
+                        PathBuf::from(source_dirwalk_entry.rela_path.to_string()),
+                        lines,
+                    )
+                }
             };
+            let worktree_path = workdir.join(dirwalk_entry.rela_path.to_string());
+            let new_lines = std::fs::read(&worktree_path)
+                .map(|d| count_lines_in_data(&d))
+                .unwrap_or(0);
             Some(FileChange {
                 path: PathBuf::from(dirwalk_entry.rela_path.to_string()),
                 old_path: Some(source_path),
                 change_type: ChangeType::Renamed,
-                additions: 0,
-                deletions: 0,
+                additions: new_lines.saturating_sub(old_lines),
+                deletions: old_lines.saturating_sub(new_lines),
                 is_binary: false,
                 is_submodule: false,
             })
@@ -1932,12 +2014,7 @@ fn count_lines_for_change(
     )
 }
 
-fn count_blob_lines(repo: &gix::Repository, id: &gix::hash::ObjectId) -> usize {
-    let obj = match repo.find_object(*id) {
-        Ok(o) => o,
-        Err(_) => return 0,
-    };
-    let data = obj.data.as_slice();
+fn count_lines_in_data(data: &[u8]) -> usize {
     if data.iter().take(8192).any(|&b| b == 0) {
         return 0;
     }
@@ -1947,6 +2024,14 @@ fn count_blob_lines(repo: &gix::Repository, id: &gix::hash::ObjectId) -> usize {
         } else {
             1
         }
+}
+
+fn count_blob_lines(repo: &gix::Repository, id: &gix::hash::ObjectId) -> usize {
+    let obj = match repo.find_object(*id) {
+        Ok(o) => o,
+        Err(_) => return 0,
+    };
+    count_lines_in_data(obj.data.as_slice())
 }
 
 fn compute_hunks_for_change(

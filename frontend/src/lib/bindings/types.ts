@@ -272,11 +272,6 @@ export interface StashFileSummary {
 
 export type StashChangeType = 'Added' | 'Modified' | 'Deleted';
 
-export interface StashSplitDiff {
-	staged: FileDiff;
-	unstaged: FileDiff;
-}
-
 export interface Blame {
 	file_path: string;
 	lines: BlameLine[];

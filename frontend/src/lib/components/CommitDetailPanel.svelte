@@ -670,13 +670,15 @@
 
 		<div id="file-list-panel" role="tabpanel" class="flex-1 overflow-y-auto">
 			{#if activeTab === 'patch'}
-				<button
-					class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
-					aria-label={$t('commit_detail.scroll_to_comments')}
-					onclick={scrollToComments}
-				>
-					<span class="flex-1 text-gray-400">{$t('commit_detail.comments')}</span>
-				</button>
+				{#if details.body}
+					<button
+						class="flex w-full items-center gap-2 border-b border-gray-800 px-3 py-1.5 text-left text-xs hover:bg-gray-800/70"
+						aria-label={$t('commit_detail.scroll_to_comments')}
+						onclick={scrollToComments}
+					>
+						<span class="flex-1 text-gray-400">{$t('commit_detail.comments')}</span>
+					</button>
+				{/if}
 				{#each details.changed_files as file, i (file.path)}
 					<button
 						data-file-index={i}

@@ -15,7 +15,6 @@ import type {
 	Ref,
 	ReflogEntry,
 	StashEntry,
-	StashSplitDiff,
 	Blame,
 	SavedSearch,
 	WorkingChangesDiff,
@@ -166,14 +165,6 @@ export async function getReflog(path: string, refName?: string): Promise<ReflogE
 
 export async function getStashList(path: string): Promise<StashEntry[]> {
 	return timedInvoke<StashEntry[]>('get_stash_list', { path });
-}
-
-export async function getStashDiff(path: string, stashIndex: number): Promise<FileDiff> {
-	return timedInvoke<FileDiff>('get_stash_diff', { path, stashIndex });
-}
-
-export async function getStashSplitDiff(path: string, stashIndex: number): Promise<StashSplitDiff> {
-	return timedInvoke<StashSplitDiff>('get_stash_split_diff', { path, stashIndex });
 }
 
 export async function getBlame(path: string, filePath: string, atCommit?: string): Promise<Blame> {
