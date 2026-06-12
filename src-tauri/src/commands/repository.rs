@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 use tracing::instrument;
 
 const RECENT_REPOS_FILENAME: &str = "recent_repos.json";
@@ -85,7 +85,7 @@ pub fn get_recent_repositories() -> Result<Vec<RecentRepository>, String> {
 }
 
 #[tauri::command]
-#[instrument(fields(command = "open_in_new_window"))]
+#[instrument(skip(path), fields(command = "open_in_new_window"))]
 pub fn open_in_new_window(path: String) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| format!("failed to get executable path: {e}"))?;
     Command::new(exe)
@@ -93,6 +93,12 @@ pub fn open_in_new_window(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("failed to spawn new instance: {e}"))?;
     Ok(())
+}
+
+#[tauri::command]
+#[instrument(skip(app), fields(command = "quit_app"))]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]

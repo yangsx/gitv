@@ -11,6 +11,7 @@
 		getRecentRepositories,
 		saveRecentRepository,
 		openInNewWindow,
+		quitApp,
 		getStashDiff,
 		getStashSplitDiff
 	} from '$lib/bindings/commands';
@@ -692,6 +693,11 @@
 			closeRepo();
 			return;
 		}
+		if (e.key === 'q' && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			quitApp();
+			return;
+		}
 		if ((e.key === 'F1' || (e.key === '/' && (e.ctrlKey || e.metaKey))) && !showPreferences) {
 			e.preventDefault();
 			showShortcutHelp = true;
@@ -775,6 +781,13 @@
 			shortcut: 'Ctrl+W',
 			category: 'File',
 			action: closeRepo
+		});
+		registerCommand({
+			id: 'quit',
+			label: translate('page.cmd_quit'),
+			shortcut: 'Ctrl+Q',
+			category: 'File',
+			action: quitApp
 		});
 
 		unregisterCommandsByPrefix('recent-repo-');

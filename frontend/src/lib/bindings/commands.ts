@@ -53,6 +53,10 @@ export async function openInNewWindow(path: string): Promise<void> {
 	return timedInvoke<void>('open_in_new_window', { path });
 }
 
+export async function quitApp(): Promise<void> {
+	return timedInvoke<void>('quit_app');
+}
+
 export async function getCommits(path: string): Promise<CommitInfo[]> {
 	return timedInvoke<CommitInfo[]>('get_commits', { path, filter: null });
 }

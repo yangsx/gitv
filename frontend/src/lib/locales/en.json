@@ -147,6 +147,7 @@
 		"cmd_open_repo": "Open Repository…",
 		"cmd_open_repo_new_window": "Open Repository in New Window…",
 		"cmd_close_repo": "Close Repository",
+		"cmd_quit": "Quit",
 		"btn_open_repo": "Open",
 		"open_in_new_window": "Open in New Window",
 		"cmd_toggle_merges": "Toggle merge commits",
