@@ -113,19 +113,20 @@
 	let rowHeight = $derived(Math.round(ROW_HEIGHT_REM * $fontSize));
 
 	let branchNames = $derived(
-		allRefs
-			.filter((r) => 'Branch' in r)
-			.map((r) => r.Branch!.name)
-			.sort((a, b) => {
-				const aIsHead = allRefs.some(
-					(r) => 'Branch' in r && r.Branch?.name === a && r.Branch?.is_head
-				);
-				const bIsHead = allRefs.some(
-					(r) => 'Branch' in r && r.Branch?.name === b && r.Branch?.is_head
-				);
-				if (aIsHead !== bIsHead) return aIsHead ? -1 : 1;
-				return a.localeCompare(b);
-			})
+		(() => {
+			const branches = allRefs.filter((r) => 'Branch' in r);
+			const headNames = new Set(
+				branches.filter((r) => r.Branch!.is_head).map((r) => r.Branch!.name)
+			);
+			return branches
+				.map((r) => r.Branch!.name)
+				.sort((a, b) => {
+					const aIsHead = headNames.has(a);
+					const bIsHead = headNames.has(b);
+					if (aIsHead !== bIsHead) return aIsHead ? -1 : 1;
+					return a.localeCompare(b);
+				});
+		})()
 	);
 	let sidebarWidth = $state(savedLayout?.sidebarWidth ?? 220);
 

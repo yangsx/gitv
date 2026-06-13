@@ -190,17 +190,14 @@
 
 			const imageData = ctx.createImageData(physW, physH);
 			const data = imageData.data;
-			let src: Uint8Array | number[];
-			if (pixels instanceof Uint8Array) {
-				src = pixels;
-			} else if (pixels instanceof ArrayBuffer) {
-				src = new Uint8Array(pixels);
-			} else {
-				src = pixels as number[];
-			}
-			for (let i = 0; i < src.length && i < data.length; i++) {
-				data[i] = src[i];
-			}
+			const src =
+				pixels instanceof Uint8Array
+					? pixels
+					: pixels instanceof ArrayBuffer
+						? new Uint8Array(pixels)
+						: new Uint8Array(pixels as number[]);
+			const len = Math.min(src.length, data.length);
+			data.set(src.subarray(0, len));
 			ctx.putImageData(imageData, 0, 0);
 
 			overdrawEdgeHighlights();

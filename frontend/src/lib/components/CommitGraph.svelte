@@ -89,9 +89,9 @@
 		const startRow = visibleStart;
 		const endRow = visibleEnd;
 
-		for (const edge of l.edges) {
+		for (let edgeIdx = 0; edgeIdx < l.edges.length; edgeIdx++) {
+			const edge = l.edges[edgeIdx];
 			if (!isEdgeVisible(edge, startRow, endRow)) continue;
-			const edgeIdx = l.edges.indexOf(edge);
 			const isSelected = edgeIdx === selectedEdgeIdx;
 			const isHovered = edgeIdx === hoveredEdgeIdx && !isSelected;
 			drawEdge(ctx, edge, sLaneWidth, sPadding, startRow, rowHeight, isHovered, isSelected);

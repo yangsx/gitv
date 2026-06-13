@@ -53,29 +53,31 @@
 
 	let currentCommit = $state<string | null>(null);
 
-	function groupByCommit() {
-		if (!blame) return [];
-		const groups: {
-			oid: string;
-			author: string;
-			date: string;
-			lines: { num: number; content: string }[];
-		}[] = [];
-		let current: (typeof groups)[0] | null = null;
-		for (const line of blame.lines) {
-			if (!current || current.oid !== line.commit_oid) {
-				current = {
-					oid: line.commit_oid,
-					author: line.author.name,
-					date: formatTime(line.time),
-					lines: []
-				};
-				groups.push(current);
+	let blameGroups = $derived(
+		(() => {
+			if (!blame) return [];
+			const groups: {
+				oid: string;
+				author: string;
+				date: string;
+				lines: { num: number; content: string }[];
+			}[] = [];
+			let current: (typeof groups)[0] | null = null;
+			for (const line of blame.lines) {
+				if (!current || current.oid !== line.commit_oid) {
+					current = {
+						oid: line.commit_oid,
+						author: line.author.name,
+						date: formatTime(line.time),
+						lines: []
+					};
+					groups.push(current);
+				}
+				current.lines.push({ num: line.line_number, content: line.content });
 			}
-			current.lines.push({ num: line.line_number, content: line.content });
-		}
-		return groups;
-	}
+			return groups;
+		})()
+	);
 </script>
 
 <div class="absolute inset-0 z-50 flex flex-col bg-gray-900">
@@ -120,7 +122,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each groupByCommit() as group (group.oid + '-' + group.lines[0]?.num)}
+					{#each blameGroups as group (group.oid + '-' + group.lines[0]?.num)}
 						{#each group.lines as line, i (line.num)}
 							<tr
 								class={currentCommit === group.oid
