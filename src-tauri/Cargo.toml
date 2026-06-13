@@ -16,7 +16,6 @@ chrono = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 dirs = { workspace = true }
 gitv-git-core = { workspace = true }
-postcard = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { version = "2", features = [] }
