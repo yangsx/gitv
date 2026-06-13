@@ -8,7 +8,7 @@
 		sortAsc,
 		searchShowMode
 	} from '$lib/stores/repository';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast, updateToast, dismissToast } from '$lib/stores/toast';
 	import { t, translate } from '$lib/stores/locale';
 
 	interface Props {
@@ -27,6 +27,7 @@
 	let filePath = $state('');
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let containerRef: HTMLDivElement | undefined = $state();
+	let searchToastId: number | null = null;
 
 	function handleInput() {
 		if (debounceTimer) clearTimeout(debounceTimer);
@@ -48,6 +49,10 @@
 			authorFilter = '';
 			searchQuery.set(null);
 			searchResults.set([]);
+			if (searchToastId !== null) {
+				dismissToast(searchToastId);
+				searchToastId = null;
+			}
 		}
 	}
 
@@ -55,6 +60,10 @@
 		if (!inputText && !authorFilter && !shaPrefix && !dateFrom && !dateTo && !filePath) {
 			searchQuery.set(null);
 			searchResults.set([]);
+			if (searchToastId !== null) {
+				dismissToast(searchToastId);
+				searchToastId = null;
+			}
 			return;
 		}
 
@@ -78,12 +87,14 @@
 		try {
 			const results = await searchCommits(repoPath, query);
 			searchResults.set(results);
-			showToast(
-				translate(results.length === 1 ? 'search.matches' : 'search.matches_plural', {
-					count: results.length
-				}),
-				'info'
-			);
+			const msg = translate(results.length === 1 ? 'search.matches' : 'search.matches_plural', {
+				count: results.length
+			});
+			if (searchToastId !== null) {
+				updateToast(searchToastId, msg, 'info');
+			} else {
+				searchToastId = showToast(msg, 'info');
+			}
 		} catch {
 			searchResults.set([]);
 			showToast(translate('page.search_failed'), 'error');
@@ -101,6 +112,10 @@
 		filePath = '';
 		searchQuery.set(null);
 		searchResults.set([]);
+		if (searchToastId !== null) {
+			dismissToast(searchToastId);
+			searchToastId = null;
+		}
 	}
 
 	function handleClickOutside(e: MouseEvent) {
