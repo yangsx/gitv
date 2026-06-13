@@ -2,6 +2,9 @@
 	import { t } from '$lib/stores/locale';
 	import type { Blame } from '$lib/bindings/types';
 	import { getBlame } from '$lib/bindings/commands';
+	import { createGenerationGuard } from '$lib/utils/async-guard';
+
+	const loadGen = createGenerationGuard();
 
 	let {
 		repoPath,
@@ -26,14 +29,16 @@
 	});
 
 	async function loadBlame() {
+		const gen = loadGen.next();
 		loading = true;
 		error = '';
 		try {
-			blame = await getBlame(repoPath, filePath, atCommit);
+			const result = await getBlame(repoPath, filePath, atCommit);
+			if (!loadGen.isStale(gen)) blame = result;
 		} catch (e: unknown) {
-			error = e instanceof Error ? e.message : String(e);
+			if (!loadGen.isStale(gen)) error = e instanceof Error ? e.message : String(e);
 		} finally {
-			loading = false;
+			if (!loadGen.isStale(gen)) loading = false;
 		}
 	}
 

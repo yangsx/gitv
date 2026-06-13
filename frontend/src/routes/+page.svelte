@@ -556,6 +556,11 @@
 			} catch {
 				workingChangesDiff = null;
 			}
+			if (oid !== $selectedOid) {
+				detailsLoading = false;
+				operationState.set('Idle');
+				return;
+			}
 			const files: FileChange[] =
 				oid === STAGED_OID
 					? (workingChangesDiff?.staged ?? [])

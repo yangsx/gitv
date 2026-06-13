@@ -19,6 +19,9 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { t, translate, locale } from '$lib/stores/locale';
 	import { renderMarkdown } from '$lib/utils/markdown';
+	import { createGenerationGuard } from '$lib/utils/async-guard';
+
+	const diffGen = createGenerationGuard();
 
 	interface Props {
 		details: CommitDetails;
@@ -145,6 +148,7 @@
 	});
 
 	async function loadAllDiffs() {
+		const gen = diffGen.next();
 		if (details.changed_files.length === 0) return;
 		diffsLoading = true;
 
@@ -156,6 +160,7 @@
 					localDiffMode,
 					localDiffWhitespace
 				);
+				if (diffGen.isStale(gen)) return;
 				const map = new SvelteMap<string, FileDiff>();
 				for (const diff of diffs) {
 					map.set(diff.path, diff);
@@ -163,9 +168,9 @@
 				fileDiffs.clear();
 				for (const [k, v] of map) fileDiffs.set(k, v);
 			} catch {
-				fileDiffs.clear();
+				if (!diffGen.isStale(gen)) fileDiffs.clear();
 			}
-			diffsLoading = false;
+			if (!diffGen.isStale(gen)) diffsLoading = false;
 			return;
 		}
 
@@ -194,6 +199,7 @@
 						localDiffMode,
 						localDiffWhitespace
 					);
+					if (diffGen.isStale(gen)) return;
 					results.push([file.path, diff]);
 				} catch {
 					results.push([file.path, null]);
@@ -202,6 +208,7 @@
 		}
 
 		await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+		if (diffGen.isStale(gen)) return;
 
 		const map = new SvelteMap<string, FileDiff>();
 		for (const [path, diff] of results) {

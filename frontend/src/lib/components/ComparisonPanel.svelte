@@ -3,6 +3,9 @@
 	import type { DiffSummary, FileDiff } from '$lib/bindings/types';
 	import { getDiff, getFileDiff } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
+	import { createGenerationGuard } from '$lib/utils/async-guard';
+
+	const diffGen = createGenerationGuard();
 
 	interface Props {
 		repoPath: string;
@@ -33,15 +36,17 @@
 	});
 
 	async function loadDiff() {
+		const gen = diffGen.next();
 		loading = true;
 		selectedFile = null;
 		fileDiff = null;
 		try {
-			summary = await getDiff(repoPath, fromOid, toOid);
+			const result = await getDiff(repoPath, fromOid, toOid);
+			if (!diffGen.isStale(gen)) summary = result;
 		} catch {
-			summary = null;
+			if (!diffGen.isStale(gen)) summary = null;
 		} finally {
-			loading = false;
+			if (!diffGen.isStale(gen)) loading = false;
 		}
 	}
 
