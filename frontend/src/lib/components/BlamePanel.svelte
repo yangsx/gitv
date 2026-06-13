@@ -2,7 +2,7 @@
 	import { t } from '$lib/stores/locale';
 	import type { Blame } from '$lib/bindings/types';
 	import { getBlame } from '$lib/bindings/commands';
-	import { formatDate } from '$lib/utils/format-date';
+	import { formatGitDateTime } from '$lib/utils/format-date';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 
 	const loadGen = createGenerationGuard();
@@ -60,7 +60,7 @@
 					current = {
 						oid: line.commit_oid,
 						author: line.author.name,
-						date: formatDate(line.time),
+						date: formatGitDateTime(line.time),
 						lines: []
 					};
 					groups.push(current);

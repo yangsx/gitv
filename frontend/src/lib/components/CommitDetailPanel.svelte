@@ -21,7 +21,7 @@
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 	import { showToast } from '$lib/stores/toast';
 	import { CHANGE_COLORS, CHANGE_LETTERS } from '$lib/constants';
-	import { formatDateTime } from '$lib/utils/format-date';
+	import { formatGitDateTime } from '$lib/utils/format-date';
 
 	function copyToClipboard(text: string) {
 		navigator.clipboard
@@ -499,7 +499,7 @@
 						</div>
 						<div class="text-xs text-gray-400">
 							{$t('commit_detail.date')}
-							{formatDateTime(details.info.author_time)}
+							{formatGitDateTime(details.info.author_time)}
 						</div>
 						{#if details.info.committer.name !== details.info.author.name}
 							<div class="text-xs text-gray-400">

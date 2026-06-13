@@ -2,7 +2,7 @@
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, Ref, Highlight } from '$lib/bindings/types';
 	import { STAGED_OID, UNSTAGED_OID } from '$lib/constants';
-	import { formatDate } from '$lib/utils/format-date';
+	import { formatGitDateTime } from '$lib/utils/format-date';
 
 	interface Props {
 		commit: CommitInfo;
@@ -113,7 +113,7 @@
 		aria-label={$t('commit_row.aria_label', {
 			summary: commit.summary,
 			author: commit.author.name,
-			date: formatDate(commit.commit_time)
+			date: formatGitDateTime(commit.commit_time)
 		}) +
 			(commit.refs.length > 0 ? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ') : '')}
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
@@ -144,6 +144,6 @@
 			{@html renderSummary()}
 		</span>
 		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
-		<span class="shrink-0 text-xs text-gray-600">{formatDate(commit.commit_time)}</span>
+		<span class="shrink-0 text-xs text-gray-600">{formatGitDateTime(commit.commit_time)}</span>
 	</button>
 {/if}

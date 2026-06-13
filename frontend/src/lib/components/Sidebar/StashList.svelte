@@ -2,7 +2,7 @@
 	import { t } from '$lib/stores/locale';
 	import type { StashEntry } from '$lib/bindings/types';
 	import { getStashList } from '$lib/bindings/commands';
-	import { formatDate } from '$lib/utils/format-date';
+	import { formatGitDateTime } from '$lib/utils/format-date';
 
 	let {
 		repoPath,
@@ -54,7 +54,7 @@
 						</svg>
 					</span>
 					<span class="truncate text-gray-200">{'stash@' + stash.index}</span>
-					<span class="ml-auto text-gray-500">{formatDate(stash.time)}</span>
+					<span class="ml-auto text-gray-500">{formatGitDateTime(stash.time)}</span>
 				</div>
 				<div class="mt-0.5 truncate text-gray-400">{stash.message}</div>
 				{#if stash.file_summary.length > 0}
