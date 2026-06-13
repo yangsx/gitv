@@ -1,6 +1,7 @@
 use std::backtrace::Backtrace;
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -22,7 +23,7 @@ fn get_crash_dir() -> &'static PathBuf {
     })
 }
 
-fn evict_old_crashes(dir: &PathBuf, max: usize) {
+fn evict_old_crashes(dir: &Path, max: usize) {
     let mut entries: Vec<_> = if let Ok(rd) = fs::read_dir(dir) {
         rd.filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| {

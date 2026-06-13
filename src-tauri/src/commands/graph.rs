@@ -74,6 +74,44 @@ fn load_commits(
     Ok(commits)
 }
 
+fn build_refs_map(commits: &[CommitInfo]) -> HashMap<Oid, Vec<Ref>> {
+    let mut refs_map: HashMap<Oid, Vec<Ref>> = HashMap::new();
+    for c in commits {
+        if !c.refs.is_empty() {
+            refs_map.insert(c.oid, c.refs.clone());
+        }
+    }
+    refs_map
+}
+
+fn parse_graph_options(
+    hide_merges: Option<bool>,
+    orientation: Option<String>,
+    color_mode: Option<String>,
+    palette: Option<String>,
+) -> GraphOptions {
+    let orientation = match orientation.as_deref() {
+        Some("bottom-to-top") => GraphOrientation::BottomToTop,
+        _ => GraphOrientation::TopToBottom,
+    };
+    let color_mode = match color_mode.as_deref() {
+        Some("by-author") => GraphColorMode::ByAuthor,
+        _ => GraphColorMode::ByBranch,
+    };
+    let graph_palette = match palette.as_deref() {
+        Some("deuteranopia") => GraphPalette::DeuteranopiaSafe,
+        Some("protanopia") => GraphPalette::ProtanopiaSafe,
+        Some("tritanopia") => GraphPalette::TritanopiaSafe,
+        _ => GraphPalette::Default,
+    };
+    GraphOptions {
+        hide_merges: hide_merges.unwrap_or(false),
+        orientation,
+        color_mode,
+        palette: graph_palette,
+    }
+}
+
 #[derive(Serialize)]
 pub struct LoadTiming {
     pub load_commits_ms: f64,
@@ -129,34 +167,8 @@ pub fn get_initial_data(
         .map_err(|e| format!("failed to load commits: {e}"))?;
     let load_commits_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
-    let mut refs_map: HashMap<Oid, Vec<Ref>> = HashMap::new();
-    for c in &commits {
-        if !c.refs.is_empty() {
-            refs_map.insert(c.oid, c.refs.clone());
-        }
-    }
-
-    let orientation = match orientation.as_deref() {
-        Some("bottom-to-top") => GraphOrientation::BottomToTop,
-        _ => GraphOrientation::TopToBottom,
-    };
-    let color_mode = match color_mode.as_deref() {
-        Some("by-author") => GraphColorMode::ByAuthor,
-        _ => GraphColorMode::ByBranch,
-    };
-    let graph_palette = match palette.as_deref() {
-        Some("deuteranopia") => GraphPalette::DeuteranopiaSafe,
-        Some("protanopia") => GraphPalette::ProtanopiaSafe,
-        Some("tritanopia") => GraphPalette::TritanopiaSafe,
-        _ => GraphPalette::Default,
-    };
-
-    let options = GraphOptions {
-        hide_merges: hide_merges.unwrap_or(false),
-        orientation,
-        color_mode,
-        palette: graph_palette,
-    };
+    let refs_map = build_refs_map(&commits);
+    let options = parse_graph_options(hide_merges, orientation, color_mode, palette);
 
     let t1 = Instant::now();
     let graph_layout = {
@@ -219,36 +231,8 @@ pub fn get_graph_layout(
 
     let commits = load_commits(&*repo, &repo_path, &stash_parent_tips)?;
 
-    let mut refs_map: HashMap<Oid, Vec<Ref>> = HashMap::new();
-    for c in &commits {
-        if !c.refs.is_empty() {
-            refs_map.insert(c.oid, c.refs.clone());
-        }
-    }
-
-    let orientation = match orientation.as_deref() {
-        Some("bottom-to-top") => GraphOrientation::BottomToTop,
-        _ => GraphOrientation::TopToBottom,
-    };
-
-    let color_mode = match color_mode.as_deref() {
-        Some("by-author") => GraphColorMode::ByAuthor,
-        _ => GraphColorMode::ByBranch,
-    };
-
-    let graph_palette = match palette.as_deref() {
-        Some("deuteranopia") => GraphPalette::DeuteranopiaSafe,
-        Some("protanopia") => GraphPalette::ProtanopiaSafe,
-        Some("tritanopia") => GraphPalette::TritanopiaSafe,
-        _ => GraphPalette::Default,
-    };
-
-    let options = GraphOptions {
-        hide_merges: hide_merges.unwrap_or(false),
-        orientation,
-        color_mode,
-        palette: graph_palette,
-    };
+    let refs_map = build_refs_map(&commits);
+    let options = parse_graph_options(hide_merges, orientation, color_mode, palette);
 
     let calc = GraphCalculator::new(commits, refs_map, stashes, options);
     let mut layout = calc.calculate_layout();

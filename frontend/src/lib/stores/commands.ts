@@ -14,11 +14,9 @@ export function registerCommand(cmd: Command) {
 	commands.update((cmds) => {
 		const existing = cmds.findIndex((c) => c.id === cmd.id);
 		if (existing >= 0) {
-			cmds[existing] = cmd;
-		} else {
-			cmds.push(cmd);
+			return [...cmds.slice(0, existing), cmd, ...cmds.slice(existing + 1)];
 		}
-		return cmds;
+		return [...cmds, cmd];
 	});
 }
 
@@ -28,12 +26,13 @@ export function getCommands(): Command[] {
 
 export function unregisterCommandsByPrefix(prefix: string) {
 	commands.update((cmds) => {
-		for (let i = cmds.length - 1; i >= 0; i--) {
-			if (cmds[i].id.startsWith(prefix)) {
-				cmds.splice(i, 1);
+		const result: Command[] = [];
+		for (const c of cmds) {
+			if (!c.id.startsWith(prefix)) {
+				result.push(c);
 			}
 		}
-		return cmds;
+		return result;
 	});
 }
 

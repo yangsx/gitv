@@ -19,22 +19,12 @@ const DEFAULTS: AppPreferences = {
 	language: 'en'
 };
 
-export const theme = writable<'dark' | 'light'>(DEFAULTS.theme as 'dark' | 'light');
-export const diffMode = writable<'normal' | 'word-diff' | 'stat-only'>(
-	DEFAULTS.diff_mode as 'normal' | 'word-diff' | 'stat-only'
-);
+export const theme = writable<'dark' | 'light'>(DEFAULTS.theme);
+export const diffMode = writable<'normal' | 'word-diff' | 'stat-only'>(DEFAULTS.diff_mode);
 export const diffWhitespace = writable<
 	'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
->(
-	DEFAULTS.diff_whitespace as
-		| 'none'
-		| 'ignore-space-change'
-		| 'ignore-all-space'
-		| 'ignore-blank-lines'
-);
-export const diffViewMode = writable<'unified' | 'side-by-side'>(
-	DEFAULTS.diff_view_mode as 'unified' | 'side-by-side'
-);
+>(DEFAULTS.diff_whitespace);
+export const diffViewMode = writable<'unified' | 'side-by-side'>(DEFAULTS.diff_view_mode);
 export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);

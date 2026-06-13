@@ -356,8 +356,8 @@ export interface RenderEdge {
 	color_g: number;
 	color_b: number;
 	is_dimmed: boolean;
-	edge_type: string;
-	edge_style: string;
+	edge_type: EdgeType;
+	edge_style: EdgeStyle;
 }
 
 export interface RenderGraphInput {
