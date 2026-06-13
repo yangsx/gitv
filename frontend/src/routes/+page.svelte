@@ -676,6 +676,18 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		const target = e.target as HTMLElement | null;
+		if (
+			target &&
+			(target.tagName === 'INPUT' ||
+				target.tagName === 'TEXTAREA' ||
+				target.tagName === 'SELECT' ||
+				target.isContentEditable)
+		) {
+			if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+				return;
+			}
+		}
 		if ((e.key === 'O' || e.key === 'o') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
 			e.preventDefault();
 			browseForRepoNewWindow();
