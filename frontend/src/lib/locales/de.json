@@ -82,6 +82,7 @@
 		"tree": "Baum",
 		"loading": "Diffs werden geladen...",
 		"no_changed_files": "Keine geänderten Dateien",
+		"too_many_changed_files": "Zu viele geänderte Dateien ({count}) — Diff nicht geladen",
 		"binary_not_displayed": "Binärdatei (nicht angezeigt)",
 		"blame": "Blame",
 		"comments": "Kommentare",

@@ -11,9 +11,10 @@ function escapeHtml(text: string): string {
 
 const DANGEROUS_PROTOCOLS = /^\s*(javascript|data|vbscript)\s*:/i;
 
-const DANGEROUS_TAGS = /<\/?(?:script|iframe|object|embed|form|input|style|link|meta|base)[^>]*>/gi;
+const DANGEROUS_TAGS =
+	/<\/?(?:script|iframe|object|embed|form|input|style|link|meta|base|svg|math)[^>]*>/gi;
 
-const EVENT_HANDLER_ATTRS = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+const EVENT_HANDLER_ATTRS = /\s*\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 
 const marked = new Marked({
 	gfm: true,

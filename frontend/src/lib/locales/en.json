@@ -80,6 +80,7 @@
 		"tree": "Tree",
 		"loading": "Loading diffs...",
 		"no_changed_files": "No changed files",
+		"too_many_changed_files": "Too many changed files ({count}) — diff not loaded",
 		"binary_not_displayed": "Binary file (not displayed)",
 		"blame": "Blame",
 		"comments": "Comments",

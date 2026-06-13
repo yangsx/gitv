@@ -51,6 +51,7 @@
 
 	let fileDiffs = new SvelteMap<string, FileDiff>();
 	let diffsLoading = $state(false);
+	let tooManyFiles = $state(0);
 	let blobContent = $state<string | null>(null);
 	let blobLoading = $state(false);
 	let blobPath = $state<string | null>(null);
@@ -156,7 +157,11 @@
 
 	async function loadAllDiffs() {
 		const gen = diffGen.next();
-		if (details.changed_files.length === 0) return;
+		if (details.changed_files.length === 0) {
+			tooManyFiles = 0;
+			return;
+		}
+		tooManyFiles = 0;
 		diffsLoading = true;
 
 		if (details.info.oid === '__staged__' || details.info.oid === '__unstaged__') {
@@ -185,6 +190,7 @@
 		const files = details.changed_files;
 
 		if (files.length > 100) {
+			tooManyFiles = files.length;
 			diffsLoading = false;
 			return;
 		}
@@ -540,7 +546,11 @@
 					</div>
 				{/if}
 
-				{#if diffsLoading}
+				{#if tooManyFiles > 0}
+					<div class="flex items-center justify-center py-4 text-sm text-amber-500">
+						{$t('commit_detail.too_many_changed_files', { count: tooManyFiles })}
+					</div>
+				{:else if diffsLoading}
 					<div class="flex items-center justify-center py-4 text-sm text-gray-500">
 						{$t('commit_detail.loading')}
 					</div>
@@ -548,7 +558,7 @@
 					<div class="flex items-center justify-center py-4 text-sm text-gray-500">
 						{$t('commit_detail.no_changed_files')}
 					</div>
-				{:else}
+				{:else if tooManyFiles === 0}
 					{#each details.changed_files as file, i (file.path)}
 						{@const diff = fileDiffs.get(file.path)}
 						<div id={fileHeaderId(i)} class="border-b border-gray-800">

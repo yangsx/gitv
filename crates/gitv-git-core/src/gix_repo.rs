@@ -26,7 +26,9 @@ impl GixRepository {
     pub fn open(path: &Path) -> Result<Self, GitError> {
         let repo = gix::discover(path).map_err(|e| {
             // gix doesn't expose a structured error kind for this; string match is fragile
-            // but currently the only way to distinguish "not a git repo" from other errors
+            // but currently the only way to distinguish "not a git repo" from other errors.
+            // When adding new patterns, add them to the classification block below.
+            // If gix later adds a structured error type, replace this entire block.
             let err_msg = e.to_string();
             let lower = err_msg.to_lowercase();
             if lower.contains("not a git")
@@ -36,6 +38,9 @@ impl GixRepository {
             {
                 GitError::NotAGitRepository(path.display().to_string())
             } else {
+                // Unrecognized error — return as opaque string. This covers permission
+                // errors, filesystem errors, corrupt .git, etc. These should surface
+                // in the UI as a generic error, not a misleading "not a git repo".
                 GitError::Gix(err_msg)
             }
         })?;

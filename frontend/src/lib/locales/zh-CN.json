@@ -80,6 +80,7 @@
 		"tree": "文件树",
 		"loading": "正在加载差异...",
 		"no_changed_files": "没有更改的文件",
+		"too_many_changed_files": "更改文件过多 ({count}) — 未加载差异",
 		"binary_not_displayed": "二进制文件（不显示）",
 		"blame": "追溯",
 		"comments": "评论",
