@@ -229,6 +229,7 @@ pub struct FileDiffSummary {
     pub additions: usize,
     pub deletions: usize,
     pub is_binary: bool,
+    pub is_submodule: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

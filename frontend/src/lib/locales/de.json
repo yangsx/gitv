@@ -174,6 +174,7 @@
 		"staged": "Bereitgestellte Änderungen",
 		"cmd_debug": "Debug-Overlay umschalten",
 		"cmd_fullscreen": "Vollbildmodus umschalten",
+		"cmd_compare_commits": "Commits vergleichen",
 		"cmd_palette_default": "Grafikpalette: Standard",
 		"cmd_palette_deuteranopia": "Grafikpalette: Deuteranopie-sicher",
 		"cmd_palette_protanopia": "Grafikpalette: Protanopie-sicher",
@@ -186,7 +187,9 @@
 		"uncommitted_changes_plural": "{count} nicht gespeichert",
 		"commits_label": "{count} Commits",
 		"statusbar_aria": "Statusleiste",
-		"settings_aria": "Einstellungen öffnen"
+		"settings_aria": "Einstellungen öffnen",
+		"comparing": "Vergleich",
+		"compare_mode": "Commit zum Vergleichen auswählen"
 	},
 	"commit_graph": {
 		"aria": "Commit-Grafik"
@@ -315,16 +318,12 @@
 	},
 	"comparison": {
 		"loading": "Vergleich wird geladen...",
-		"loading_diff": "Diff wird geladen...",
 		"files_changed": "Dateien geändert",
-		"binary": "Binärdatei (nicht angezeigt)",
-		"no_changes": "Keine Inhaltsänderungen",
-		"truncated": "Diff bei {count} Zeilen abgeschnitten",
 		"show_full": "Vollständigen Diff anzeigen",
-		"select_file": "Datei zum Anzeigen des Diffs auswählen",
 		"failed": "Vergleich konnte nicht geladen werden",
-		"changed_aria": "Geänderte Dateien",
-		"binary_label": "Binär"
+		"binary_label": "Binär",
+		"close": "Vergleich schließen",
+		"swap": "Vergleichsrichtung tauschen"
 	},
 	"diff_viewer": {
 		"side_by_side_aria": "Nebeneinander-Diff",

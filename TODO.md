@@ -17,13 +17,6 @@ UI to select start/end commits defining a range; display only commits in range.
 - Quick-select "commits since last tag"
 - Exclude specific commits (negation)
 
-### Req 35: Two-Commit Comparison (Multi-Selection)
-- Ctrl+Click / Cmd+Click to select a second commit in CommitList or graph
-- Context menu "Compare with selected" action
-- Visual distinction for compared commits
-- Escape clears comparison
-- ComparisonPanel.svelte exists (AC 35.3) but lacks multi-select affordances
-
 ### Req 41: Saved Searches — Frontend UI
 Backend `save_search`/`list_saved_searches`/`delete_saved_search` exist. Missing:
 - Save button in SearchBar

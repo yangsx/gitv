@@ -5,6 +5,7 @@
 	import {
 		getGraphLayout,
 		getCommitDetails,
+		getDiff,
 		getInitialData,
 		getWorkingChanges,
 		getStartupInfo,
@@ -17,6 +18,7 @@
 		CommitInfo,
 		GraphLayout,
 		CommitDetails,
+		DiffSummary,
 		Ref,
 		WorkingChangesDiff,
 		FileChange,
@@ -41,7 +43,6 @@
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
-	import ComparisonPanel from '$lib/components/ComparisonPanel.svelte';
 	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
 	import Sidebar from '$lib/components/Sidebar/Sidebar.svelte';
 	import RefList from '$lib/components/Sidebar/RefList.svelte';
@@ -84,6 +85,8 @@
 	let layoutGeneration = 0;
 	let commitDetails = $state<CommitDetails | null>(null);
 	let detailsLoading = $state(false);
+	let comparisonDetails = $state<CommitDetails | null>(null);
+	let comparisonLoading = $state(false);
 	let savedLayout = typeof window !== 'undefined' ? getClampedLayout() : null;
 	let detailPanelHeight = $state(savedLayout?.detailPanelHeight ?? 400);
 	let viewportHeight = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
@@ -93,6 +96,7 @@
 	let sidebarGotoTab = $state<'refs' | 'stash' | 'reflog' | 'history'>('refs');
 	let workingChangesDiff = $state<WorkingChangesDiff | null>(null);
 	let showCommandPalette = $state(false);
+	let compareMode = $state(false);
 	let contextMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 	let isDragging = $state(false);
 	let isFullscreen = $state(false);
@@ -207,11 +211,13 @@
 		error.set(null);
 		loadError = null;
 		comparisonOid.set(null);
+		compareMode = false;
 		commits = [];
 		graphLayout = null;
 		allRefs = [];
 		workingChangesDiff = null;
 		commitDetails = null;
+		comparisonDetails = null;
 		selectedBranch = null;
 		selectedRemote = null;
 		selectedTag = null;
@@ -547,15 +553,63 @@
 		root.style.fontSize = `${$fontSize}px`;
 	});
 
+	$effect(() => {
+		const cOid = $comparisonOid;
+		const sOid = $selectedOid;
+		void cOid;
+		void sOid;
+		if (!cOid || !sOid || sOid === cOid) {
+			comparisonDetails = null;
+			comparisonLoading = false;
+			return;
+		}
+		comparisonDetails = null;
+		comparisonLoading = true;
+		getDiff(repoPath, sOid, cOid)
+			.then((summary: DiffSummary) => {
+				if ($comparisonOid !== cOid || $selectedOid !== sOid) return;
+				comparisonDetails = {
+					info: {
+						oid: cOid,
+						short_oid: '',
+						message: '',
+						summary: '',
+						author: { name: '', email: '' },
+						committer: { name: '', email: '' },
+						author_time: '',
+						commit_time: '',
+						parent_oids: [],
+						refs: []
+					},
+					tree_oid: '',
+					signature: null,
+					changed_files: summary.files,
+					body: null
+				};
+				comparisonLoading = false;
+			})
+			.catch(() => {
+				if ($comparisonOid !== cOid || $selectedOid !== sOid) return;
+				comparisonDetails = null;
+				comparisonLoading = false;
+			});
+	});
+
 	async function onSelectCommit(oid: string, ctrlKey = false) {
-		if (!ctrlKey && oid === $selectedOid) return;
+		if (!ctrlKey && !compareMode && oid === $selectedOid) return;
 		selectedBranch = null;
 		selectedRemote = null;
 		selectedTag = null;
+		if (compareMode && $selectedOid && $selectedOid !== oid) {
+			compareMode = false;
+			comparisonOid.set(oid);
+			return;
+		}
 		if (ctrlKey && $selectedOid && $selectedOid !== oid) {
 			comparisonOid.set(oid);
 			return;
 		}
+		compareMode = false;
 		comparisonOid.set(null);
 		selectedOid.set(oid);
 		commitDetails = null;
@@ -669,6 +723,10 @@
 				return;
 			if (isFullscreen) {
 				isFullscreen = false;
+				return;
+			}
+			if (compareMode) {
+				compareMode = false;
 				return;
 			}
 			comparisonOid.set(null);
@@ -838,6 +896,14 @@
 			category: 'View',
 			action: () => {
 				isFullscreen = !isFullscreen;
+			}
+		});
+		registerCommand({
+			id: 'compare-commits',
+			label: translate('page.cmd_compare_commits'),
+			category: 'View',
+			action: () => {
+				if ($selectedOid) compareMode = true;
 			}
 		});
 		registerCommand({
@@ -1277,7 +1343,35 @@
 						aria-label={$t('commit_detail.diff_viewer')}
 					>
 						{#if $comparisonOid}
-							<ComparisonPanel {repoPath} fromOid={$selectedOid} toOid={$comparisonOid} />
+							{#if comparisonLoading}
+								<div
+									class="flex items-center justify-center h-full text-sm text-gray-500"
+									role="status"
+									aria-live="polite"
+								>
+									{$t('comparison.loading')}
+								</div>
+							{:else if comparisonDetails}
+								<CommitDetailPanel
+									details={comparisonDetails}
+									{repoPath}
+									comparisonFromOid={$selectedOid}
+									comparisonToOid={$comparisonOid}
+									onswap={() => {
+										const tmp = $selectedOid;
+										selectedOid.set($comparisonOid);
+										comparisonOid.set(tmp);
+									}}
+									onclose={() => comparisonOid.set(null)}
+								/>
+							{:else}
+								<div
+									class="flex items-center justify-center h-full text-sm text-red-400"
+									role="alert"
+								>
+									{$t('comparison.failed')}
+								</div>
+							{/if}
 						{:else if detailsLoading}
 							<div
 								class="flex items-center justify-center h-full text-sm text-gray-500"
@@ -1355,6 +1449,16 @@
 			{#if $graphHideMerges}
 				<span class="rounded bg-yellow-700/50 px-2 py-0.5 text-yellow-300">
 					{$t('page.merges_hidden')}
+				</span>
+			{/if}
+			{#if compareMode}
+				<span class="rounded bg-blue-700/50 px-2 py-0.5 text-xs text-blue-300">
+					{$t('page.compare_mode')}
+				</span>
+			{/if}
+			{#if $comparisonOid}
+				<span class="rounded bg-indigo-700/50 px-2 py-0.5 text-xs text-indigo-300">
+					{$t('page.comparing')}
 				</span>
 			{/if}
 			{#if $operationState !== 'Idle'}

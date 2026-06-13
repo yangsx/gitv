@@ -36,9 +36,22 @@
 		repoPath: string;
 		onhistoryfile?: (_path: string) => void;
 		oncommitselect?: (_oid: string) => void;
+		comparisonFromOid?: string;
+		comparisonToOid?: string;
+		onswap?: () => void;
+		onclose?: () => void;
 	}
 
-	let { details, repoPath, onhistoryfile, oncommitselect }: Props = $props();
+	let {
+		details,
+		repoPath,
+		onhistoryfile,
+		oncommitselect,
+		comparisonFromOid,
+		comparisonToOid,
+		onswap,
+		onclose
+	}: Props = $props();
 
 	let activeTab = $state<'patch' | 'tree'>('patch');
 	let rawMessage = $state(false);
@@ -60,6 +73,28 @@
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let highlightedFileIndex = $state(-1);
 	let scrollRaf: number | null = null;
+
+	let isComparison = $derived(comparisonFromOid !== undefined && comparisonToOid !== undefined);
+
+	let comparisonStats = $derived(
+		isComparison
+			? {
+					additions: details.changed_files.reduce((sum, f) => sum + f.additions, 0),
+					deletions: details.changed_files.reduce((sum, f) => sum + f.deletions, 0),
+					files_changed: details.changed_files.length
+				}
+			: null
+	);
+
+	function diffFromOid(): string | null {
+		if (isComparison) return comparisonFromOid!;
+		return details.info.parent_oids[0] ?? null;
+	}
+
+	function diffToOid(): string {
+		if (isComparison) return comparisonToOid!;
+		return details.info.oid;
+	}
 
 	function onDiffScroll() {
 		if (scrollRaf !== null) return;
@@ -124,6 +159,8 @@
 
 	$effect(() => {
 		void details.info.oid;
+		void comparisonFromOid;
+		void comparisonToOid;
 		activeTab = 'patch';
 		fileTree = null;
 		blameFilePath = null;
@@ -154,7 +191,10 @@
 		tooManyFiles = 0;
 		diffsLoading = true;
 
-		if (details.info.oid === '__staged__' || details.info.oid === '__unstaged__') {
+		if (
+			!isComparison &&
+			(details.info.oid === '__staged__' || details.info.oid === '__unstaged__')
+		) {
 			try {
 				const diffs = await getWorkingChangesDiffs(
 					repoPath,
@@ -176,7 +216,6 @@
 			return;
 		}
 
-		const parentOid = details.info.parent_oids[0] ?? null;
 		const files = details.changed_files;
 
 		if (files.length > 100) {
@@ -196,8 +235,8 @@
 				try {
 					const diff = await getFileDiff(
 						repoPath,
-						parentOid,
-						details.info.oid,
+						diffFromOid(),
+						diffToOid(),
 						file.path,
 						localDiffMode,
 						localDiffWhitespace
@@ -220,6 +259,28 @@
 		fileDiffs.clear();
 		for (const [k, v] of map) fileDiffs.set(k, v);
 		diffsLoading = false;
+	}
+
+	async function loadFullFileDiff(path: string) {
+		const gen = diffGen.next();
+		const from = diffFromOid();
+		const to = diffToOid();
+		try {
+			const diff = await getFileDiff(
+				repoPath,
+				from,
+				to,
+				path,
+				localDiffMode,
+				localDiffWhitespace,
+				true
+			);
+			if (!diffGen.isStale(gen)) fileDiffs.set(path, diff);
+		} catch {
+			if (!diffGen.isStale(gen)) {
+				// keep existing truncated diff
+			}
+		}
 	}
 
 	async function loadFileTree() {
@@ -399,16 +460,18 @@
 					>
 				</div>
 			{/if}
-			<button
-				class="ml-auto whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {rawMessage
-					? 'bg-blue-700/50 text-blue-300'
-					: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
-				onclick={() => (rawMessage = !rawMessage)}
-				role="radio"
-				aria-checked={rawMessage}
-			>
-				{rawMessage ? $t('commit_detail.raw') : $t('commit_detail.markdown')}
-			</button>
+			{#if !isComparison}
+				<button
+					class="ml-auto whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {rawMessage
+						? 'bg-blue-700/50 text-blue-300'
+						: 'text-gray-400 hover:bg-gray-800 hover:text-white'}"
+					onclick={() => (rawMessage = !rawMessage)}
+					role="radio"
+					aria-checked={rawMessage}
+				>
+					{rawMessage ? $t('commit_detail.raw') : $t('commit_detail.markdown')}
+				</button>
+			{/if}
 			{#if activeTab === 'patch'}
 				<span class="ml-2 text-xs text-gray-500" role="status">
 					{$t(
@@ -446,89 +509,128 @@
 					{$t('commit_detail.binary_not_displayed')}
 				</div>
 			{:else}
-				{#if details.info.oid === '__staged__' || details.info.oid === '__unstaged__'}
-					<div class="px-4 py-3 border-b border-gray-800">
-						<div class="flex items-center gap-2 text-sm">
-							<span
-								class="inline-block h-2 w-2 rounded-full {details.info.oid === '__staged__'
-									? 'bg-green-400'
-									: 'bg-orange-400'}"
-							></span>
-							<span
-								class="font-medium {details.info.oid === '__staged__'
-									? 'text-green-300'
-									: 'text-orange-300'}"
-							>
-								{$t(details.info.oid === '__staged__' ? 'page.staged' : 'page.unstaged')}
-							</span>
-							<span class="text-xs text-gray-500">
-								{$t(
-									details.changed_files.length === 1
-										? 'commit_detail.file_count'
-										: 'commit_detail.file_count_plural',
-									{ count: details.changed_files.length }
-								)}
-							</span>
-						</div>
-					</div>
-				{:else}
-					<div class="px-4 py-3 border-b border-gray-800">
-						<div class="flex items-baseline gap-3 text-sm">
-							<span class="font-mono text-gray-500"
-								>{$t('commit_detail.commit_prefix', {
-									oid: details.info.oid.substring(0, 7)
-								})}</span
-							>
-							{#each details.info.refs as r (r.Branch ? 'b:' + r.Branch.name : r.Tag ? 't:' + r.Tag.name : r.Remote ? 'r:' + r.Remote.remote + '/' + r.Remote.name : '')}
-								{#if r.Branch?.is_head}
-									<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
-										{r.Branch.name}
-									</span>
-								{/if}
-								{#if r.Tag}
-									<span class="rounded bg-yellow-700/50 px-1.5 py-0.5 text-xs text-yellow-300">
-										{r.Tag.name}
-									</span>
-								{/if}
-							{/each}
-						</div>
-						<div class="mt-1 text-xs text-gray-400">
-							{$t('commit_detail.author')}
-							{details.info.author.name}
-							<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
-						</div>
-						<div class="text-xs text-gray-400">
-							{$t('commit_detail.date')}
-							{formatGitDateTime(details.info.author_time)}
-						</div>
-						{#if details.info.committer.name !== details.info.author.name}
-							<div class="text-xs text-gray-400">
-								{$t('commit_detail.committer')}
-								{details.info.committer.name}
-								<span class="text-gray-600">&lt;{details.info.committer.email}&gt;</span>
+				{#if !isComparison}
+					{#if details.info.oid === '__staged__' || details.info.oid === '__unstaged__'}
+						<div class="px-4 py-3 border-b border-gray-800">
+							<div class="flex items-center gap-2 text-sm">
+								<span
+									class="inline-block h-2 w-2 rounded-full {details.info.oid === '__staged__'
+										? 'bg-green-400'
+										: 'bg-orange-400'}"
+								></span>
+								<span
+									class="font-medium {details.info.oid === '__staged__'
+										? 'text-green-300'
+										: 'text-orange-300'}"
+								>
+									{$t(details.info.oid === '__staged__' ? 'page.staged' : 'page.unstaged')}
+								</span>
+								<span class="text-xs text-gray-500">
+									{$t(
+										details.changed_files.length === 1
+											? 'commit_detail.file_count'
+											: 'commit_detail.file_count_plural',
+										{ count: details.changed_files.length }
+									)}
+								</span>
 							</div>
-						{/if}
-						{#if details.info.parent_oids.length > 0}
-							<div class="text-xs text-gray-500">
-								{$t('commit_detail.parents')}
-								{#each details.info.parent_oids as p, i (i)}
-									<span class="font-mono">{formatParent(p)}</span>{i <
-									details.info.parent_oids.length - 1
-										? ', '
-										: ''}
+						</div>
+					{:else}
+						<div class="px-4 py-3 border-b border-gray-800">
+							<div class="flex items-baseline gap-3 text-sm">
+								<span class="font-mono text-gray-500"
+									>{$t('commit_detail.commit_prefix', {
+										oid: details.info.oid.substring(0, 7)
+									})}</span
+								>
+								{#each details.info.refs as r (r.Branch ? 'b:' + r.Branch.name : r.Tag ? 't:' + r.Tag.name : r.Remote ? 'r:' + r.Remote.remote + '/' + r.Remote.name : '')}
+									{#if r.Branch?.is_head}
+										<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
+											{r.Branch.name}
+										</span>
+									{/if}
+									{#if r.Tag}
+										<span class="rounded bg-yellow-700/50 px-1.5 py-0.5 text-xs text-yellow-300">
+											{r.Tag.name}
+										</span>
+									{/if}
 								{/each}
 							</div>
-						{/if}
-						<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">{details.info.summary}</div>
-						{#if details.body}
-							{#if rawMessage}
-								<pre
-									class="mt-1 text-sm text-gray-400 whitespace-pre-wrap font-sans">{details.body}</pre>
-							{:else if renderedBody}
-								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-								<div class="mt-1 text-sm text-gray-400 markdown-body">{@html renderedBody}</div>
+							<div class="mt-1 text-xs text-gray-400">
+								{$t('commit_detail.author')}
+								{details.info.author.name}
+								<span class="text-gray-600">&lt;{details.info.author.email}&gt;</span>
+							</div>
+							<div class="text-xs text-gray-400">
+								{$t('commit_detail.date')}
+								{formatGitDateTime(details.info.author_time)}
+							</div>
+							{#if details.info.committer.name !== details.info.author.name}
+								<div class="text-xs text-gray-400">
+									{$t('commit_detail.committer')}
+									{details.info.committer.name}
+									<span class="text-gray-600">&lt;{details.info.committer.email}&gt;</span>
+								</div>
 							{/if}
-						{/if}
+							{#if details.info.parent_oids.length > 0}
+								<div class="text-xs text-gray-500">
+									{$t('commit_detail.parents')}
+									{#each details.info.parent_oids as p, i (i)}
+										<span class="font-mono">{formatParent(p)}</span>{i <
+										details.info.parent_oids.length - 1
+											? ', '
+											: ''}
+									{/each}
+								</div>
+							{/if}
+							<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">
+								{details.info.summary}
+							</div>
+							{#if details.body}
+								{#if rawMessage}
+									<pre
+										class="mt-1 text-sm text-gray-400 whitespace-pre-wrap font-sans">{details.body}</pre>
+								{:else if renderedBody}
+									<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+									<div class="mt-1 text-sm text-gray-400 markdown-body">{@html renderedBody}</div>
+								{/if}
+							{/if}
+						</div>
+					{/if}
+				{:else}
+					<div
+						class="flex shrink-0 items-center justify-between border-b border-gray-700 bg-gray-900/80 px-3 py-1"
+					>
+						<button
+							class="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+							aria-label={$t('comparison.close')}
+							onclick={onclose}
+						>
+							<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"
+								><path
+									d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"
+								/></svg
+							>
+						</button>
+						<span class="text-xs font-semibold text-gray-400">
+							{$t('page.comparing')}
+							{comparisonStats!.files_changed}
+							{$t('comparison.files_changed')}
+							<span class="text-green-500">+{comparisonStats!.additions}</span>
+							<span class="text-red-500">-{comparisonStats!.deletions}</span>
+						</span>
+						<button
+							class="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+							aria-label={$t('comparison.swap')}
+							onclick={onswap}
+						>
+							<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"
+								><path
+									fill-rule="evenodd"
+									d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5zm14-7a.5.5 0 0 1-.5.5H2.707l2.147 2.146a.5.5 0 1 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5z"
+								/></svg
+							>
+						</button>
 					</div>
 				{/if}
 
@@ -567,13 +669,15 @@
 								{:else if file.is_submodule}
 									<span class="text-[10px] text-orange-400">{$t('commit_detail.submodule')}</span>
 								{/if}
-								<button
-									class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
-									aria-label={$t('commit_detail.view_blame') + ': ' + file.path}
-									onclick={() => openBlame(file.path)}
-								>
-									{$t('commit_detail.blame')}
-								</button>
+								{#if !isComparison}
+									<button
+										class="ml-auto rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+										aria-label={$t('commit_detail.view_blame') + ': ' + file.path}
+										onclick={() => openBlame(file.path)}
+									>
+										{$t('commit_detail.blame')}
+									</button>
+								{/if}
 							</div>
 							{#if localDiffMode === 'stat-only'}
 								<!-- stats shown in header above -->
@@ -606,6 +710,12 @@
 										<span class="text-xs text-gray-500">
 											{$t('commit_detail.truncated', { count: diff.truncated_at })}
 										</span>
+										<button
+											class="rounded bg-blue-700 px-2 py-0.5 text-xs text-white hover:bg-blue-600"
+											onclick={() => loadFullFileDiff(file.path)}
+										>
+											{$t('comparison.show_full')}
+										</button>
 									</div>
 								{/if}
 							{:else if file.is_binary || file.is_submodule}

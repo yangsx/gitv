@@ -180,6 +180,7 @@ export interface FileDiffSummary {
 	additions: number;
 	deletions: number;
 	is_binary: boolean;
+	is_submodule: boolean;
 }
 
 export interface DiffStats {

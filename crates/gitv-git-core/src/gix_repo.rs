@@ -812,6 +812,7 @@ impl Repository for GixRepository {
                 additions,
                 deletions,
                 is_binary,
+                is_submodule,
             });
         }
 

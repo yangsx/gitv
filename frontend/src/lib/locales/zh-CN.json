@@ -172,6 +172,7 @@
 		"staged": "已暂存的更改",
 		"cmd_debug": "切换调试面板",
 		"cmd_fullscreen": "切换全屏模式",
+		"cmd_compare_commits": "比较提交",
 		"cmd_palette_default": "图形调色板：默认",
 		"cmd_palette_deuteranopia": "图形调色板：绿色盲安全",
 		"cmd_palette_protanopia": "图形调色板：红色盲安全",
@@ -184,7 +185,9 @@
 		"uncommitted_changes_plural": "{count} 个未提交",
 		"commits_label": "{count} 个提交",
 		"statusbar_aria": "状态栏",
-		"settings_aria": "打开偏好设置"
+		"settings_aria": "打开偏好设置",
+		"comparing": "比较中",
+		"compare_mode": "选择提交以进行比较"
 	},
 	"commit_graph": {
 		"aria": "提交图"
@@ -313,16 +316,12 @@
 	},
 	"comparison": {
 		"loading": "正在加载比较...",
-		"loading_diff": "正在加载差异...",
 		"files_changed": "个文件更改",
-		"binary": "二进制文件（不显示）",
-		"no_changes": "无内容变更",
-		"truncated": "差异截断至 {count} 行",
 		"show_full": "显示完整差异",
-		"select_file": "选择文件以查看差异",
 		"failed": "加载比较失败",
-		"changed_aria": "更改的文件",
-		"binary_label": "二进制"
+		"binary_label": "二进制",
+		"close": "关闭比较",
+		"swap": "交换比较方向"
 	},
 	"diff_viewer": {
 		"side_by_side_aria": "并排差异",

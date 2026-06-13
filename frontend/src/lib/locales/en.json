@@ -172,6 +172,7 @@
 		"staged": "Staged changes",
 		"cmd_debug": "Toggle debug overlay",
 		"cmd_fullscreen": "Toggle fullscreen mode",
+		"cmd_compare_commits": "Compare commits",
 		"cmd_palette_default": "Graph palette: Default",
 		"cmd_palette_deuteranopia": "Graph palette: Deuteranopia-safe",
 		"cmd_palette_protanopia": "Graph palette: Protanopia-safe",
@@ -184,7 +185,9 @@
 		"uncommitted_changes_plural": "{count} uncommitted",
 		"commits_label": "{count} commits",
 		"statusbar_aria": "Status bar",
-		"settings_aria": "Open preferences"
+		"settings_aria": "Open preferences",
+		"comparing": "Comparing",
+		"compare_mode": "Select a commit to compare"
 	},
 	"commit_graph": {
 		"aria": "Commit graph"
@@ -313,16 +316,12 @@
 	},
 	"comparison": {
 		"loading": "Loading comparison...",
-		"loading_diff": "Loading diff...",
 		"files_changed": "files changed",
-		"binary": "Binary file (not displayed)",
-		"no_changes": "No content changes",
-		"truncated": "Diff truncated at {count} lines",
 		"show_full": "Show full diff",
-		"select_file": "Select a file to view diff",
 		"failed": "Failed to load comparison",
-		"changed_aria": "Changed files",
-		"binary_label": "binary"
+		"binary_label": "binary",
+		"close": "Close comparison",
+		"swap": "Swap comparison direction"
 	},
 	"diff_viewer": {
 		"side_by_side_aria": "Side by side diff",
