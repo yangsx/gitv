@@ -139,6 +139,12 @@
 		});
 	});
 
+	$effect(() => {
+		return () => {
+			if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
+		};
+	});
+
 	async function loadAllDiffs() {
 		const gen = diffGen.next();
 		if (details.changed_files.length === 0) {

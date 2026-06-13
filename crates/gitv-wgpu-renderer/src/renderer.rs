@@ -532,7 +532,7 @@ impl WgpuRenderer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: Some(
-                            NonZero::new(size_of::<GraphUniform>() as u64).unwrap(),
+                            NonZero::new(size_of::<GraphUniform>() as u64).expect("GraphUniform size is non-zero"),
                         ),
                     },
                     count: None,

@@ -230,6 +230,10 @@
 		scheduleRender();
 	});
 
+	$effect(() => {
+		return () => cancelAnimationFrame(pendingRender);
+	});
+
 	function handleEdgeClick(mx: number, my: number): boolean {
 		for (const { edge, idx, coords } of visibleEdgeData) {
 			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {

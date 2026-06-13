@@ -91,6 +91,12 @@
 		return () => observer.disconnect();
 	});
 
+	$effect(() => {
+		return () => {
+			if (rafId) cancelAnimationFrame(rafId);
+		};
+	});
+
 	let selectedIdx = $state(0);
 
 	$effect(() => {

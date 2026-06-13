@@ -385,7 +385,7 @@ impl GraphCalculator {
                 }
             };
 
-            graph_data.get_mut(&c.oid).unwrap().column = assigned_lane;
+            graph_data.get_mut(&c.oid).expect("commit must be in graph_data during lane assignment").column = assigned_lane;
 
             for &(_, child_col) in &branch_children {
                 if child_col != assigned_lane && child_col < lanes.len() {

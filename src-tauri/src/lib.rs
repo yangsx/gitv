@@ -23,6 +23,8 @@ fn init_tracing(cli_log_level: Option<&str>) {
         .expect("failed to create log file appender");
 
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    // Leak guard intentionally: WorkerGuard must outlive the process to keep the log writer flushing.
+    // Dropping it would cause logs to be silently lost on process exit.
     Box::leak(Box::new(guard));
 
     let default_level = if cfg!(debug_assertions) {

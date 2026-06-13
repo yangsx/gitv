@@ -108,6 +108,12 @@
 			showOptions = false;
 		}
 	}
+
+	$effect(() => {
+		return () => {
+			if (debounceTimer) clearTimeout(debounceTimer);
+		};
+	});
 </script>
 
 <svelte:window onclick={handleClickOutside} />
