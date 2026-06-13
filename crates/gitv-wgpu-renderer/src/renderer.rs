@@ -28,7 +28,7 @@ pub struct GraphViewportData {
     /// Pre-tessellated edge quad vertices (4 per straight segment).
     pub edge_vertices: Vec<EdgeVertex>,
     /// Edge indices for indexed drawing.
-    pub edge_indices: Vec<u16>,
+    pub edge_indices: Vec<u32>,
 }
 
 /// WGSL-based GPU renderer for the commit graph.
@@ -280,7 +280,7 @@ impl WgpuRenderer {
         let ib_needed = if edge_idx.is_empty() {
             0u64
         } else {
-            (edge_idx.len() * 2).next_power_of_two() as u64
+            (edge_idx.len() * size_of::<u32>()).next_power_of_two() as u64
         };
 
         if vb_needed > self.edge_vertex_capacity {
@@ -353,7 +353,7 @@ impl WgpuRenderer {
                 }
                 if edge_index_count > 0 {
                     if let Some(ref ib) = self.edge_index_buf {
-                        rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint16);
+                        rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
                         rpass.draw_indexed(0..edge_index_count as u32, 0, 0..1);
                     }
                 } else if !edge_verts.is_empty() {

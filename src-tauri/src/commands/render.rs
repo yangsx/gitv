@@ -243,10 +243,10 @@ fn render_inner(wgpu_state: &WgpuState, input: &RenderGraphInput) -> Result<Vec<
     // For each 4-vertex quad generate 6 indices (2 triangles) for TriangleList.
     // Quad vertices: [left@start, right@start, left@end, right@end].
     // Triangles: [0,1,2] + [2,1,3] (both CCW under Y-down projection).
-    let edge_indices: Vec<u16> = (0..edge_vertices.len())
+    let edge_indices: Vec<u32> = (0..edge_vertices.len())
         .step_by(4)
         .flat_map(|base| {
-            let i = base as u16;
+            let i = base as u32;
             [i, i + 1, i + 2, i + 2, i + 1, i + 3]
         })
         .collect();

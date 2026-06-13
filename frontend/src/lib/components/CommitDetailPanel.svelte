@@ -20,6 +20,13 @@
 	import { t, translate, locale } from '$lib/stores/locale';
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
+	import { showToast } from '$lib/stores/toast';
+
+	function copyToClipboard(text: string) {
+		navigator.clipboard
+			.writeText(text)
+			.catch(() => showToast(translate('commit_detail.copy_failed'), 'error'));
+	}
 
 	const diffGen = createGenerationGuard();
 
@@ -93,7 +100,7 @@
 		const items: ContextMenuItem[] = [
 			{
 				label: translate('commit_detail.copy_path'),
-				action: () => navigator.clipboard.writeText(path)
+				action: () => copyToClipboard(path)
 			},
 			{ separator: true },
 			{

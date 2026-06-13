@@ -13,6 +13,15 @@ pub struct GixRepository {
     path: PathBuf,
 }
 
+impl Clone for GixRepository {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            path: self.path.clone(),
+        }
+    }
+}
+
 impl GixRepository {
     pub fn open(path: &Path) -> Result<Self, GitError> {
         let repo = gix::discover(path).map_err(|e| {

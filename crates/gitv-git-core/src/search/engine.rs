@@ -141,7 +141,7 @@ impl SearchEngine {
         if let Some(ref file_path) = query.file_path
             && !file_path.is_empty()
         {
-            let file_results = self.search_file_path(file_path);
+            let file_results = self.search_message_contains(file_path);
             result_bitmap = Some(Self::combine(
                 result_bitmap,
                 file_results,
@@ -271,8 +271,13 @@ impl SearchEngine {
         result.unwrap_or_default()
     }
 
-    fn search_file_path(&self, path: &str) -> RoaringBitmap {
-        let lower = path.to_lowercase();
+    /// Searches commit message and summary text.
+    /// NOTE: Despite the name `file_path` in the query, this currently searches
+    /// commit messages, not actual changed file paths. True file-path search
+    /// would require indexing `CommitDetails.changed_files` which is not
+    /// available in the search engine's `CommitInfo` index.
+    fn search_message_contains(&self, text: &str) -> RoaringBitmap {
+        let lower = text.to_lowercase();
         let mut result = RoaringBitmap::new();
         for (i, commit) in self.commits.iter().enumerate() {
             if commit.message.to_lowercase().contains(&lower)

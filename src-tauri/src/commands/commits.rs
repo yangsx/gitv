@@ -1,18 +1,21 @@
-use gitv_git_core::gix_repo::GixRepository;
 use gitv_git_core::models::{CommitBatch, CommitFilter};
 use gitv_git_core::stream::CommitStream;
 use std::path::PathBuf;
-use tauri::Emitter;
+use tauri::{Emitter, State};
 use tracing::instrument;
 
+use crate::state::AppState;
+
 #[tauri::command]
-#[instrument(skip(path, filter), fields(command = "get_commits"))]
+#[instrument(skip(state, path, filter), fields(command = "get_commits"))]
 pub fn get_commits(
+    state: State<'_, AppState>,
     path: String,
     filter: Option<CommitFilter>,
 ) -> Result<Vec<gitv_git_core::models::CommitInfo>, String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path).map_err(|e| e.to_string())?;
+    let repo = repo.as_ref().clone();
     let commit_filter = filter.unwrap_or_default();
     let mut stream = CommitStream::new(Box::new(repo), commit_filter);
 
@@ -30,14 +33,16 @@ pub fn get_commits(
 }
 
 #[tauri::command]
-#[instrument(skip(path, filter, window), fields(command = "stream_commits"))]
+#[instrument(skip(state, path, filter, window), fields(command = "stream_commits"))]
 pub fn stream_commits(
+    state: State<'_, AppState>,
     path: String,
     filter: Option<CommitFilter>,
     window: tauri::Window,
 ) -> Result<(), String> {
     let repo_path = PathBuf::from(&path);
-    let repo = GixRepository::open(&repo_path).map_err(|e| e.to_string())?;
+    let repo = state.get_repo(&repo_path).map_err(|e| e.to_string())?;
+    let repo = repo.as_ref().clone();
     let commit_filter = filter.unwrap_or_default();
     let mut stream = CommitStream::new(Box::new(repo), commit_filter);
 

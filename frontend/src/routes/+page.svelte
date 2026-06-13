@@ -137,6 +137,12 @@
 	const UNSTAGED_OID = '__unstaged__';
 	const VIRTUAL_OIDS = new Set([STAGED_OID, UNSTAGED_OID]);
 
+	function copyToClipboard(text: string) {
+		navigator.clipboard
+			.writeText(text)
+			.catch(() => showToast(translate('page.copy_failed'), 'error'));
+	}
+
 	onMount(() => {
 		registerCommands();
 
@@ -276,21 +282,29 @@
 	}
 
 	async function browseForRepo() {
-		const { open } = await import('@tauri-apps/plugin-dialog');
-		const title = translate('page.select_repo_title');
-		const selected = await open({ directory: true, multiple: false, title });
-		if (selected) {
-			repoPath = selected;
-			loadRepo(selected);
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const title = translate('page.select_repo_title');
+			const selected = await open({ directory: true, multiple: false, title });
+			if (selected) {
+				repoPath = selected;
+				loadRepo(selected);
+			}
+		} catch {
+			showToast(translate('page.dialog_failed'), 'error');
 		}
 	}
 
 	async function browseForRepoNewWindow() {
-		const { open } = await import('@tauri-apps/plugin-dialog');
-		const title = translate('page.select_repo_title');
-		const selected = await open({ directory: true, multiple: false, title });
-		if (selected) {
-			openInNewWindow(selected);
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const title = translate('page.select_repo_title');
+			const selected = await open({ directory: true, multiple: false, title });
+			if (selected) {
+				await openInNewWindow(selected);
+			}
+		} catch {
+			showToast(translate('page.dialog_failed'), 'error');
 		}
 	}
 
@@ -878,16 +892,16 @@
 		e.preventDefault();
 		const commit = commits.find((c) => c.oid === oid);
 		const items: ContextMenuItem[] = [
-			{ label: translate('page.ctx_copy_sha'), action: () => navigator.clipboard.writeText(oid) },
+			{ label: translate('page.ctx_copy_sha'), action: () => copyToClipboard(oid) },
 			{
 				label: translate('page.ctx_copy_short_sha'),
-				action: () => navigator.clipboard.writeText(oid.substring(0, 7))
+				action: () => copyToClipboard(oid.substring(0, 7))
 			}
 		];
 		if (commit) {
 			items.push({
 				label: translate('page.ctx_copy_message'),
-				action: () => navigator.clipboard.writeText(commit.message)
+				action: () => copyToClipboard(commit.message)
 			});
 			items.push({ separator: true });
 			if ($selectedOid && $selectedOid !== oid) {
@@ -901,7 +915,7 @@
 		const items: ContextMenuItem[] = [
 			{
 				label: translate('page.ctx_copy_branch'),
-				action: () => navigator.clipboard.writeText(name)
+				action: () => copyToClipboard(name)
 			}
 		];
 		contextMenu = { x: e.clientX, y: e.clientY, items };
@@ -968,7 +982,7 @@
 		const items: ContextMenuItem[] = [
 			{
 				label: translate('page.ctx_copy_remote'),
-				action: () => navigator.clipboard.writeText(`${remote}/${name}`)
+				action: () => copyToClipboard(`${remote}/${name}`)
 			}
 		];
 		contextMenu = { x: e.clientX, y: e.clientY, items };
@@ -1347,8 +1361,10 @@
 				</span>
 			{/if}
 			{#if $operationState !== 'Idle'}
+				{@const opKey = 'page.' + $operationState.toLowerCase()}
+				{@const opLabel = $t(opKey)}
 				<span class="text-blue-400">
-					{$t('page.' + $operationState.toLowerCase()) ?? $operationState}
+					{opLabel === opKey ? $operationState : opLabel}
 				</span>
 			{/if}
 		</footer>

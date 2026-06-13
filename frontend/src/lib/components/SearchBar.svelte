@@ -39,6 +39,7 @@
 			executeSearch();
 		}
 		if (e.key === 'Escape') {
+			e.stopPropagation();
 			if (showOptions) {
 				showOptions = false;
 				return;

@@ -101,6 +101,7 @@
 		}
 		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
 		if (idx >= 0) selectedIdx = idx;
+		else selectedIdx = 0;
 	});
 
 	$effect(() => {
