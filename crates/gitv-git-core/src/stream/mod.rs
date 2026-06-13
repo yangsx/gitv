@@ -13,6 +13,7 @@ pub struct CommitStream {
 }
 
 impl CommitStream {
+    #[must_use]
     pub fn new(repo: Box<dyn Repository>, filter: CommitFilter) -> Self {
         Self {
             repo,
@@ -25,11 +26,13 @@ impl CommitStream {
         }
     }
 
+    #[must_use]
     pub fn with_extra_tips(mut self, extra_tips: Vec<Oid>) -> Self {
         self.extra_tips = extra_tips;
         self
     }
 
+    #[must_use]
     pub fn has_more(&self) -> bool {
         !self.exhausted || self.head_consumed < self.buffer.len()
     }

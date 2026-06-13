@@ -1,6 +1,7 @@
 use crate::graph::layout::*;
 
 impl GraphLayout {
+    #[must_use]
     pub fn from_visible_range(&self, start_row: usize, end_row: usize) -> GraphViewport {
         let clamped_end = end_row.min(self.total_rows);
         let rows = start_row..clamped_end;

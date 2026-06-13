@@ -116,7 +116,9 @@
 		"changes_added_plural": "{count} additions",
 		"changes_deleted": "{count} deletion",
 		"changes_deleted_plural": "{count} deletions",
-		"loading_details": "Loading details..."
+		"loading_details": "Loading details...",
+		"raw": "Raw",
+		"markdown": "Markdown"
 	},
 	"page": {
 		"title": "gitv",
@@ -257,7 +259,8 @@
 		"line_number": "Line number",
 		"author_date": "Author and date",
 		"content": "Content",
-		"line_aria": "Line {number} by {author}"
+		"line_aria": "Line {number} by {author}",
+		"toggle_highlight": "Toggle highlight for commit {sha}"
 	},
 	"shortcut_help": {
 		"title": "Keyboard Shortcuts",
@@ -290,7 +293,10 @@
 		"stashes": "Stashes",
 		"state": "State",
 		"avg_ipc": "Avg IPC",
-		"recent_ipc": "Recent IPC"
+		"recent_ipc": "Recent IPC",
+		"memory": "Memory",
+		"draw": "Draw",
+		"load_phases": "Load Phases"
 	},
 	"file_tree": {
 		"node_aria_expanded": "{name}, expanded",
@@ -308,6 +314,7 @@
 	"comparison": {
 		"loading": "Loading comparison...",
 		"loading_diff": "Loading diff...",
+		"files_changed": "files changed",
 		"binary": "Binary file (not displayed)",
 		"no_changes": "No content changes",
 		"truncated": "Diff truncated at {count} lines",

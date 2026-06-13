@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { DiffLine, Hunk, WordDiffSegment } from '$lib/bindings/types';
 
 	interface Props {
@@ -123,12 +124,22 @@
 </script>
 
 {#if viewMode === 'side-by-side'}
-	<div class="font-mono text-xs leading-5" role="region" aria-label="Side by side diff">
+	<div
+		class="font-mono text-xs leading-5"
+		role="region"
+		aria-label={$t('diff_viewer.side_by_side_aria')}
+	>
 		{#each hunks as hunk, hi (hi)}
+			{@const oldEnd = hunk.old_start + hunk.old_count}
+			{@const newEnd = hunk.new_start + hunk.new_count}
 			<div
 				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
-				aria-label="Hunk header: lines {hunk.old_start} to {hunk.old_start +
-					hunk.old_count}, {hunk.new_start} to {hunk.new_start + hunk.new_count}"
+				aria-label={$t('diff_viewer.hunk_aria', {
+					old_start: hunk.old_start,
+					old_end: oldEnd,
+					new_start: hunk.new_start,
+					new_end: newEnd
+				})}
 			>
 				@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count}
 			</div>
@@ -203,12 +214,22 @@
 		{/each}
 	</div>
 {:else}
-	<div class="font-mono text-xs leading-5" role="region" aria-label="Unified diff">
+	<div
+		class="font-mono text-xs leading-5"
+		role="region"
+		aria-label={$t('diff_viewer.unified_aria')}
+	>
 		{#each hunks as hunk, hi (hi)}
+			{@const oldEnd = hunk.old_start + hunk.old_count}
+			{@const newEnd = hunk.new_start + hunk.new_count}
 			<div
 				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
-				aria-label="Hunk header: lines {hunk.old_start} to {hunk.old_start +
-					hunk.old_count}, {hunk.new_start} to {hunk.new_start + hunk.new_count}"
+				aria-label={$t('diff_viewer.hunk_aria', {
+					old_start: hunk.old_start,
+					old_end: oldEnd,
+					new_start: hunk.new_start,
+					new_end: newEnd
+				})}
 			>
 				@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count}
 			</div>

@@ -116,7 +116,9 @@
 		"changes_added_plural": "{count} 行增加",
 		"changes_deleted": "{count} 行删除",
 		"changes_deleted_plural": "{count} 行删除",
-		"loading_details": "正在加载详情..."
+		"loading_details": "正在加载详情...",
+		"raw": "原文",
+		"markdown": "Markdown"
 	},
 	"page": {
 		"title": "gitv",
@@ -257,7 +259,8 @@
 		"line_number": "行号",
 		"author_date": "作者和日期",
 		"content": "内容",
-		"line_aria": "第 {number} 行，作者 {author}"
+		"line_aria": "第 {number} 行，作者 {author}",
+		"toggle_highlight": "切换提交 {sha} 的高亮"
 	},
 	"shortcut_help": {
 		"title": "快捷键",
@@ -290,7 +293,10 @@
 		"stashes": "暂存数",
 		"state": "状态",
 		"avg_ipc": "平均 IPC",
-		"recent_ipc": "最近 IPC"
+		"recent_ipc": "最近 IPC",
+		"memory": "内存",
+		"draw": "绘制",
+		"load_phases": "加载阶段"
 	},
 	"file_tree": {
 		"node_aria_expanded": "{name}，已展开",
@@ -308,6 +314,7 @@
 	"comparison": {
 		"loading": "正在加载比较...",
 		"loading_diff": "正在加载差异...",
+		"files_changed": "个文件更改",
 		"binary": "二进制文件（不显示）",
 		"no_changes": "无内容变更",
 		"truncated": "差异截断至 {count} 行",

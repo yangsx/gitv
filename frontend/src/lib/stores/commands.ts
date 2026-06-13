@@ -1,4 +1,4 @@
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 export interface Command {
 	id: string;
@@ -18,10 +18,6 @@ export function registerCommand(cmd: Command) {
 		}
 		return [...cmds, cmd];
 	});
-}
-
-export function getCommands(): Command[] {
-	return [...get(commands)];
 }
 
 export function unregisterCommandsByPrefix(prefix: string) {
@@ -53,18 +49,4 @@ export function fuzzyMatch(query: string, text: string): number {
 	}
 
 	return qi === q.length ? score : 0;
-}
-
-export function searchCommands(query: string): Command[] {
-	const all = get(commands);
-	if (!query.trim()) return [...all];
-	const scored = all
-		.map((cmd) => ({
-			cmd,
-			score:
-				fuzzyMatch(query, cmd.label) + (cmd.shortcut ? fuzzyMatch(query, cmd.shortcut) * 0.5 : 0)
-		}))
-		.filter((s) => s.score > 0)
-		.sort((a, b) => b.score - a.score);
-	return scored.map((s) => s.cmd);
 }

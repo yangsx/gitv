@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import type { FileTreeNode } from '$lib/bindings/types';
 
 	interface Props {
@@ -83,7 +84,11 @@
 	<button
 		class="flex w-full items-center gap-1.5 border-b border-gray-800/50 px-3 py-1 text-left text-xs hover:bg-gray-800/70"
 		style="padding-left: {12 + depth * 16}px;"
-		aria-label="{node.name}{node.children.length > 0 ? (expanded ? ', collapse' : ', expand') : ''}"
+		aria-label={node.children.length > 0
+			? expanded
+				? $t('file_tree.node_aria_expanded', { name: node.name })
+				: $t('file_tree.node_aria_collapsed', { name: node.name })
+			: node.name}
 		aria-expanded={node.children.length > 0 ? expanded : undefined}
 		onclick={toggle}
 		oncontextmenu={handleContextmenu}

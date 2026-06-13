@@ -250,6 +250,7 @@ struct CommitGraphData {
 }
 
 impl GraphCalculator {
+    #[must_use]
     pub fn new(
         commits: Vec<CommitInfo>,
         refs: HashMap<Oid, Vec<Ref>>,
@@ -264,6 +265,7 @@ impl GraphCalculator {
         }
     }
 
+    #[must_use]
     pub fn calculate_layout(&self) -> GraphLayout {
         let commits = if self.options.hide_merges {
             self.filter_merges()
@@ -495,6 +497,7 @@ impl GraphCalculator {
         }
     }
 
+    #[must_use]
     pub fn get_ancestor_oids(&self, oid: &Oid) -> HashSet<Oid> {
         let mut ancestors = HashSet::new();
         let mut stack = vec![*oid];

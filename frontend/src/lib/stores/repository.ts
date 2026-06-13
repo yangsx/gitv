@@ -13,7 +13,6 @@ export type OperationState =
 
 export const operationState = writable<OperationState>('Idle');
 
-export const isLoading = derived(operationState, (s) => s !== 'Idle');
 export const error = writable<string | null>(null);
 export const searchQuery = writable<SearchQuery | null>(null);
 export const searchResults = writable<SearchResult[]>([]);

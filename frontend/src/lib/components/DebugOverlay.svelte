@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import {
 		debug,
 		avgIpcTime,
@@ -34,37 +35,37 @@
 		aria-label="Debug overlay"
 	>
 		<div class="mb-2 flex items-center justify-between">
-			<span class="text-yellow-400 font-bold">DEBUG</span>
-			<span class="text-gray-500">F12 to close</span>
+			<span class="text-yellow-400 font-bold">{$t('debug.header')}</span>
+			<span class="text-gray-500">{$t('debug.close_hint')}</span>
 		</div>
 
 		<div class="grid grid-cols-2 gap-x-4 gap-y-1">
-			<span class="text-gray-500">FPS</span>
+			<span class="text-gray-500">{$t('debug.fps')}</span>
 			<span class={fpsClass}>
 				{$debug.fps}
 			</span>
 
-			<span class="text-gray-500">Memory</span>
+			<span class="text-gray-500">{$t('debug.memory')}</span>
 			<span>{memoryStr ?? 'N/A'}</span>
 
-			<span class="text-gray-500">Commits</span>
+			<span class="text-gray-500">{$t('debug.commits')}</span>
 			<span>{$debug.totalCommits} ({$debug.visibleCommits} visible)</span>
 
-			<span class="text-gray-500">Graph</span>
+			<span class="text-gray-500">{$t('debug.graph')}</span>
 			<span>{$debug.graphNodes} nodes, {$debug.graphEdges} edges, {$debug.graphColumns} cols</span>
 
-			<span class="text-gray-500">Stashes</span>
+			<span class="text-gray-500">{$t('debug.stashes')}</span>
 			<span>{$debug.graphStashMarkers}</span>
 
-			<span class="text-gray-500">Draw</span>
+			<span class="text-gray-500">{$t('debug.draw')}</span>
 			<span class={drawColorClass}>
 				{formatMs($debug.graphDrawTimeMs)}ms
 			</span>
 
-			<span class="text-gray-500">State</span>
+			<span class="text-gray-500">{$t('debug.state')}</span>
 			<span class={stateClass}>{$operationState}</span>
 
-			<span class="text-gray-500">Avg IPC</span>
+			<span class="text-gray-500">{$t('debug.avg_ipc')}</span>
 			<span class={ipcColorClass}>
 				{formatMs($avgIpcTime)}ms
 			</span>
@@ -72,7 +73,7 @@
 
 		{#if $debug.loadPhaseTimings.length > 0}
 			<div class="mt-2 border-t border-gray-800 pt-2">
-				<div class="text-gray-500 mb-1">Load Phases</div>
+				<div class="text-gray-500 mb-1">{$t('debug.load_phases')}</div>
 				<div class="max-h-32 overflow-y-auto">
 					{#each $debug.loadPhaseTimings as p, i (i)}
 						<div class="flex justify-between">
@@ -86,7 +87,7 @@
 
 		{#if $recentIpcTimings.length > 0}
 			<div class="mt-2 border-t border-gray-800 pt-2">
-				<div class="text-gray-500 mb-1">Recent IPC</div>
+				<div class="text-gray-500 mb-1">{$t('debug.recent_ipc')}</div>
 				<div class="max-h-32 overflow-y-auto">
 					{#each $recentIpcTimings as t, i (i)}
 						<div class="flex justify-between">

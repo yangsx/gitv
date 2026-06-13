@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
 	import { toasts, dismissToast, type Toast } from '$lib/stores/toast';
 
 	function severityClasses(severity: Toast['severity']): string {
@@ -16,7 +17,7 @@
 {#if $toasts.length > 0}
 	<div
 		class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
-		aria-label="Notifications"
+		aria-label={$t('toast.aria')}
 	>
 		{#each $toasts as toast (toast.id)}
 			<div
@@ -31,7 +32,7 @@
 					<button
 						class="ml-2 opacity-60 hover:opacity-100"
 						onclick={() => dismissToast(toast.id)}
-						aria-label="Dismiss notification"
+						aria-label={$t('toast.dismiss')}
 					>
 						&times;
 					</button>

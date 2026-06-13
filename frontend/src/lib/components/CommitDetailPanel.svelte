@@ -401,7 +401,7 @@
 				role="radio"
 				aria-checked={rawMessage}
 			>
-				{rawMessage ? 'Raw' : 'Markdown'}
+				{rawMessage ? $t('commit_detail.raw') : $t('commit_detail.markdown')}
 			</button>
 			{#if activeTab === 'patch'}
 				<span class="ml-2 text-xs text-gray-500" role="status">

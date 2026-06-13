@@ -80,10 +80,6 @@ export function updateDebugGraphStats(
 	}));
 }
 
-export function updateDebugCommitCounts(total: number, visible: number) {
-	debug.update((d) => ({ ...d, totalCommits: total, visibleCommits: visible }));
-}
-
 export function updateGraphDrawTime(ms: number) {
 	debug.update((d) => ({ ...d, graphDrawTimeMs: ms }));
 }

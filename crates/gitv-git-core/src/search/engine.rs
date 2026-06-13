@@ -59,6 +59,7 @@ fn tokenize(text: &str) -> Vec<&str> {
 }
 
 impl SearchEngine {
+    #[must_use]
     pub fn new(commits: Vec<CommitInfo>) -> Self {
         let mut message_index = CommitMessageIndex::new();
         message_index.index_commits(&commits, 0);
@@ -197,6 +198,7 @@ impl SearchEngine {
         self.commits.extend(new_commits.iter().cloned());
     }
 
+    #[must_use]
     pub fn commit_count(&self) -> usize {
         self.commits.len()
     }

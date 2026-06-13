@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::error::OidError;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use]
 pub struct Oid([u8; 20]);
 
 impl Serialize for Oid {
@@ -26,6 +27,7 @@ impl Oid {
         Self(bytes)
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8; 20] {
         &self.0
     }
@@ -44,10 +46,12 @@ impl Oid {
         Ok(Self(bytes))
     }
 
+    #[must_use]
     pub fn to_hex(&self) -> String {
         self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
+    #[must_use]
     pub fn short_hex(&self) -> String {
         self.to_hex()[..7].to_string()
     }
@@ -414,6 +418,7 @@ pub struct CommitFilter {
 }
 
 impl CommitFilter {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             refs: None,

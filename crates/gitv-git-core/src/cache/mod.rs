@@ -61,6 +61,7 @@ fn cache_key_for_path(path: &Path) -> String {
 }
 
 impl CachedRepoData {
+    #[must_use]
     pub fn new(ref_snapshot: HashMap<String, Oid>) -> Self {
         Self {
             ref_snapshot,
@@ -69,6 +70,7 @@ impl CachedRepoData {
         }
     }
 
+    #[must_use]
     pub fn from_commits(commits: &[CommitInfo], ref_snapshot: HashMap<String, Oid>) -> Self {
         Self {
             ref_snapshot,

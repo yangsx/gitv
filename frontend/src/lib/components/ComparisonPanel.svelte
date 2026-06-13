@@ -99,7 +99,8 @@
 		>
 			<div class="border-b border-gray-700 px-3 py-2">
 				<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-					{summary.stats.files_changed} files changed
+					{summary.stats.files_changed}
+					{$t('comparison.files_changed')}
 					<span class="text-green-500">+{summary.stats.additions}</span>
 					<span class="text-red-500">-{summary.stats.deletions}</span>
 				</h3>

@@ -128,7 +128,7 @@
 									class="w-48 cursor-pointer border-r border-gray-800 px-2 py-0.5"
 									role="button"
 									tabindex="0"
-									aria-label="Toggle highlight for commit {group.oid.slice(0, 7)} by {group.author}"
+									aria-label={$t('blame.toggle_highlight', { sha: group.oid.slice(0, 7) })}
 									onclick={() => {
 										currentCommit = currentCommit === group.oid ? null : group.oid;
 									}}

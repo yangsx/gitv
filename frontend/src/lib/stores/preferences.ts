@@ -28,7 +28,6 @@ export const diffViewMode = writable<'unified' | 'side-by-side'>(DEFAULTS.diff_v
 export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);
-let loadedPrefs: AppPreferences | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function toPreferences(): AppPreferences {
@@ -49,8 +48,6 @@ function toPreferences(): AppPreferences {
 }
 
 function updateFromPreferences(p: AppPreferences) {
-	loadedPrefs = p;
-
 	theme.set(p.theme);
 	highContrast.set(p.high_contrast);
 	if (p.renderer === 'wgpu' || p.renderer === 'canvas2d') {
@@ -119,9 +116,4 @@ export async function initPreferences() {
 export function savePreferences() {
 	const prefs = toPreferences();
 	debouncedSave(prefs);
-}
-
-export function getCurrentPreferences(): AppPreferences {
-	if (loadedPrefs) return { ...loadedPrefs };
-	return { ...DEFAULTS };
 }

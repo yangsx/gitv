@@ -49,13 +49,4 @@ impl AppState {
         Ok(repo)
     }
 
-    #[allow(dead_code)]
-    pub fn invalidate_repo(&self, repo_path: &Path) {
-        if let Ok(mut cache) = self.search_engines.lock() {
-            cache.remove(repo_path);
-        }
-        if let Ok(mut cache) = self.repo_cache.lock() {
-            cache.remove(repo_path);
-        }
-    }
 }

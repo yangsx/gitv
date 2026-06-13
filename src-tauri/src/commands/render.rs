@@ -7,7 +7,6 @@ use tracing::instrument;
 
 /// IPC input: a viewport of renderable graph data from the frontend.
 #[derive(Deserialize)]
-#[allow(dead_code)]
 pub struct RenderGraphInput {
     pub width: u32,
     pub height: u32,
@@ -42,7 +41,6 @@ pub struct RenderNode {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 pub struct RenderEdge {
     pub from_row: usize,
     pub from_col: usize,
@@ -52,6 +50,7 @@ pub struct RenderEdge {
     pub color_g: u8,
     pub color_b: u8,
     pub is_dimmed: bool,
+    #[allow(dead_code)]
     pub edge_type: String,
     pub edge_style: String,
 }
