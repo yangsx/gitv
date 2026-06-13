@@ -2,6 +2,7 @@
 	import { t } from '$lib/stores/locale';
 	import type { Blame } from '$lib/bindings/types';
 	import { getBlame } from '$lib/bindings/commands';
+	import { formatDate } from '$lib/utils/format-date';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 
 	const loadGen = createGenerationGuard();
@@ -42,15 +43,6 @@
 		}
 	}
 
-	function formatTime(timeStr: string): string {
-		try {
-			const d = new Date(timeStr);
-			return d.toLocaleDateString();
-		} catch {
-			return '';
-		}
-	}
-
 	let currentCommit = $state<string | null>(null);
 
 	let blameGroups = $derived(
@@ -68,7 +60,7 @@
 					current = {
 						oid: line.commit_oid,
 						author: line.author.name,
-						date: formatTime(line.time),
+						date: formatDate(line.time),
 						lines: []
 					};
 					groups.push(current);

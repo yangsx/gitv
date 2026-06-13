@@ -22,6 +22,7 @@
 		SUPPORTED_LOCALES,
 		getLocaleSelfName
 	} from '$lib/stores/locale';
+	import { draggable } from '$lib/actions/draggable';
 
 	interface Props {
 		onclose: () => void;
@@ -33,9 +34,11 @@
 	let closeBtn: HTMLButtonElement | undefined = $state();
 	let x = $state(Math.max(0, Math.round((window.innerWidth - 384) / 2)));
 	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)));
-	let isDragging = $state(false);
-	let dragOffsetX = $state(0);
-	let dragOffsetY = $state(0);
+
+	function handleDragMove(newX: number, newY: number) {
+		x = newX;
+		y = newY;
+	}
 
 	$effect(() => {
 		if (closeBtn) closeBtn.focus();
@@ -73,22 +76,6 @@
 				}
 			}
 		}
-	}
-
-	function onHeaderMouseDown(e: MouseEvent) {
-		isDragging = true;
-		dragOffsetX = e.clientX - x;
-		dragOffsetY = e.clientY - y;
-	}
-
-	function onMouseMove(e: MouseEvent) {
-		if (!isDragging) return;
-		x = e.clientX - dragOffsetX;
-		y = e.clientY - dragOffsetY;
-	}
-
-	function onMouseUp() {
-		isDragging = false;
 	}
 
 	function setColorMode(mode: 'by-branch' | 'by-author') {
@@ -173,7 +160,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} onmousemove={onMouseMove} onmouseup={onMouseUp} />
+<svelte:window onkeydown={handleKeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
@@ -186,14 +173,12 @@
 >
 	<div
 		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden resize"
-		style="min-width: 320px; min-height: 250px; max-width: min(90vw, 700px); max-height: min(90vh, 700px); width: 384px; {isDragging
-			? 'cursor: grabbing;'
-			: ''}"
+		style="min-width: 320px; min-height: 250px; max-width: min(90vw, 700px); max-height: min(90vh, 700px); width: 384px;"
 		onresize={() => {}}
 	>
 		<div
 			class="flex items-center justify-between border-b border-gray-800 px-3 py-2 cursor-grab select-none"
-			onmousedown={onHeaderMouseDown}
+			use:draggable={{ onMove: handleDragMove }}
 			role="toolbar"
 			aria-label={$t('preferences.drag_aria')}
 			tabindex="-1"

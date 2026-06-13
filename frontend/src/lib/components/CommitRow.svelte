@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, Ref, Highlight } from '$lib/bindings/types';
+	import { STAGED_OID, UNSTAGED_OID } from '$lib/constants';
+	import { formatDate } from '$lib/utils/format-date';
 
 	interface Props {
 		commit: CommitInfo;
@@ -53,24 +55,10 @@
 		return parts.join('');
 	}
 
-	const STAGED_OID = '__staged__';
-	const UNSTAGED_OID = '__unstaged__';
 	// svelte-ignore state_referenced_locally
 	const isVirtual = commit.oid === STAGED_OID || commit.oid === UNSTAGED_OID;
 	// svelte-ignore state_referenced_locally
 	const isStaged = commit.oid === STAGED_OID;
-
-	function formatTime(iso: string): string {
-		try {
-			return new Date(iso).toLocaleDateString(undefined, {
-				month: 'short',
-				day: 'numeric',
-				year: 'numeric'
-			});
-		} catch {
-			return '';
-		}
-	}
 
 	function refLabel(r: Ref): string | null {
 		if (r.Branch) return r.Branch.is_head ? `(${r.Branch.name})` : r.Branch.name;
@@ -125,7 +113,7 @@
 		aria-label={$t('commit_row.aria_label', {
 			summary: commit.summary,
 			author: commit.author.name,
-			date: formatTime(commit.commit_time)
+			date: formatDate(commit.commit_time)
 		}) +
 			(commit.refs.length > 0 ? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ') : '')}
 		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
@@ -156,6 +144,6 @@
 			{@html renderSummary()}
 		</span>
 		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
-		<span class="shrink-0 text-xs text-gray-600">{formatTime(commit.commit_time)}</span>
+		<span class="shrink-0 text-xs text-gray-600">{formatDate(commit.commit_time)}</span>
 	</button>
 {/if}

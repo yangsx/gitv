@@ -3,6 +3,7 @@
 	import type { DiffSummary, FileDiff } from '$lib/bindings/types';
 	import { getDiff, getFileDiff } from '$lib/bindings/commands';
 	import DiffViewer from './DiffViewer.svelte';
+	import { CHANGE_COLORS } from '$lib/constants';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 
 	const diffGen = createGenerationGuard();
@@ -21,15 +22,6 @@
 	let fileDiff = $state<FileDiff | null>(null);
 	let loadingDiff = $state(false);
 	let diffError = $state<string | null>(null);
-
-	const CHANGE_COLORS: Record<string, string> = {
-		Added: 'text-green-400',
-		Deleted: 'text-red-400',
-		Modified: 'text-yellow-400',
-		Renamed: 'text-blue-400',
-		Copied: 'text-purple-400',
-		SubmoduleUpdated: 'text-orange-400'
-	};
 
 	$effect(() => {
 		loadDiff();

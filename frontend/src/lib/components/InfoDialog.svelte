@@ -4,6 +4,7 @@
 	import { t } from '$lib/stores/locale';
 	import { logPath } from '$lib/stores/debug';
 	import { openLogDirectory } from '$lib/bindings/commands';
+	import { draggable } from '$lib/actions/draggable';
 
 	interface Props {
 		onclose: () => void;
@@ -27,29 +28,15 @@
 	let closeBtn: HTMLButtonElement | undefined = $state();
 	let x = $state(Math.max(0, Math.round((window.innerWidth - 420) / 2)));
 	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)));
-	let isDragging = $state(false);
-	let dragOffsetX = $state(0);
-	let dragOffsetY = $state(0);
+
+	function handleDragMove(newX: number, newY: number) {
+		x = newX;
+		y = newY;
+	}
 
 	$effect(() => {
 		if (closeBtn) closeBtn.focus();
 	});
-
-	function onHeaderMouseDown(e: MouseEvent) {
-		isDragging = true;
-		dragOffsetX = e.clientX - x;
-		dragOffsetY = e.clientY - y;
-	}
-
-	function onMouseMove(e: MouseEvent) {
-		if (!isDragging) return;
-		x = e.clientX - dragOffsetX;
-		y = e.clientY - dragOffsetY;
-	}
-
-	function onMouseUp() {
-		isDragging = false;
-	}
 </script>
 
 <svelte:window
@@ -59,8 +46,6 @@
 			onclose();
 		}
 	}}
-	onmousemove={onMouseMove}
-	onmouseup={onMouseUp}
 />
 
 <div
@@ -72,13 +57,11 @@
 >
 	<div
 		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden"
-		style="min-width: 320px; min-height: 200px; max-width: min(90vw, 500px); max-height: min(90vh, 600px); width: 420px; {isDragging
-			? 'cursor: grabbing;'
-			: ''}"
+		style="min-width: 320px; min-height: 200px; max-width: min(90vw, 500px); max-height: min(90vh, 600px); width: 420px;"
 	>
 		<div
 			class="flex items-center justify-between border-b border-gray-800 px-4 py-2 cursor-grab select-none"
-			onmousedown={onHeaderMouseDown}
+			use:draggable={{ onMove: handleDragMove }}
 			role="toolbar"
 			aria-label={$t('info.title')}
 			tabindex="-1"

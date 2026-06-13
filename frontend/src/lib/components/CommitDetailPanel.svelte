@@ -15,12 +15,13 @@
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import { untrack } from 'svelte';
-	import { get } from 'svelte/store';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { t, translate, locale } from '$lib/stores/locale';
+	import { t, translate } from '$lib/stores/locale';
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 	import { showToast } from '$lib/stores/toast';
+	import { CHANGE_COLORS, CHANGE_LETTERS } from '$lib/constants';
+	import { formatDateTime } from '$lib/utils/format-date';
 
 	function copyToClipboard(text: string) {
 		navigator.clipboard
@@ -118,23 +119,6 @@
 		];
 		fileContextMenu = { x: e.clientX, y: e.clientY, items };
 	}
-
-	const CHANGE_COLORS: Record<string, string> = {
-		Added: 'text-green-400',
-		Deleted: 'text-red-400',
-		Modified: 'text-yellow-400',
-		Renamed: 'text-blue-400',
-		Copied: 'text-purple-400',
-		SubmoduleUpdated: 'text-orange-400'
-	};
-	const CHANGE_LETTERS: Record<string, string> = {
-		Added: 'A',
-		Deleted: 'D',
-		Modified: 'M',
-		Renamed: 'R',
-		Copied: 'C',
-		SubmoduleUpdated: 'S'
-	};
 
 	let renderedBody = $derived(details.body ? renderMarkdown(details.body) : '');
 
@@ -282,10 +266,6 @@
 
 	function formatParent(oid: string): string {
 		return oid.substring(0, 7);
-	}
-
-	function formatTime(iso: string): string {
-		return new Date(iso).toLocaleString(get(locale));
 	}
 
 	function fileHeaderId(index: number): string {
@@ -513,7 +493,7 @@
 						</div>
 						<div class="text-xs text-gray-400">
 							{$t('commit_detail.date')}
-							{formatTime(details.info.author_time)}
+							{formatDateTime(details.info.author_time)}
 						</div>
 						{#if details.info.committer.name !== details.info.author.name}
 							<div class="text-xs text-gray-400">

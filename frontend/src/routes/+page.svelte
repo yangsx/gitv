@@ -37,6 +37,7 @@
 		sortAsc,
 		searchShowMode
 	} from '$lib/stores/repository';
+	import { STAGED_OID, UNSTAGED_OID, VIRTUAL_OIDS } from '$lib/constants';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
@@ -132,10 +133,6 @@
 
 	let focusBranchOid = $state<string | null>(null);
 	let refreshSignal = $state(0);
-
-	const STAGED_OID = '__staged__';
-	const UNSTAGED_OID = '__unstaged__';
-	const VIRTUAL_OIDS = new Set([STAGED_OID, UNSTAGED_OID]);
 
 	function copyToClipboard(text: string) {
 		navigator.clipboard
@@ -1002,10 +999,10 @@
 
 	function formatAbsoluteDate(iso: string): string {
 		if (!iso) return '';
+		const d = new Date(iso);
+		if (isNaN(d.getTime())) return iso;
 		try {
-			const d = new Date(iso);
-			if (isNaN(d.getTime())) return iso;
-			return d.toLocaleDateString(undefined, {
+			return d.toLocaleString(get(locale), {
 				year: 'numeric',
 				month: 'short',
 				day: 'numeric',

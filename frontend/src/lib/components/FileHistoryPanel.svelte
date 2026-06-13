@@ -2,6 +2,7 @@
 	import type { FileHistoryEntry } from '$lib/bindings/types';
 	import { getFileHistory } from '$lib/bindings/commands';
 	import { t } from '$lib/stores/locale';
+	import { formatDate } from '$lib/utils/format-date';
 
 	interface Props {
 		repoPath: string;
@@ -30,18 +31,6 @@
 			entries = [];
 		} finally {
 			loading = false;
-		}
-	}
-
-	function formatTime(iso: string): string {
-		try {
-			return new Date(iso).toLocaleDateString(undefined, {
-				month: 'short',
-				day: 'numeric',
-				year: 'numeric'
-			});
-		} catch {
-			return '';
 		}
 	}
 </script>
@@ -84,7 +73,7 @@
 						<span class="font-mono text-gray-500">{entry.commit_oid.slice(0, 8)}</span>
 						<span class="flex-1 truncate text-gray-300">{entry.summary}</span>
 						<span class="shrink-0 text-gray-500">{entry.author.name}</span>
-						<span class="shrink-0 text-gray-600">{formatTime(entry.time)}</span>
+						<span class="shrink-0 text-gray-600">{formatDate(entry.time)}</span>
 					</div>
 					{#if entry.old_path}
 						<div class="mt-0.5 text-gray-500">

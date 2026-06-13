@@ -23,9 +23,10 @@
 		edgeFarOid,
 		drawEdgeHighlight
 	} from '$lib/graph/edge-interaction';
-
-	const PADDING_LEFT = 12;
-	const EDGE_HIT_TOLERANCE = 6;
+	import {
+		GRAPH_PADDING_LEFT as PADDING_LEFT,
+		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE
+	} from '$lib/constants';
 
 	interface Props {
 		layout: GraphLayout;

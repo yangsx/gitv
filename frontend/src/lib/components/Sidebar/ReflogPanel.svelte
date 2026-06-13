@@ -2,6 +2,7 @@
 	import type { Ref, ReflogEntry } from '$lib/bindings/types';
 	import { getReflog } from '$lib/bindings/commands';
 	import { t } from '$lib/stores/locale';
+	import { formatDateTimeShort } from '$lib/utils/format-date';
 
 	let {
 		repoPath,
@@ -79,19 +80,6 @@
 			return true;
 		})
 	);
-
-	function formatTime(timeStr: string): string {
-		try {
-			const d = new Date(timeStr);
-			return (
-				d.toLocaleDateString() +
-				' ' +
-				d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-			);
-		} catch {
-			return '';
-		}
-	}
 </script>
 
 <div class="space-y-2">
@@ -152,7 +140,9 @@
 							>{stripReflogPrefix(entry.message).slice(0, 50)}</span
 						>
 					</div>
-					<div class="mt-0.5 text-gray-500">{entry.author.name} · {formatTime(entry.time)}</div>
+					<div class="mt-0.5 text-gray-500">
+						{entry.author.name} · {formatDateTimeShort(entry.time)}
+					</div>
 				</button>
 			{/each}
 		</div>
