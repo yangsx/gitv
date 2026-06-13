@@ -32,6 +32,7 @@
 	}: Props = $props();
 
 	let highlightsByOid = $derived(new Map($searchResults.map((r) => [r.commit_oid, r.highlights])));
+	let matchTypeByOid = $derived(new Map($searchResults.map((r) => [r.commit_oid, r.match_type])));
 
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
@@ -233,6 +234,7 @@
 							isComparison={commit.oid === comparisonOid}
 							isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
 							highlights={highlightsByOid.get(commit.oid)}
+							matchType={matchTypeByOid.get(commit.oid)}
 							onclick={onSelect}
 							oncontextmenu={onContextMenu}
 						/>

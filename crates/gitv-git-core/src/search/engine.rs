@@ -3,7 +3,7 @@ use roaring::RoaringBitmap;
 use std::collections::HashMap;
 
 use crate::error::SearchError;
-use crate::models::{CommitInfo, DateRange};
+use crate::models::{CommitInfo, DateRange, Oid};
 
 use super::query::*;
 
@@ -87,6 +87,10 @@ impl SearchEngine {
         }
     }
 
+    pub fn commit_oids(&self) -> Vec<Oid> {
+        self.commits.iter().map(|c| c.oid).collect()
+    }
+
     pub fn search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         let mut result_bitmap: Option<RoaringBitmap> = None;
         let mut compiled_regex: Option<Regex> = None;
@@ -167,6 +171,7 @@ impl SearchEngine {
                     commit_oid: commit.oid,
                     match_type,
                     highlights,
+                    patch_matches: Vec::new(),
                 });
             }
         }

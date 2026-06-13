@@ -80,6 +80,7 @@
 		"tree": "Tree",
 		"loading": "Loading diffs...",
 		"no_changed_files": "No changed files",
+		"patch_match_count": "{count} patch search match(es)",
 		"too_many_changed_files": "Too many changed files ({count}) — diff not loaded",
 		"binary_not_displayed": "Binary file (not displayed)",
 		"blame": "Blame",
@@ -199,7 +200,8 @@
 	"commit_row": {
 		"aria_label": "{summary} by {author}, {date}",
 		"staged_aria": "{summary}, staged changes",
-		"unstaged_aria": "{summary}, unstaged changes"
+		"unstaged_aria": "{summary}, unstaged changes",
+		"patch_match": "Matched by patch content"
 	},
 	"sidebar": {
 		"expand": "Expand sidebar",
@@ -252,7 +254,10 @@
 		"sort_asc": "↑",
 		"sort_desc": "↓",
 		"show_nonmatches": "Show non-matches",
-		"hide_nonmatches": "Hide non-matches"
+		"hide_nonmatches": "Hide non-matches",
+		"patch": "Patch",
+		"cancel": "Cancel",
+		"patch_progress": "Patch: {checked}/{total}"
 	},
 	"blame": {
 		"title": "Blame:",

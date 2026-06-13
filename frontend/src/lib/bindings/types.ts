@@ -113,6 +113,7 @@ export interface CommitBatch {
 export interface SearchQuery {
 	text?: string;
 	use_regex: boolean;
+	search_patch: boolean;
 	sha_prefix?: string;
 	author?: string;
 	date_range?: DateRange;
@@ -125,10 +126,43 @@ export interface DateRange {
 	to?: string;
 }
 
+export type MatchType = 'Message' | 'Sha' | 'Author' | 'Patch';
+
 export interface SearchResult {
 	commit_oid: string;
-	match_type: 'Message' | 'Sha' | 'Author';
+	match_type: MatchType;
 	highlights: Highlight[];
+	patch_matches: PatchMatchLocation[];
+}
+
+export interface PatchMatchLocation {
+	file_path: string;
+	old_line: number | null;
+	new_line: number | null;
+	matched_text: string;
+}
+
+export interface SearchResponse {
+	results: SearchResult[];
+	patch_search_id: number | null;
+	patch_search_total: number | null;
+}
+
+export interface PatchSearchProgress {
+	search_id: number;
+	checked: number;
+	total: number;
+	matches: SearchResult[];
+}
+
+export interface PatchSearchComplete {
+	search_id: number;
+	total_checked: number;
+}
+
+export interface PatchSearchError {
+	search_id: number;
+	message: string;
 }
 
 export interface Highlight {

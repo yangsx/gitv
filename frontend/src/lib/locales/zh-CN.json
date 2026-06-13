@@ -80,6 +80,7 @@
 		"tree": "文件树",
 		"loading": "正在加载差异...",
 		"no_changed_files": "没有更改的文件",
+		"patch_match_count": "{count} 个补丁搜索匹配",
 		"too_many_changed_files": "更改文件过多 ({count}) — 未加载差异",
 		"binary_not_displayed": "二进制文件（不显示）",
 		"blame": "追溯",
@@ -199,7 +200,8 @@
 	"commit_row": {
 		"aria_label": "{summary}，作者 {author}，{date}",
 		"staged_aria": "{summary}，已暂存的更改",
-		"unstaged_aria": "{summary}，未暂存的更改"
+		"unstaged_aria": "{summary}，未暂存的更改",
+		"patch_match": "通过补丁内容匹配"
 	},
 	"sidebar": {
 		"expand": "展开侧边栏",
@@ -252,7 +254,10 @@
 		"sort_asc": "↑",
 		"sort_desc": "↓",
 		"show_nonmatches": "显示不匹配",
-		"hide_nonmatches": "隐藏不匹配"
+		"hide_nonmatches": "隐藏不匹配",
+		"patch": "补丁",
+		"cancel": "取消",
+		"patch_progress": "补丁: {checked}/{total}"
 	},
 	"blame": {
 		"title": "追溯：",

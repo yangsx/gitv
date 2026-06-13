@@ -1742,6 +1742,7 @@ dependencies = [
  "gitv-wgpu-renderer",
  "open",
  "pollster",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

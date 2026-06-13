@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import type { CommitInfo, Ref, Highlight } from '$lib/bindings/types';
+	import type { CommitInfo, Ref, Highlight, MatchType } from '$lib/bindings/types';
 	import { STAGED_OID, UNSTAGED_OID } from '$lib/constants';
 	import { formatGitDateTime } from '$lib/utils/format-date';
 
@@ -10,6 +10,7 @@
 		isComparison?: boolean;
 		isDimmed?: boolean;
 		highlights?: Highlight[];
+		matchType?: MatchType;
 		onclick: (_oid: string, _ctrlKey: boolean) => void;
 		oncontextmenu?: (_e: MouseEvent, _oid: string) => void;
 		id?: string;
@@ -21,6 +22,7 @@
 		isComparison = false,
 		isDimmed = false,
 		highlights = [],
+		matchType,
 		onclick,
 		oncontextmenu,
 		id
@@ -143,6 +145,15 @@
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			{@html renderSummary()}
 		</span>
+		{#if matchType === 'Patch'}
+			<span
+				class="shrink-0 text-yellow-400 text-xs"
+				title={$t('commit_row.patch_match')}
+				aria-label={$t('commit_row.patch_match')}
+			>
+				⌗
+			</span>
+		{/if}
 		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
 		<span class="shrink-0 text-xs text-gray-600">{formatGitDateTime(commit.commit_time)}</span>
 	</button>

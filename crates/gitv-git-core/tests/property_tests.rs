@@ -119,6 +119,7 @@ proptest! {
         let query = SearchQuery {
             text: Some(query_str),
             use_regex: false,
+            search_patch: false,
             sha_prefix: None,
             author: None,
             date_range: None,

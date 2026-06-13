@@ -82,6 +82,7 @@
 		"tree": "Baum",
 		"loading": "Diffs werden geladen...",
 		"no_changed_files": "Keine geänderten Dateien",
+		"patch_match_count": "{count} Patch-Suchtreffer",
 		"too_many_changed_files": "Zu viele geänderte Dateien ({count}) — Diff nicht geladen",
 		"binary_not_displayed": "Binärdatei (nicht angezeigt)",
 		"blame": "Blame",
@@ -201,7 +202,8 @@
 	"commit_row": {
 		"aria_label": "{summary} von {author}, {date}",
 		"staged_aria": "{summary}, bereitgestellte Änderungen",
-		"unstaged_aria": "{summary}, nicht bereitgestellte Änderungen"
+		"unstaged_aria": "{summary}, nicht bereitgestellte Änderungen",
+		"patch_match": "Durch Patch-Inhalt gefunden"
 	},
 	"sidebar": {
 		"expand": "Seitenleiste aufklappen",
@@ -254,7 +256,10 @@
 		"sort_asc": "↑",
 		"sort_desc": "↓",
 		"show_nonmatches": "Nicht-Treffer anzeigen",
-		"hide_nonmatches": "Nicht-Treffer ausblenden"
+		"hide_nonmatches": "Nicht-Treffer ausblenden",
+		"patch": "Patch",
+		"cancel": "Abbrechen",
+		"patch_progress": "Patch: {checked}/{total}"
 	},
 	"blame": {
 		"title": "Blame:",

@@ -89,6 +89,7 @@ pub fn run() {
             commands::graph::get_graph_layout,
             commands::graph::get_initial_data,
             commands::search::search_commits,
+            commands::search::cancel_patch_search,
             commands::diff::get_commit_details,
             commands::diff::get_diff,
             commands::diff::get_file_diff,

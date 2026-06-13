@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use crate::error::{DiffError, GitError};
 use crate::models::*;
 use crate::repository::Repository;
+use crate::search::PatchMatchLocation;
 
 pub struct GixRepository {
     inner: gix::ThreadSafeRepository,
@@ -1059,6 +1060,146 @@ impl Repository for GixRepository {
         }
 
         Ok(entries)
+    }
+
+    fn commit_patch_matches(
+        &self,
+        oid: &Oid,
+        pattern: &str,
+        compiled: Option<&regex::Regex>,
+    ) -> Result<Vec<PatchMatchLocation>, GitError> {
+        let repo = self.thread_local();
+        let gix_oid = oid_to_gix_object_id(oid);
+        let obj = repo
+            .find_object(gix_oid)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let commit = obj
+            .try_into_commit()
+            .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+        let to_tree = commit.tree().map_err(|e| GitError::Gix(e.to_string()))?;
+        let parent_oid = commit.parent_ids().next();
+        let from_tree = parent_oid
+            .map(|p| {
+                repo.find_object(p)
+                    .map_err(|e| GitError::Gix(e.to_string()))
+            })
+            .map(|r| {
+                r?.try_into_commit()
+                    .map_err(|e| GitError::InvalidObject(e.to_string()))?
+                    .tree()
+                    .map_err(|e| GitError::Gix(e.to_string()))
+            })
+            .transpose()?;
+
+        let changes = repo
+            .diff_tree_to_tree(from_tree.as_ref(), Some(&to_tree), None)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let pattern_bytes = pattern.as_bytes();
+        let mut all_matches = Vec::new();
+
+        for change in &changes {
+            let Some((path, _, _, is_binary, is_submodule)) = change_to_file_change_parts(change)
+            else {
+                continue;
+            };
+            if is_binary || is_submodule {
+                continue;
+            }
+
+            let (source_id, dest_id): (Option<gix::ObjectId>, Option<gix::ObjectId>) = match change
+            {
+                gix::object::tree::diff::ChangeDetached::Modification {
+                    previous_id, id, ..
+                } => (Some(*previous_id), Some(*id)),
+                gix::object::tree::diff::ChangeDetached::Addition { id, .. } => (None, Some(*id)),
+                gix::object::tree::diff::ChangeDetached::Deletion { id, .. } => (Some(*id), None),
+                gix::object::tree::diff::ChangeDetached::Rewrite { source_id, id, .. } => {
+                    (Some(*source_id), Some(*id))
+                }
+            };
+
+            let mut found_in_blobs = false;
+            for blob_id in source_id.into_iter().chain(dest_id) {
+                let blob = match repo.find_object(blob_id) {
+                    Ok(o) => o,
+                    Err(_) => continue,
+                };
+                let data = blob.data.as_slice();
+                if data.iter().take(8192).any(|&b| b == 0) {
+                    continue;
+                }
+                let matched = if let Some(re) = compiled {
+                    let content = String::from_utf8_lossy(data);
+                    re.is_match(&content)
+                } else {
+                    data.windows(pattern_bytes.len())
+                        .any(|w| w == pattern_bytes)
+                };
+                if matched {
+                    found_in_blobs = true;
+                    break;
+                }
+            }
+            if !found_in_blobs {
+                continue;
+            }
+
+            let file_path_str = path.to_string_lossy().into_owned();
+            let hunks = match compute_hunks_for_change(&repo, change) {
+                Ok((hunks, is_bin)) => {
+                    if is_bin {
+                        continue;
+                    }
+                    hunks
+                }
+                Err(_) => continue,
+            };
+
+            for hunk in &hunks {
+                for line in &hunk.lines {
+                    let (content, old_line, new_line) = match line {
+                        DiffLine::Context {
+                            content,
+                            old_line,
+                            new_line,
+                        } => (content.as_str(), Some(*old_line), Some(*new_line)),
+                        DiffLine::Addition { content, new_line } => {
+                            (content.as_str(), None, Some(*new_line))
+                        }
+                        DiffLine::Deletion { content, old_line } => {
+                            (content.as_str(), Some(*old_line), None)
+                        }
+                        DiffLine::WordDiff {
+                            content,
+                            old_line,
+                            new_line,
+                            ..
+                        } => (content.as_str(), Some(*old_line), Some(*new_line)),
+                    };
+
+                    let matched_text = if let Some(re) = compiled {
+                        re.find(content).map(|m| m.as_str().to_string())
+                    } else if content.contains(pattern) {
+                        Some(pattern.to_string())
+                    } else {
+                        None
+                    };
+
+                    if let Some(text) = matched_text {
+                        let truncated: String = text.chars().take(200).collect();
+                        all_matches.push(PatchMatchLocation {
+                            file_path: file_path_str.clone(),
+                            old_line,
+                            new_line,
+                            matched_text: truncated,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(all_matches)
     }
 }
 

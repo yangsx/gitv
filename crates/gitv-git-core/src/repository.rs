@@ -63,6 +63,12 @@ pub trait Repository {
         mode: DiffMode,
         whitespace: WhitespaceMode,
     ) -> Result<Vec<FileDiff>, DiffError>;
+    fn commit_patch_matches(
+        &self,
+        oid: &Oid,
+        pattern: &str,
+        regex: Option<&regex::Regex>,
+    ) -> Result<Vec<crate::search::PatchMatchLocation>, GitError>;
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {

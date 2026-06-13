@@ -11,7 +11,7 @@ import type {
 	FileTreeNode,
 	FileHistoryEntry,
 	SearchQuery,
-	SearchResult,
+	SearchResponse,
 	Ref,
 	ReflogEntry,
 	StashEntry,
@@ -98,8 +98,12 @@ export async function getGraphLayout(
 	});
 }
 
-export async function searchCommits(path: string, query: SearchQuery): Promise<SearchResult[]> {
-	return timedInvoke<SearchResult[]>('search_commits', { path, query });
+export async function searchCommits(path: string, query: SearchQuery): Promise<SearchResponse> {
+	return timedInvoke<SearchResponse>('search_commits', { path, query });
+}
+
+export async function cancelPatchSearch(searchId: number): Promise<void> {
+	return invoke<void>('cancel_patch_search', { searchId });
 }
 
 export async function getCommitDetails(path: string, oid: string): Promise<CommitDetails> {

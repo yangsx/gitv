@@ -1,12 +1,21 @@
 <script lang="ts">
-	import { searchCommits } from '$lib/bindings/commands';
+	import { searchCommits, cancelPatchSearch } from '$lib/bindings/commands';
+	import type {
+		PatchSearchProgress,
+		PatchSearchComplete,
+		PatchSearchError
+	} from '$lib/bindings/types';
+	import { listen } from '@tauri-apps/api/event';
 	import {
 		searchQuery,
 		searchResults,
 		operationState,
 		sortBy,
 		sortAsc,
-		searchShowMode
+		searchShowMode,
+		patchSearchActive,
+		patchSearchId,
+		patchSearchProgress
 	} from '$lib/stores/repository';
 	import { showToast, updateToast, dismissToast } from '$lib/stores/toast';
 	import { t, translate } from '$lib/stores/locale';
@@ -20,6 +29,7 @@
 	let inputText = $state('');
 	let showOptions = $state(false);
 	let useRegex = $state(false);
+	let searchPatch = $state(false);
 	let authorFilter = $state('');
 	let shaPrefix = $state('');
 	let dateFrom = $state('');
@@ -28,16 +38,35 @@
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let containerRef: HTMLDivElement | undefined = $state();
 	let searchToastId: number | null = null;
+	let unlistenPatch: (() => void) | null = null;
+	let expectedPatchSearchId: number | null = null;
 
 	function handleInput() {
 		if (debounceTimer) clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => executeSearch(), 200);
 	}
 
-	function handleKeydown(e: KeyboardEvent) {
+	async function cancelActivePatchSearch() {
+		if ($patchSearchId !== null) {
+			await cancelPatchSearch($patchSearchId);
+		}
+		patchSearchActive.set(false);
+		patchSearchId.set(null);
+		patchSearchProgress.set(null);
+		expectedPatchSearchId = null;
+	}
+
+	function teardownPatchListener() {
+		if (unlistenPatch) {
+			unlistenPatch();
+			unlistenPatch = null;
+		}
+	}
+
+	async function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			if (debounceTimer) clearTimeout(debounceTimer);
-			executeSearch();
+			await executeSearch();
 		}
 		if (e.key === 'Escape') {
 			e.stopPropagation();
@@ -53,6 +82,8 @@
 				dismissToast(searchToastId);
 				searchToastId = null;
 			}
+			await cancelActivePatchSearch();
+			teardownPatchListener();
 		}
 	}
 
@@ -64,6 +95,8 @@
 				dismissToast(searchToastId);
 				searchToastId = null;
 			}
+			await cancelActivePatchSearch();
+			teardownPatchListener();
 			return;
 		}
 
@@ -73,6 +106,7 @@
 		const query = {
 			text: inputText || undefined,
 			use_regex: useRegex,
+			search_patch: searchPatch,
 			author: authorFilter || undefined,
 			combine_mode: 'And' as const,
 			sha_prefix: shaPrefix || undefined,
@@ -84,26 +118,76 @@
 
 		if (!repoPath) return;
 		operationState.set('Searching');
+
 		try {
-			const results = await searchCommits(repoPath, query);
-			searchResults.set(results);
-			const msg = translate(results.length === 1 ? 'search.matches' : 'search.matches_plural', {
-				count: results.length
+			await cancelActivePatchSearch();
+			teardownPatchListener();
+
+			if (searchPatch) {
+				unlistenPatch = await listen<PatchSearchProgress | PatchSearchComplete | PatchSearchError>(
+					'patch-search-progress',
+					(event) => {
+						const payload = event.payload;
+						if (expectedPatchSearchId !== null && payload.search_id !== expectedPatchSearchId) {
+							return;
+						}
+						if ('matches' in payload) {
+							searchResults.update((r) => [...r, ...payload.matches]);
+							patchSearchProgress.set({
+								checked: payload.checked,
+								total: payload.total
+							});
+						} else if ('total_checked' in payload) {
+							patchSearchActive.set(false);
+							patchSearchId.set(null);
+							patchSearchProgress.set(null);
+							expectedPatchSearchId = null;
+						} else if ('message' in payload) {
+							patchSearchActive.set(false);
+							patchSearchId.set(null);
+							patchSearchProgress.set(null);
+							expectedPatchSearchId = null;
+							showToast(payload.message, 'error');
+						}
+					}
+				);
+			}
+
+			const response = await searchCommits(repoPath, query);
+			searchResults.set(response.results);
+
+			const totalCount = response.results.length;
+			const msg = translate(totalCount === 1 ? 'search.matches' : 'search.matches_plural', {
+				count: totalCount
 			});
 			if (searchToastId !== null) {
 				updateToast(searchToastId, msg, 'info');
 			} else {
 				searchToastId = showToast(msg, 'info');
 			}
+
+			if (response.patch_search_id !== null) {
+				expectedPatchSearchId = response.patch_search_id;
+				patchSearchId.set(response.patch_search_id);
+				patchSearchActive.set(true);
+				patchSearchProgress.set({
+					checked: 0,
+					total: response.patch_search_total ?? 0
+				});
+			} else if (unlistenPatch) {
+				unlistenPatch();
+				unlistenPatch = null;
+			}
 		} catch {
 			searchResults.set([]);
 			showToast(translate('page.search_failed'), 'error');
+			teardownPatchListener();
 		} finally {
 			operationState.set('Idle');
 		}
 	}
 
-	function clearSearch() {
+	async function clearSearch() {
 		inputText = '';
 		authorFilter = '';
 		shaPrefix = '';
@@ -116,6 +200,13 @@
 			dismissToast(searchToastId);
 			searchToastId = null;
 		}
+		await cancelActivePatchSearch();
+		teardownPatchListener();
+	}
+
+	async function handleCancelPatch() {
+		await cancelActivePatchSearch();
+		teardownPatchListener();
 	}
 
 	function handleClickOutside(e: MouseEvent) {
@@ -127,6 +218,10 @@
 	$effect(() => {
 		return () => {
 			if (debounceTimer) clearTimeout(debounceTimer);
+			teardownPatchListener();
+			if ($patchSearchId !== null) {
+				cancelPatchSearch($patchSearchId).catch(() => {});
+			}
 		};
 	});
 </script>
@@ -175,6 +270,19 @@
 				})}
 			</span>
 		{/if}
+
+		{#if $patchSearchActive && $patchSearchProgress}
+			<span class="shrink-0 text-xs text-cyan-400">
+				{$t('search.patch_progress', $patchSearchProgress)}
+			</span>
+			<button
+				class="shrink-0 rounded px-2 py-1 text-xs border border-gray-700 bg-red-800/50 text-red-300 hover:bg-red-700/50"
+				onclick={handleCancelPatch}
+				aria-label={$t('search.cancel')}
+			>
+				{$t('search.cancel')}
+			</button>
+		{/if}
 	</div>
 
 	{#if showOptions}
@@ -186,6 +294,10 @@
 			<label class="flex items-center gap-1 text-xs text-gray-400">
 				<input type="checkbox" bind:checked={useRegex} onchange={executeSearch} />
 				{$t('search.regex')}
+			</label>
+			<label class="flex items-center gap-1 text-xs text-gray-400">
+				<input type="checkbox" bind:checked={searchPatch} onchange={executeSearch} />
+				{$t('search.patch')}
 			</label>
 			<input
 				type="text"

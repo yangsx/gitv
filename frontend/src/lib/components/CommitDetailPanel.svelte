@@ -1,5 +1,10 @@
 <script lang="ts">
-	import type { CommitDetails, FileDiff, FileTreeNode } from '$lib/bindings/types';
+	import type {
+		CommitDetails,
+		FileDiff,
+		FileTreeNode,
+		PatchMatchLocation
+	} from '$lib/bindings/types';
 	import {
 		getFileDiff,
 		getFileTree,
@@ -34,6 +39,7 @@
 	interface Props {
 		details: CommitDetails;
 		repoPath: string;
+		patchMatches?: PatchMatchLocation[];
 		onhistoryfile?: (_path: string) => void;
 		oncommitselect?: (_oid: string) => void;
 		comparisonFromOid?: string;
@@ -45,6 +51,7 @@
 	let {
 		details,
 		repoPath,
+		patchMatches = [],
 		onhistoryfile,
 		oncommitselect,
 		comparisonFromOid,
@@ -75,6 +82,28 @@
 	let scrollRaf: number | null = null;
 
 	let isComparison = $derived(comparisonFromOid !== undefined && comparisonToOid !== undefined);
+
+	let matchesByFile = $derived.by(() => {
+		const map = new SvelteMap<string, PatchMatchLocation[]>();
+		for (const m of patchMatches) {
+			map.set(m.file_path, [...(map.get(m.file_path) ?? []), m]);
+		}
+		return map;
+	});
+
+	let lastAutoScrollOid: string | null = null;
+
+	$effect(() => {
+		const oid = details.info.oid;
+		if (diffsLoading || patchMatches.length === 0 || isComparison) return;
+		if (lastAutoScrollOid === oid) return;
+		lastAutoScrollOid = oid;
+		const firstMatch = patchMatches[0];
+		const fileIndex = details.changed_files.findIndex((f) => f.path === firstMatch.file_path);
+		if (fileIndex >= 0) {
+			requestAnimationFrame(() => scrollToId(fileHeaderId(fileIndex)));
+		}
+	});
 
 	let comparisonStats = $derived(
 		isComparison
@@ -696,7 +725,11 @@
 									</div>
 								{:else if diff.hunks.length > 0}
 									<div class="p-2">
-										<DiffViewer hunks={diff.hunks} viewMode={localViewMode} />
+										<DiffViewer
+											hunks={diff.hunks}
+											viewMode={localViewMode}
+											matches={matchesByFile.get(file.path) ?? []}
+										/>
 									</div>
 								{:else}
 									<div class="px-4 py-3 text-xs text-gray-500">
@@ -819,6 +852,16 @@
 							{CHANGE_LETTERS[file.change_type] ?? '?'}
 						</span>
 						<span class="flex-1 truncate font-mono text-gray-300">{file.path}</span>
+						{#if matchesByFile.has(file.path)}
+							<span
+								class="shrink-0 rounded bg-yellow-500/30 px-1 text-[9px] font-bold text-yellow-200"
+								title={$t('commit_detail.patch_match_count', {
+									count: matchesByFile.get(file.path)!.length
+								})}
+							>
+								{matchesByFile.get(file.path)!.length}
+							</span>
+						{/if}
 						{#if !file.is_binary && !file.is_submodule}
 							<span class="shrink-0 font-mono text-[10px]">
 								<span class="text-green-500">{file.additions > 0 ? '+' + file.additions : ''}</span>

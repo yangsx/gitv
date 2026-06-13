@@ -12,7 +12,8 @@
 		getRecentRepositories,
 		saveRecentRepository,
 		openInNewWindow,
-		quitApp
+		quitApp,
+		cancelPatchSearch
 	} from '$lib/bindings/commands';
 	import type {
 		CommitInfo,
@@ -37,7 +38,11 @@
 		operationState,
 		sortBy,
 		sortAsc,
-		searchShowMode
+		searchShowMode,
+		patchSearchActive,
+		patchSearchProgress,
+		patchSearchId,
+		searchResults
 	} from '$lib/stores/repository';
 	import { STAGED_OID, UNSTAGED_OID, VIRTUAL_OIDS } from '$lib/constants';
 	import CommitList from '$lib/components/CommitList.svelte';
@@ -112,6 +117,11 @@
 	);
 	let detachedHeadSha = $derived(
 		$repoInfo?.head_commit && !$repoInfo?.head_branch ? $repoInfo.head_commit.substring(0, 7) : null
+	);
+	let patchMatches = $derived(
+		$searchResults
+			.filter((r) => r.commit_oid === $selectedOid && r.match_type === 'Patch')
+			.flatMap((r) => r.patch_matches)
 	);
 
 	const ROW_HEIGHT_REM = 1.75;
@@ -205,6 +215,10 @@
 	});
 
 	function closeRepo() {
+		if ($patchSearchId !== null) cancelPatchSearch($patchSearchId).catch(() => {});
+		patchSearchActive.set(false);
+		patchSearchId.set(null);
+		patchSearchProgress.set(null);
 		repoPath = '';
 		repoInfo.set(null);
 		selectedOid.set(null);
@@ -1396,6 +1410,7 @@
 							<CommitDetailPanel
 								details={commitDetails}
 								{repoPath}
+								{patchMatches}
 								onhistoryfile={(p: string) => {
 									historyFilePath = p;
 									historyRevision++;
@@ -1471,6 +1486,11 @@
 			{#if $comparisonOid}
 				<span class="rounded bg-indigo-700/50 px-2 py-0.5 text-xs text-indigo-300">
 					{$t('page.comparing')}
+				</span>
+			{/if}
+			{#if $patchSearchActive && $patchSearchProgress}
+				<span class="rounded bg-cyan-700/50 px-2 py-0.5 text-xs text-cyan-300">
+					{$t('search.patch_progress', $patchSearchProgress)}
 				</span>
 			{/if}
 			{#if $operationState !== 'Idle'}

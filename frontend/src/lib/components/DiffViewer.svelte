@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import type { DiffLine, Hunk, WordDiffSegment } from '$lib/bindings/types';
+	import type { DiffLine, Hunk, PatchMatchLocation, WordDiffSegment } from '$lib/bindings/types';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	interface Props {
 		hunks: Hunk[];
 		viewMode?: 'unified' | 'side-by-side';
+		matches?: PatchMatchLocation[];
 	}
 
-	let { hunks, viewMode = 'unified' }: Props = $props();
+	let { hunks, viewMode = 'unified', matches = [] }: Props = $props();
 
 	function lineKind(dl: DiffLine): 'context' | 'addition' | 'deletion' | 'worddiff' {
 		if (!dl || typeof dl !== 'object') return 'context';
@@ -51,6 +53,81 @@
 		if (kind === 'Added') return 'bg-green-500/30';
 		if (kind === 'Removed') return 'bg-red-500/30';
 		return '';
+	}
+
+	let oldMatchLines = $derived.by(() => {
+		const s = new SvelteSet<number>();
+		for (const m of matches) if (m.old_line !== null) s.add(m.old_line);
+		return s;
+	});
+
+	let newMatchLines = $derived.by(() => {
+		const s = new SvelteSet<number>();
+		for (const m of matches) if (m.new_line !== null) s.add(m.new_line);
+		return s;
+	});
+
+	let matchTextMap = $derived.by(() => {
+		const map = new SvelteMap<string, string>();
+		for (const loc of matches) {
+			if (loc.old_line !== null) map.set(`o:${loc.old_line}`, loc.matched_text);
+			if (loc.new_line !== null) map.set(`n:${loc.new_line}`, loc.matched_text);
+		}
+		return map;
+	});
+
+	function isMatched(dl: DiffLine | null): boolean {
+		if (!dl) return false;
+		if ('Context' in dl)
+			return oldMatchLines.has(dl.Context.old_line) || newMatchLines.has(dl.Context.new_line);
+		if ('Addition' in dl) return newMatchLines.has(dl.Addition.new_line);
+		if ('Deletion' in dl) return oldMatchLines.has(dl.Deletion.old_line);
+		if ('WordDiff' in dl)
+			return oldMatchLines.has(dl.WordDiff.old_line) || newMatchLines.has(dl.WordDiff.new_line);
+		return false;
+	}
+
+	function getMatchedText(dl: DiffLine | null): string | null {
+		if (!dl) return null;
+		if ('Context' in dl)
+			return (
+				matchTextMap.get(`o:${dl.Context.old_line}`) ??
+				matchTextMap.get(`n:${dl.Context.new_line}`) ??
+				null
+			);
+		if ('Addition' in dl) return matchTextMap.get(`n:${dl.Addition.new_line}`) ?? null;
+		if ('Deletion' in dl) return matchTextMap.get(`o:${dl.Deletion.old_line}`) ?? null;
+		if ('WordDiff' in dl)
+			return (
+				matchTextMap.get(`o:${dl.WordDiff.old_line}`) ??
+				matchTextMap.get(`n:${dl.WordDiff.new_line}`) ??
+				null
+			);
+		return null;
+	}
+
+	function escapeHtml(s: string): string {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
+	function renderHighlighted(content: string, pattern: string | null): string {
+		const escaped = escapeHtml(content);
+		if (!pattern) return escaped;
+		const escapedPattern = escapeHtml(pattern);
+		if (!escapedPattern) return escaped;
+		const parts: string[] = [];
+		let lastEnd = 0;
+		let idx = escaped.indexOf(escapedPattern, lastEnd);
+		while (idx !== -1) {
+			if (idx > lastEnd) parts.push(escaped.slice(lastEnd, idx));
+			parts.push('<mark class="bg-yellow-400/40 rounded-sm">');
+			parts.push(escaped.slice(idx, idx + escapedPattern.length));
+			parts.push('</mark>');
+			lastEnd = idx + escapedPattern.length;
+			idx = escaped.indexOf(escapedPattern, lastEnd);
+		}
+		if (lastEnd < escaped.length) parts.push(escaped.slice(lastEnd));
+		return parts.join('');
 	}
 
 	type Side = 'left' | 'right';
@@ -146,13 +223,17 @@
 			{@const split = splitHunkLines(hunk.lines)}
 			{#each split.left as leftLine, idx (idx)}
 				{@const rightLine = split.right[idx]}
+				{@const leftMatched = isMatched(leftLine)}
+				{@const rightMatched = isMatched(rightLine)}
 				<div class="flex">
 					<div
 						class="flex flex-1 min-w-0 {leftLine && lineKind(leftLine) === 'deletion'
 							? 'bg-red-900/30'
 							: ''} {leftLine && lineKind(leftLine) === 'worddiff'
 							? 'bg-red-900/20'
-							: ''} {leftLine === null ? 'bg-gray-800/30' : ''}"
+							: ''} {leftLine === null ? 'bg-gray-800/30' : ''} {leftMatched
+							? 'ring-1 ring-inset ring-yellow-500/50 bg-yellow-900/20'
+							: ''}"
 					>
 						<span class="w-10 shrink-0 select-none text-right text-gray-600"
 							>{leftLine ? oldLineNum(leftLine) : ''}</span
@@ -171,6 +252,12 @@
 								class="whitespace-pre-wrap break-all flex-1 min-w-0">{#each wordDiffSegments(leftLine)! as seg, si (si)}<span
 										class={segmentClass(seg.kind)}>{seg.text}</span
 									>{/each}</pre>
+						{:else if leftMatched}
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{@html renderHighlighted(
+									lineContent(leftLine!),
+									getMatchedText(leftLine)
+								)}</pre>
 						{:else}
 							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{leftLine
 									? lineContent(leftLine)
@@ -183,7 +270,9 @@
 							? 'bg-green-900/30'
 							: ''} {rightLine && lineKind(rightLine) === 'worddiff'
 							? 'bg-green-900/20'
-							: ''} {rightLine === null ? 'bg-gray-800/30' : ''}"
+							: ''} {rightLine === null ? 'bg-gray-800/30' : ''} {rightMatched
+							? 'ring-1 ring-inset ring-yellow-500/50 bg-yellow-900/20'
+							: ''}"
 					>
 						<span class="w-10 shrink-0 select-none text-right text-gray-600"
 							>{rightLine ? newLineNum(rightLine) : ''}</span
@@ -203,6 +292,12 @@
 								class="whitespace-pre-wrap break-all flex-1 min-w-0">{#each wordDiffSegments(rightLine)! as seg, si (si)}<span
 										class={segmentClass(seg.kind)}>{seg.text}</span
 									>{/each}</pre>
+						{:else if rightMatched}
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{@html renderHighlighted(
+									lineContent(rightLine!),
+									getMatchedText(rightLine)
+								)}</pre>
 						{:else}
 							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{rightLine
 									? lineContent(rightLine)
@@ -235,6 +330,7 @@
 			</div>
 			{#each hunk.lines as line, li (li)}
 				{@const kind = lineKind(line)}
+				{@const matched = isMatched(line)}
 				{@const bgClass =
 					kind === 'addition'
 						? 'bg-green-900/30'
@@ -243,7 +339,11 @@
 							: kind === 'worddiff'
 								? 'bg-yellow-900/20'
 								: ''}
-				<div class="flex {bgClass}">
+				<div
+					class="flex {bgClass} {matched
+						? 'ring-1 ring-inset ring-yellow-500/50 bg-yellow-900/20'
+						: ''}"
+				>
 					<span class="w-12 shrink-0 select-none text-right text-gray-600">{oldLineNum(line)}</span>
 					<span class="w-12 shrink-0 select-none text-right text-gray-600">{newLineNum(line)}</span>
 					<span
@@ -255,7 +355,13 @@
 					>
 						{#if kind === 'addition'}+{:else if kind === 'deletion'}-{:else if kind === 'worddiff'}~{:else}&nbsp;{/if}
 					</span>
-					{#if wordDiffSegments(line)}
+					{#if matched}
+						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+						<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{@html renderHighlighted(
+								lineContent(line),
+								getMatchedText(line)
+							)}</pre>
+					{:else if wordDiffSegments(line)}
 						<pre
 							class="whitespace-pre-wrap break-all flex-1 min-w-0">{#each wordDiffSegments(line)! as seg, si (si)}<span
 									class={segmentClass(seg.kind)}>{seg.text}</span

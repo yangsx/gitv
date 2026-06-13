@@ -31,3 +31,7 @@ export const matchingOids = derived(
 	searchResults,
 	($results) => new Set($results.map((r) => r.commit_oid))
 );
+
+export const patchSearchActive = writable(false);
+export const patchSearchId = writable<number | null>(null);
+export const patchSearchProgress = writable<{ checked: number; total: number } | null>(null);
