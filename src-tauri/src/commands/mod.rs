@@ -1,5 +1,6 @@
 pub mod args;
 pub mod commits;
+pub mod debug;
 pub mod diagnostics;
 pub mod diff;
 pub mod graph;

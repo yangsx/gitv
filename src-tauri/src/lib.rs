@@ -111,6 +111,7 @@ pub fn run() {
             commands::diagnostics::log_frontend_error,
             commands::diagnostics::log_frontend_message,
             commands::diagnostics::open_log_directory,
+            commands::debug::get_memory_usage,
             commands::preferences::get_preferences,
             commands::preferences::set_preferences,
         ])

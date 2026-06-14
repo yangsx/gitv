@@ -1,4 +1,5 @@
 import { writable, derived } from 'svelte/store';
+import { getMemoryUsage } from '$lib/bindings/commands';
 
 export interface IpcTiming {
 	command: string;
@@ -109,14 +110,16 @@ let memoryTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startMemoryTracking() {
 	if (memoryTimer) return;
-	memoryTimer = setInterval(() => {
-		const mem = (performance as unknown as Record<string, unknown>).memory as
-			| { usedJSHeapSize: number }
-			| undefined;
-		if (mem?.usedJSHeapSize) {
-			debug.update((d) => ({ ...d, memoryUsed: mem.usedJSHeapSize }));
+	memoryTimer = setInterval(async () => {
+		try {
+			const mem = await getMemoryUsage();
+			if (mem != null && mem > 0) {
+				debug.update((d) => ({ ...d, memoryUsed: mem }));
+			}
+		} catch {
+			// silently ignore
 		}
-	}, 2000);
+	}, 5000);
 }
 
 export function stopMemoryTracking() {

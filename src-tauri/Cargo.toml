@@ -28,3 +28,4 @@ tracing-appender = { workspace = true }
 open = { workspace = true }
 gitv-wgpu-renderer = { workspace = true }
 pollster = "0.4"
+memory-stats = "1.2"

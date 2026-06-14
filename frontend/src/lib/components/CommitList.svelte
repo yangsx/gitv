@@ -2,6 +2,7 @@
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
+	import { debug } from '$lib/stores/debug';
 	import CommitRow from './CommitRow.svelte';
 	import GraphRenderer from './graph/GraphRenderer.svelte';
 
@@ -67,6 +68,14 @@
 	);
 	let totalHeight = $derived(orderedCommits.length * rowHeight);
 	let visibleCommits = $derived(orderedCommits.slice(visibleStart, visibleEnd));
+
+	$effect(() => {
+		debug.update((d) => ({
+			...d,
+			totalCommits: orderedCommits.length,
+			visibleCommits: visibleCommits.length
+		}));
+	});
 
 	function onScroll(e: Event) {
 		const el = e.target as HTMLDivElement;

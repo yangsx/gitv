@@ -238,3 +238,7 @@ export async function getPreferences(): Promise<AppPreferences> {
 export async function setPreferences(prefs: AppPreferences): Promise<void> {
 	return timedInvoke<void>('set_preferences', { prefs });
 }
+
+export async function getMemoryUsage(): Promise<number | null> {
+	return timedInvoke<number | null>('get_memory_usage');
+}
