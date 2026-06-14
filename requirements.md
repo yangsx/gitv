@@ -175,7 +175,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 5. THE gitv_Application SHALL provide a status bar showing repository information
 6. THE gitv_Application SHALL support customizable font sizes for commit messages and diffs
 7. THE gitv_Application SHALL provide a preferences/settings button accessible from both the welcome screen and the main layout
-8. THE settings modal SHALL include: theme selection, font size, and language selection
+8. THE settings modal SHALL include: theme selection (dark/light/auto), font size, and language selection
 
 ### Requirement 12: Repository Status Display
 
@@ -480,7 +480,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 1. THE gitv_Application SHALL allow selecting two commits via Ctrl+Click (or Cmd+Click on macOS) in the commit list or graph
 2. THE gitv_Application SHALL allow selecting a second commit via right-click context menu "Compare with selected"
-3. WHEN two commits are selected for comparison, THE gitv_Application SHALL display a comparison panel showing the combined diff
+3. WHEN two commits are selected for comparison, THE gitv_Application SHALL display the combined diff in the commit detail panel (comparison mode within CommitDetailPanel)
 4. THE gitv_Application SHALL visually indicate which two commits are selected (distinct highlight from single selection)
 5. THE gitv_Application SHALL allow clearing the comparison via Escape key
 
@@ -853,7 +853,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 1. THE gitv_Application SHALL display notifications as transient toast messages that appear and auto-dismiss
 2. THE notification system SHALL support three severity levels: info (auto-dismiss after 3s), warning (auto-dismiss after 5s, amber color), error (manual dismiss only, red color)
 3. WHEN multiple notifications are active simultaneously, THE gitv_Application SHALL stack them vertically without overlapping
-4. THE gitv_Application SHALL use notifications for: refresh completion events (Req 22.2), clipboard copy confirmations, cache load timing, search completion with match count, and mid-stream errors (Req 63)
+4. THE gitv_Application SHALL use notifications for: refresh completion events (Req 22.2), clipboard copy confirmations, cache load timing, and mid-stream errors (Req 63)
 5. THE notification area SHALL be positioned in the bottom-right corner of the window, above the status bar
 6. THE notification component SHALL respect reduced-motion preferences (Req 67) — using instant appearance instead of slide-in animations
 
@@ -892,7 +892,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 #### Acceptance Criteria
 
 1. THE gitv_Application SHALL provide a debug overlay toggled via keyboard shortcut (F12 or Ctrl+Shift+D / Cmd+Shift+D)
-2. WHEN the debug overlay is visible, IT SHALL display: current FPS, memory usage (RSS), loaded commit count, streaming progress, current operation state (Req 62)
+2. WHEN the debug overlay is visible, IT SHALL display: current FPS, memory usage (physical RSS via `memory-stats` crate), loaded commit count, streaming progress, current operation state (Req 62)
 3. THE debug overlay SHALL display the last 10 IPC command durations (command name, duration in ms)
 4. THE debug overlay SHALL display GPU stats: draw call count, vertex count, viewport size
 5. THE debug overlay SHALL display cache stats: cache hit/miss ratio, last cache load duration

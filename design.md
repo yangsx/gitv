@@ -814,17 +814,11 @@ async fn delete_saved_search(id: String) -> Result<(), String>;
 
 // ===== Debug Overlay Backend (Req 69) =====
 
+/// Returns the current process's physical memory usage in bytes.
+/// Most debug metrics (FPS, IPC timings, graph stats, load phase timings)
+/// are collected client-side in the frontend debug store.
 #[tauri::command]
-async fn get_debug_metrics() -> Result<DebugMetricsPayload, String>;
-
-pub struct DebugMetricsPayload {
-    pub memory_rss_bytes: u64,
-    pub cache_hits: u64,
-    pub cache_misses: u64,
-    pub cache_last_load_ms: u64,
-    pub gpu_draw_calls: u32,
-    pub gpu_vertex_count: u32,
-}
+fn get_memory_usage() -> Option<u64>;
 
 ```
 ### CLI Argument Parsing (Req 42, Req 55)
@@ -866,84 +860,71 @@ frontend/
 │   ├── app.html                      # HTML shell
 │   ├── app.css                       # Global Tailwind styles
 │   ├── routes/
-│   ├── +layout.svelte                # Root layout (global modals)
-│   └── +page.svelte                  # Main page (Welcome / Repo view)
-├── lib/
-│   ├── components/
-│   │   ├── WelcomeScreen.svelte      (shown when no repo is open)
-│   │   │   ├── RecentReposList.svelte    (prominent when non-empty: name, path, timestamp)
-│   │   │   ├── OpenRepoButton.svelte
-│   │   │   ├── PreferencesButton.svelte  (opens settings from welcome screen)
-│   │   │   └── ShortcutHints.svelte      (3-5 common shortcuts, platform-aware)
-│   │   ├── MainLayout.svelte         (shown when repo is open)
-│   │   ├── Sidebar/
-│   │   │   ├── BranchList.svelte
-│   │   │   ├── TagList.svelte
-│   │   │   ├── RemoteList.svelte
-│   │   │   ├── StashList.svelte          (stash browsing)
-│   │   │   └── ReflogPanel.svelte        (reflog visualization)
-│   │   ├── Toolbar/
-│   │   │   ├── SearchBar.svelte
-│   │   │   ├── FilterControls.svelte
-│   │   │   │   └── BranchViewToggle.svelte   (Req 32)
-│   │   │   │       └── FirstParentToggle.svelte (Req 32.4)
-│   │   │   │   └── HideMergesToggle.svelte   (Req 53)
-│   │   │   ├── ViewToggle.svelte
-│   │   │   │   └── GraphOrientationToggle.svelte  (Req 57)
-│   │   │   │   └── ColorModeToggle.svelte         (Req 52: by-branch / by-author)
-│   │   │   └── FullscreenButton.svelte       (Req 33)
-│   │   ├── CommitView/
-│   │   │   ├── CommitGraph.svelte     (Canvas 2D fallback renderer)
-│   │   │   ├── graph/                 (GPU-accelerated renderer)
-│   │   │   │   ├── GraphRenderer.svelte  (router: wgpu vs Canvas 2D based on preference)
-│   │   │   │   ├── WgpuGraph.svelte      (GPU-rendered via wgpu offscreen pipeline)
-│   │   │   │   └── graph-math.ts         (shared position/color/hit-test math)
-│   │   │   ├── CommitList.svelte      (Virtualized, scroll sync between graph + rows)
-│   │   ├── DetailPanel/
-│   │   │   ├── CommitDetails.svelte   (full message with markdown rendering)
-│   │   │   ├── FileTree/              (full repo tree at selected commit or HEAD)
-│   │   │   │   ├── FileTreeSearch.svelte  (Req 34)
-│   │   │   │   └── FileList.svelte
-│   │   │   ├── DiffViewer.svelte          (unified/side-by-side, Req 54: normal/word-diff/stat-only, whitespace modes)
-│   │   │   │   └── DiffModeSelector.svelte     (Req 54: diff mode dropdown)
-│   │   │   │   └── WhitespaceModeSelector.svelte (Req 54: whitespace modifier dropdown)
-│   │   │   └── WorkingChangesDiff.svelte  (staged/unstaged/combined diff tabs)
-│   │   ├── ComparisonPanel.svelte         (two-commit comparison)
-│   │   │   └── CommitSelector.svelte
-│   │   ├── ContextMenu.svelte             (right-click actions for commits, files, branches)
-│   │   ├── StatusBar/
-│   │   │   ├── BranchIndicator.svelte     (shows "(detached)" + short SHA when HEAD is detached)
-│   │   │   ├── CommitCount.svelte         ("142 of 10,847 commits" or "10,847 commits")
-│   │   │   ├── StatusIndicator.svelte
-│   │   │   ├── UpdateNotification.svelte  (non-intrusive, in status bar)
-│   │   │   └── LoadingIndicator.svelte
-│   │   ├── CommandPalette.svelte
-│   │   ├── FullscreenOverlay.svelte   (Req 33)
-│   │   │   ├── FullscreenHistoryView.svelte
-│   │   │   └── FullscreenDiffView.svelte
-│   │   └── Modals/
-│   │       ├── KeyboardShortcutsModal.svelte
-│   │       └── ErrorModal.svelte
-│   │   ├── SettingsModal.svelte         (accessible from both welcome screen and main layout)
-│   │   └── Notifications/
-│   │       └── ToastContainer.svelte    (Req 66: transient toasts, bottom-right)
-│   │           └── Toast.svelte         (individual toast: info/warning/error)
-│   ├── DebugOverlay.svelte               (Req 69: FPS, memory, IPC timing, GPU stats, cache stats)
-│   ├── stores/
-│   │   ├── app.svelte.ts               # Global app state
-│   │   ├── repository.svelte.ts        # Repository data store
-│   │   ├── comparison.svelte.ts        # Two-commit comparison state
-│   │   └── ui.svelte.ts                # UI preferences (theme, layout, fullscreen)
-│   │   └── debug.svelte.ts              # Debug overlay state (Req 69)
-│   ├── actions/
-│   │   ├── keyboard.ts                 # Svelte actions for keyboard shortcuts
-│   │   └── virtual-scroll.ts          # Svelte action for virtual scrolling
-│   ├── bindings/                        # Auto-generated Tauri IPC bindings
-│   │   └── index.ts
-│   ├── binary-decoder.ts               # Decode postcard commit batches
-│   ├── locales/                         # i18n JSON files
-│   └── types/                           # Shared TypeScript types
-│       └── index.ts
+│   │   ├── +layout.svelte            # Root layout (global modals)
+│   │   └── +page.svelte              # Main page (Welcome / Repo view)
+│   └── lib/
+│       ├── index.ts                  # Re-exports
+│       ├── constants.ts              # App-wide constants
+│       ├── logging.ts                # Frontend logging helpers
+│       ├── components/
+│       │   ├── AuthorLegend.svelte       (color-by-author legend, Req 52)
+│       │   ├── BlamePanel.svelte         (git blame view)
+│       │   ├── CommandPalette.svelte     (fuzzy-search command palette)
+│       │   ├── CommitDetailPanel.svelte  (unified detail panel; two-commit comparison mode, Req 35)
+│       │   ├── CommitGraph.svelte        (Canvas 2D graph renderer, shared with wgpu via graph-math.ts)
+│       │   ├── CommitList.svelte         (virtualized commit list, scroll-synced with graph)
+│       │   ├── CommitRow.svelte          (single commit row rendering)
+│       │   ├── ContextMenu.svelte        (right-click actions for commits, files, branches)
+│       │   ├── DebugOverlay.svelte       (Req 69: FPS, memory, graph stats, IPC timing, load phases)
+│       │   ├── DiffViewer.svelte         (unified/side-by-side, Req 54: diff modes, whitespace, search highlights)
+│       │   ├── FileHistoryPanel.svelte   (file history with --follow, Req 36)
+│       │   ├── FileTree.svelte           (file tree browser at selected commit, Req 44)
+│       │   ├── InfoDialog.svelte         (draggable — shortcuts, logging, app info)
+│       │   ├── PreferencesModal.svelte   (draggable — theme, language, font, graph, diff prefs)
+│       │   ├── ResizeHandle.svelte       (panel resize drag handle)
+│       │   ├── SearchBar.svelte          (text/SHA/author search, saved search support, Req 41)
+│       │   ├── ShortcutHelp.svelte       (keyboard shortcuts reference)
+│       │   ├── ToastContainer.svelte     (Req 66: transient toast notifications)
+│       │   ├── Toolbar.svelte            (toolbar — search, refresh, open repo, gear, info buttons)
+│       │   ├── Tooltip.svelte            (generic tooltip component)
+│       │   ├── graph/
+│       │   │   ├── GraphRenderer.svelte  (wgpu renderer with Canvas 2D fallback on failure)
+│       │   │   └── WgpuGraph.svelte      (GPU-rendered via wgpu offscreen pipeline)
+│       │   └── Sidebar/
+│       │       ├── Sidebar.svelte        (sidebar container with tabs)
+│       │       ├── RefList.svelte        (branches, tags, remotes — unified list, Req 3)
+│       │       ├── ReflogPanel.svelte    (reflog visualization, Req 37)
+│       │       └── StashList.svelte      (stash browsing, Req 38)
+│       ├── stores/
+│       │   ├── commands.ts           # Tauri IPC wrapper with timing (timedInvoke)
+│       │   ├── debug.ts              # Debug overlay state (Req 69)
+│       │   ├── dialog.ts             # Dialog stack management
+│       │   ├── layout.ts             # Panel layout dimensions (Req 59)
+│       │   ├── locale.ts             # i18n / language selection (Req 21)
+│       │   ├── preferences.ts        # Persisted preferences (theme, graph, diff, renderer)
+│       │   ├── repository.ts         # Repository state: commits, graph, refs, selection, filters
+│       │   └── toast.ts              # Toast notification state (Req 66)
+│       ├── graph/
+│       │   ├── edge-interaction.ts   # Bezier hit-testing, hover detection for edges
+│       │   ├── graph-math.ts         # Shared position/color/hit-test math
+│       │   ├── hide-merges.ts        # Merge commit filtering + edge reconnection (Req 53)
+│       │   └── hide-merges.test.ts   # Tests for merge filtering
+│       ├── actions/
+│       │   └── draggable.ts          # Svelte action for draggable panels/dialogs
+│       ├── bindings/
+│       │   ├── commands.ts           # Tauri IPC command invocations
+│       │   └── types.ts              # Shared TypeScript types
+│       ├── locales/
+│       │   ├── en.json               # English (default)
+│       │   ├── zh-CN.json            # Simplified Chinese
+│       │   └── de.json               # German
+│       ├── utils/
+│       │   ├── a11y.ts               # Accessibility helpers (focus trap, ARIA)
+│       │   ├── async-guard.ts        # Stale async result guard
+│       │   ├── format-date.ts        # Gitk-style date formatting
+│       │   └── markdown.ts           # XSS-sanitized markdown rendering
+│       └── assets/
+│           └── favicon.svg
 ```
 
 #### Key UI Components
@@ -1047,29 +1028,32 @@ Virtualized list that stays synchronized with the graph.
 </script>
 ```
 
-##### ComparisonPanel Component
+##### Two-Commit Comparison (CommitDetailPanel mode)
 
-Two-commit diff comparison for arbitrary commit pairs.
+Two-commit diff comparison is handled as a **mode** within `CommitDetailPanel`, not as a separate component. When `comparisonFromOid` and `comparisonToOid` props are provided, the panel switches to comparison mode:
+
+- The commit info header is replaced with a comparison header showing file count and total additions/deletions
+- Close (×) and swap (↔) buttons allow dismissing or reversing the comparison direction
+- The diff is fetched via `getDiff(repoPath, fromOid, toOid)` and displayed using the same `DiffViewer` component
+- Markdown/raw message toggle and blame buttons are hidden in comparison mode
 
 ```svelte
 <script lang="ts">
-  import type { Diff, CommitInfo } from "$lib/types";
-
+  // CommitDetailPanel props relevant to comparison mode:
   let {
-    commitA,
-    commitB,
-    diff,
-  }: {
-    commitA: CommitInfo | null;
-    commitB: CommitInfo | null;
-    diff: Diff | null;
-  } = $props();
+    details,
+    comparisonFromOid?: string,
+    comparisonToid?: string,
+    onswap?: () => void,
+    onclose?: () => void,
+  }: Props = $props();
 
-  // Triggered by selecting two commits via Shift+Click in CommitList/CommitGraph
-  // Or right-click → "Compare with..." context menu
-  // Displays combined diff between the two commits
+  let isComparison = $derived(comparisonFromOid !== undefined && comparisonToOid !== undefined);
+  // In comparison mode, diff uses comparisonFromOid/comparisonToOid instead of parent/self
 </script>
 ```
+
+Comparison is triggered by Ctrl+Click (or Cmd+Click) on a second commit, or via right-click context menu → "Compare…".
 
 ##### DiffViewer Component
 
@@ -1168,7 +1152,7 @@ Two-commit diff comparison for arbitrary commit pairs.
 </script>
 ```
 
-##### SettingsModal Component
+##### PreferencesModal Component
 
 ```svelte
 <script lang="ts">
@@ -1178,10 +1162,11 @@ Two-commit diff comparison for arbitrary commit pairs.
     onclose?: () => void;
   } = $props();
 
+  // Draggable modal (no backdrop) accessible from toolbar gear button
   // Sections:
-  // Appearance: theme (dark/light), font size number input, color palette dropdown (Req 49.3)
-  // Graph: default orientation, default color mode (by-branch / by-author)
-  // Behavior: auto-update check toggle (Req 51.4)
+  // Appearance: theme (dark/light/auto), font size, high contrast toggle, color palette (Req 49.3)
+  // Graph: orientation, color mode (by-branch / by-author), hide merges, renderer (wgpu/canvas2d)
+  // Diff: default diff mode, whitespace mode, side-by-side toggle
   // Language: language selection dropdown (Req 21.3)
   // Focus trap: Escape closes modal, Tab cycles within modal (Req 67.3)
 </script>
@@ -1576,10 +1561,25 @@ pub struct SavedSearch {
 
 ### Frontend State Model
 
-State is managed via Svelte stores in `src/stores/`. Svelte 5 runes (`$state`, `$derived`, `$effect`) are used inside `.svelte.ts` store modules for fine-grained reactivity.
+State is managed via Svelte stores in `frontend/src/lib/stores/`. Svelte 5 runes (`$state`, `$derived`, `$effect`) are used for fine-grained reactivity.
+
+The actual store files:
+
+| Store | Responsibility |
+|-------|---------------|
+| `repository.ts` | Repo state, commits, graph layout, refs, selection, search, filters, operations |
+| `preferences.ts` | Persisted preferences (theme, font size, graph/diff options, renderer) |
+| `layout.ts` | Panel dimensions, sidebar/detail height, clamped restore (Req 59) |
+| `debug.ts` | Debug overlay: FPS, memory, graph stats, IPC timings, load phases (Req 69) |
+| `commands.ts` | Tauri IPC wrapper with `timedInvoke` for automatic timing capture |
+| `dialog.ts` | Dialog stack management (open/close sequencing) |
+| `locale.ts` | i18n: current language, available locales, translation lookup (Req 21) |
+| `toast.ts` | Toast notification state (Req 66) |
+
+The following code samples illustrate the patterns used across these stores:
 
 ```typescript
-// src/stores/app.svelte.ts
+// Repository state (repository.ts) — selection, filters, layout state
 
 let repository = $state<RepositoryState | null>(null);
 let recentRepositories = $state<RecentRepository[]>([]);
@@ -1667,7 +1667,7 @@ export function getAppState() {
 ```
 
 ```typescript
-// src/stores/comparison.svelte.ts
+// Comparison state (repository.ts) — two-commit comparison
 
 let commitA = $state<string | null>(null);
 let commitB = $state<string | null>(null);
@@ -2076,26 +2076,32 @@ interface Notification {
 
 // ===== Debug Overlay (Req 69) =====
 
-interface DebugMetrics {
+// Matches the actual DebugState interface in frontend/src/lib/stores/debug.ts.
+// Most metrics are collected client-side; memory is polled via get_memory_usage command.
+
+interface DebugState {
+  visible: boolean;
   fps: number;
-  memoryRss: number;
-  loadedCommits: number;
-  operationState: OperationState;
-  ipcTimings: Array<{ command: string; durationMs: number }>;
-  gpuStats: GpuStats | null;
-  cacheStats: CacheStats | null;
+  ipcTimings: IpcTiming[];
+  totalCommits: number;
+  visibleCommits: number;
+  graphNodes: number;
+  graphEdges: number;
+  graphStashMarkers: number;
+  graphColumns: number;
+  memoryUsed: number;           // polled every 5s via get_memory_usage backend command
+  graphDrawTimeMs: number;
+  loadPhaseTimings: LoadPhaseTiming[];
 }
 
-interface GpuStats {
-  drawCalls: number;
-  vertices: number;
-  viewport: [number, number];
+interface IpcTiming {
+  command: string;
+  durationMs: number;
 }
 
-interface CacheStats {
-  hits: number;
-  misses: number;
-  lastLoadMs: number;
+interface LoadPhaseTiming {
+  phase: string;                // e.g. "load_commits", "graph_calc", "refs", "working_changes", "total"
+  durationMs: number;
 }
 ```
 
@@ -2208,18 +2214,22 @@ async fn get_diff(repo_path: String, from: Option<String>, to: String) -> Result
 
 ```svelte
 <script lang="ts">
+  // Actual fields from frontend/src/lib/stores/debug.ts DebugState:
   let visible = $state<boolean>(false);
   let fps = $state<number>(0);
-  let memoryRss = $state<number>(0);
-  let loadedCommits = $state<number>(0);
-  let operationState = $state<string>("idle");
-  let ipcTimings = $state<Array<{ command: string; duration_ms: number }>>([]);
-  let gpuStats = $state<{ drawCalls: number; vertices: number; viewport: [number, number] }>();
-  let cacheStats = $state<{ hits: number; misses: number; lastLoadMs: number }>();
+  let memoryUsed = $state<number>(0);       // polled via get_memory_usage every 5s
+  let totalCommits = $state<number>(0);
+  let visibleCommits = $state<number>(0);
+  let graphNodes = $state<number>(0);
+  let graphEdges = $state<number>(0);
+  let graphDrawTimeMs = $state<number>(0);
+  let ipcTimings = $state<Array<{ command: string; durationMs: number }>>([]);
+  let loadPhaseTimings = $state<Array<{ phase: string; durationMs: number }>>([]);
 
   // F12 or Ctrl+Shift+D toggles visibility
   // Semi-transparent overlay in top-right corner
-  // Updates at 2Hz to avoid self-induced performance impact
+  // FPS and graph draw time updated each render frame
+  // Memory polled every 5s to avoid self-induced overhead
 </script>
 ```
 
@@ -2687,6 +2697,7 @@ pub struct KeyBinding {
 | Async Runtime | tokio | Required for Tauri, well-supported |
 | Structured Logging | tracing + tracing-subscriber + tracing-appender | Async-aware spans, JSON output, rolling file logs (Req 68) |
 | Crash Reporting | Custom panic hook + backtrace | Crash log capture, max 5 retained (Req 70) |
+| Memory Tracking | memory-stats | Cross-platform RSS measurement for debug overlay (Req 69) |
 
 ### Frontend Stack
 

@@ -79,12 +79,19 @@ Explicit enable/disable for rename following in file history.
 - Show pinned commit SHA in file tree submodule entries
 - Context menu actions for submodules ("Copy submodule path", "Copy pinned commit SHA")
 
+### Req 69.4-5: GPU and Cache Stats in Debug Overlay
+- Req 69.4: GPU draw calls, vertex count, viewport size — currently shows graph stats (nodes/edges/columns/draw time) instead
+- Req 69.5: Cache hit/miss ratio, last cache load duration — currently shows load phase timings instead
+
 ### Req 58: Navigation by Author
 Jump to next/previous commit by same author via keyboard shortcuts.
+- Alt+J/Alt+K shortcuts are registered and working (commit 876aea1)
+- Missing: wrap-around behavior, listing in keyboard shortcut help dialog (Req 13.4)
 
 ## Observations
 
-- **Req 6.5 (date range), 6.6 (file path), 25.6 (stream cancellation), 44 (file tree browser), 59 (panel layout persistence)** — all ARE implemented despite initial uncertainty.
+- **Req 6.5 (date range), 6.6 (file path), 6.8-6.12 (diff search + highlighting), 25.6 (stream cancellation), 44 (file tree browser), 59 (panel layout persistence)** — all ARE implemented despite initial uncertainty.
 - **Req 11.2 (responsive layout)** — panels are resizable but layout is fixed-format. Minor.
 - **Req 25.5 (viewport-prioritized streaming)** — CommitStream loads all commits upfront then serves batches; viewport-aware loading would reduce initial latency for large repos.
 - **Req 21.7 (locale formatting)** — browser `toLocaleDateString()` uses system locale, not app-selected locale.
+- **Req 66.4 (search-match notifications)** — search matches now use in-place diff-line highlighting instead of toast notifications (commit 084fbb1).
