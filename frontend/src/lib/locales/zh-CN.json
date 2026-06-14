@@ -20,6 +20,7 @@
 		"title": "偏好设置",
 		"close_aria": "关闭偏好设置",
 		"drag_aria": "拖动移动",
+		"resize_aria": "拖动调整大小",
 		"section_graph": "图形",
 		"section_diff": "差异查看",
 		"color_mode": "颜色模式",
@@ -62,6 +63,7 @@
 		"section_appearance": "外观",
 		"theme": "主题",
 		"theme_aria": "界面主题",
+		"theme_auto": "自动",
 		"theme_dark": "深色",
 		"theme_light": "浅色",
 		"font_size": "字体大小",
@@ -125,6 +127,7 @@
 		"title": "gitv",
 		"subtitle": "现代化 Git 仓库可视化工具",
 		"browse_repo": "选择仓库文件夹…",
+		"skip_to_content": "跳转到提交列表",
 		"select_repo_title": "选择 Git 仓库",
 		"recent_title": "最近的仓库",
 		"open_first": "打开你的第一个仓库开始使用",
@@ -161,6 +164,7 @@
 		"cmd_refresh": "刷新仓库",
 		"cmd_search": "聚焦搜索",
 		"cmd_preferences": "打开偏好设置",
+		"cmd_palette": "命令面板",
 		"ctx_copy_sha": "复制 SHA",
 		"ctx_copy_short_sha": "复制短 SHA",
 		"ctx_copy_message": "复制提交信息",
@@ -353,6 +357,11 @@
 		"unstaged": "未暂存",
 		"no_changes": "无变更",
 		"mode_aria": "工作区变更模式"
+	},
+	"a11y": {
+		"resize_detail_panel": "调整详情面板大小",
+		"resize_file_list": "调整文件列表大小",
+		"resize_sidebar": "调整侧边栏大小"
 	},
 	"common": {
 		"close": "关闭",

@@ -1,4 +1,4 @@
-import { writable, get } from 'svelte/store';
+import { writable, get, derived } from 'svelte/store';
 import { getPreferences, setPreferences } from '$lib/bindings/commands';
 import type { AppPreferences } from '$lib/bindings/types';
 import { graphColorMode, graphHideMerges, graphOrientation, graphPalette } from './repository';
@@ -13,13 +13,13 @@ const DEFAULTS: AppPreferences = {
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
 	diff_view_mode: 'unified',
-	theme: 'dark',
+	theme: 'auto',
 	font_size: 13,
 	high_contrast: false,
 	language: 'en'
 };
 
-export const theme = writable<'dark' | 'light'>(DEFAULTS.theme);
+export const theme = writable<'dark' | 'light' | 'auto'>(DEFAULTS.theme);
 export const diffMode = writable<'normal' | 'word-diff' | 'stat-only'>(DEFAULTS.diff_mode);
 export const diffWhitespace = writable<
 	'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
@@ -28,6 +28,59 @@ export const diffViewMode = writable<'unified' | 'side-by-side'>(DEFAULTS.diff_v
 export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);
+
+function detectSystemTheme(): 'dark' | 'light' {
+	if (typeof window === 'undefined') return 'dark';
+	try {
+		return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	} catch {
+		return 'dark';
+	}
+}
+
+export const systemTheme = writable<'dark' | 'light'>(detectSystemTheme());
+
+if (typeof window !== 'undefined') {
+	try {
+		const mql = window.matchMedia('(prefers-color-scheme: dark)');
+		mql.addEventListener('change', (e) => {
+			systemTheme.set(e.matches ? 'dark' : 'light');
+		});
+	} catch {
+		// matchMedia not available
+	}
+}
+
+export const resolvedTheme = derived([theme, systemTheme], ([$theme, $systemTheme]) =>
+	$theme === 'auto' ? $systemTheme : $theme
+);
+
+function detectSystemHighContrast(): boolean {
+	if (typeof window === 'undefined') return false;
+	try {
+		return window.matchMedia('(prefers-contrast: more)').matches;
+	} catch {
+		return false;
+	}
+}
+
+export const systemHighContrast = writable(detectSystemHighContrast());
+
+if (typeof window !== 'undefined') {
+	try {
+		const mql = window.matchMedia('(prefers-contrast: more)');
+		mql.addEventListener('change', (e) => {
+			systemHighContrast.set(e.matches);
+		});
+	} catch {
+		// matchMedia not available
+	}
+}
+
+export const resolvedHighContrast = derived(
+	[highContrast, systemHighContrast],
+	([$highContrast, $systemHighContrast]) => $highContrast || $systemHighContrast
+);
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function toPreferences(): AppPreferences {
@@ -94,22 +147,13 @@ function debouncedSave(prefs: AppPreferences) {
 	}, 300);
 }
 
-function detectSystemTheme(): 'dark' | 'light' {
-	if (typeof window === 'undefined') return 'dark';
-	try {
-		return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-	} catch {
-		return 'dark';
-	}
-}
-
 export async function initPreferences() {
 	initLocale();
 	try {
 		const prefs = await getPreferences();
 		updateFromPreferences(prefs);
 	} catch {
-		theme.set(detectSystemTheme());
+		theme.set('auto');
 	}
 }
 

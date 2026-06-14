@@ -106,3 +106,40 @@ export function updateLayout(partial: Partial<LayoutState>) {
 	currentLayout = { ...currentLayout, ...partial };
 	debouncedSave();
 }
+
+export async function restoreWindowGeometry() {
+	try {
+		const { getCurrentWindow } = await import('@tauri-apps/api/window');
+		const win = getCurrentWindow();
+		const layout = getLayout();
+
+		if (layout.windowWidth > 0 && layout.windowHeight > 0) {
+			const { LogicalSize } = await import('@tauri-apps/api/window');
+			await win.setSize(new LogicalSize(layout.windowWidth, layout.windowHeight));
+		}
+
+		if (layout.windowX >= 0 && layout.windowY >= 0) {
+			const { LogicalPosition } = await import('@tauri-apps/api/window');
+			await win.setPosition(new LogicalPosition(layout.windowX, layout.windowY));
+		}
+	} catch {
+		// not in Tauri context or API unavailable
+	}
+}
+
+export async function saveWindowGeometry() {
+	try {
+		const { getCurrentWindow } = await import('@tauri-apps/api/window');
+		const win = getCurrentWindow();
+		const pos = await win.outerPosition();
+		const size = await win.outerSize();
+		updateLayout({
+			windowX: pos.x,
+			windowY: pos.y,
+			windowWidth: size.width,
+			windowHeight: size.height
+		});
+	} catch {
+		// not in Tauri context
+	}
+}

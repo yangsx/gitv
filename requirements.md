@@ -361,14 +361,14 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 #### Acceptance Criteria
 
-1. THE gitv_Application SHALL provide smooth animations for transitions and state changes
+1. THE gitv_Application SHALL provide smooth animations for transitions and state changes **[ABANDONED — de-scoped: unnecessary polish for a density-focused tool]**
 2. THE gitv_Application SHALL display contextual tooltips with helpful information
-3. THE gitv_Application SHALL support back/forward navigation history, maintaining a history of at least 50 steps covering: commit selection changes, scroll position jumps, and filter state changes
-4. THE gitv_Application SHALL provide a mini-map for navigating large commit graphs
+3. THE gitv_Application SHALL support back/forward navigation history, maintaining a history of at least 50 steps covering: commit selection changes, scroll position jumps, and filter state changes **[ABANDONED — de-scoped: existing keyboard navigation and search cover the use cases]**
+4. THE gitv_Application SHALL provide a mini-map for navigating large commit graphs **[ABANDONED — de-scoped: virtualized graph viewport with zoom/pan already handles large repos]**
 5. THE gitv_Application SHALL support split-view for comparing two commits side by side
 6. THE gitv_Application SHALL remember window size, position, and panel layouts between sessions
 7. THE gitv_Application SHALL provide a welcome screen that displays inline keyboard shortcut hints for the 3-5 most common actions (e.g., open repository, command palette, search), using platform-appropriate modifier keys (Ctrl on Windows/Linux, Cmd on macOS), visually subordinate to primary actions
-8. THE gitv_Application SHALL support pinning commits for quick reference during a session
+8. THE gitv_Application SHALL support pinning commits for quick reference during a session **[ABANDONED — de-scoped: search and copy-SHA cover the use cases]**
 
 ### Requirement 31: Multi-Instance Repository Opening
 

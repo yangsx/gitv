@@ -59,6 +59,7 @@ pub enum DiffViewMode {
 pub enum Theme {
     Dark,
     Light,
+    Auto,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -136,7 +137,7 @@ impl Default for AppPreferences {
             diff_mode: DiffMode::Normal,
             diff_whitespace: DiffWhitespace::None,
             diff_view_mode: DiffViewMode::Unified,
-            theme: Theme::Dark,
+            theme: Theme::Auto,
             font_size: default_font_size(),
             high_contrast: false,
             language: Language::En,

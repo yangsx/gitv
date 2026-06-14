@@ -1,22 +1,28 @@
 <script lang="ts">
+	import { t } from '$lib/stores/locale';
+
 	let {
 		panelHeight = $bindable(300),
 		rightPanelWidth = $bindable(240),
+		sidebarWidth = $bindable(220),
 		minHeight = 200,
 		maxHeight = Infinity,
 		minWidth = 160,
 		maxWidth = 400,
 		direction = 'vertical',
+		forSidebar = false,
 		onDragStart,
 		onDragEnd
 	}: {
 		panelHeight?: number;
 		rightPanelWidth?: number;
+		sidebarWidth?: number;
 		minHeight?: number;
 		maxHeight?: number;
 		minWidth?: number;
 		maxWidth?: number;
 		direction?: 'vertical' | 'horizontal';
+		forSidebar?: boolean;
 		onDragStart?: () => void;
 		onDragEnd?: () => void;
 	} = $props();
@@ -29,6 +35,14 @@
 			} else if (e.key === 'ArrowDown') {
 				e.preventDefault();
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, panelHeight - 20));
+			}
+		} else if (forSidebar) {
+			if (e.key === 'ArrowRight') {
+				e.preventDefault();
+				sidebarWidth = Math.max(minWidth, Math.min(maxWidth, sidebarWidth + 20));
+			} else if (e.key === 'ArrowLeft') {
+				e.preventDefault();
+				sidebarWidth = Math.max(minWidth, Math.min(maxWidth, sidebarWidth - 20));
 			}
 		} else {
 			if (e.key === 'ArrowLeft') {
@@ -51,13 +65,16 @@
 
 		const startX = e.clientX;
 		const startY = e.clientY;
-		const startWidth = rightPanelWidth;
+		const startWidth = forSidebar ? sidebarWidth : rightPanelWidth;
 		const startHeight = panelHeight;
 
 		function onMouseMove(e: MouseEvent) {
 			if (isVertical()) {
 				const delta = startY - e.clientY;
 				panelHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta));
+			} else if (forSidebar) {
+				const delta = e.clientX - startX;
+				sidebarWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
 			} else {
 				const delta = startX - e.clientX;
 				rightPanelWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
@@ -85,7 +102,13 @@
 		: 'flex-col'}"
 	role="separator"
 	aria-orientation={isVertical() ? 'horizontal' : 'vertical'}
-	aria-label={isVertical() ? 'Resize detail panel' : 'Resize file list'}
+	aria-label={$t(
+		forSidebar
+			? 'a11y.resize_sidebar'
+			: isVertical()
+				? 'a11y.resize_detail_panel'
+				: 'a11y.resize_file_list'
+	)}
 	tabindex={0}
 	onmousedown={onMouseDown}
 	onkeydown={onKeyDown}

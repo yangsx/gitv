@@ -20,6 +20,7 @@
 		"title": "Preferences",
 		"close_aria": "Close preferences",
 		"drag_aria": "Drag to move",
+		"resize_aria": "Drag to resize",
 		"section_graph": "Graph",
 		"section_diff": "Diff Viewer",
 		"color_mode": "Color Mode",
@@ -62,6 +63,7 @@
 		"section_appearance": "Appearance",
 		"theme": "Theme",
 		"theme_aria": "Interface theme",
+		"theme_auto": "Auto",
 		"theme_dark": "Dark",
 		"theme_light": "Light",
 		"font_size": "Font Size",
@@ -125,6 +127,7 @@
 		"title": "gitv",
 		"subtitle": "Modern Git repository visualizer",
 		"browse_repo": "Browse for Repository…",
+		"skip_to_content": "Skip to commit list",
 		"select_repo_title": "Select Git Repository",
 		"recent_title": "Recent Repositories",
 		"open_first": "Open your first repository to get started",
@@ -161,6 +164,7 @@
 		"cmd_refresh": "Refresh repository",
 		"cmd_search": "Focus search",
 		"cmd_preferences": "Open preferences",
+		"cmd_palette": "Command palette",
 		"ctx_copy_sha": "Copy SHA",
 		"ctx_copy_short_sha": "Copy short SHA",
 		"ctx_copy_message": "Copy commit message",
@@ -353,6 +357,11 @@
 		"unstaged": "Unstaged",
 		"no_changes": "No changes",
 		"mode_aria": "Working changes mode"
+	},
+	"a11y": {
+		"resize_detail_panel": "Resize detail panel",
+		"resize_file_list": "Resize file list",
+		"resize_sidebar": "Resize sidebar"
 	},
 	"common": {
 		"close": "Close",

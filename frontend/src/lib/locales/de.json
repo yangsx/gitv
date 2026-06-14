@@ -20,6 +20,7 @@
 		"title": "Einstellungen",
 		"close_aria": "Einstellungen schließen",
 		"drag_aria": "Ziehen zum Verschieben",
+		"resize_aria": "Ziehen zum Skalieren",
 		"section_graph": "Grafik",
 		"section_diff": "Diff-Ansicht",
 		"color_mode": "Farbmodus",
@@ -64,6 +65,7 @@
 		"section_appearance": "Erscheinungsbild",
 		"theme": "Design",
 		"theme_aria": "Oberflächendesign",
+		"theme_auto": "Automatisch",
 		"theme_dark": "Dunkel",
 		"theme_light": "Hell",
 		"font_size": "Schriftgröße",
@@ -127,6 +129,7 @@
 		"title": "gitv",
 		"subtitle": "Moderne Git-Repository-Visualisierung",
 		"browse_repo": "Repository öffnen…",
+		"skip_to_content": "Zur Commit-Liste springen",
 		"select_repo_title": "Git-Repository auswählen",
 		"recent_title": "Letzte Repositories",
 		"open_first": "Öffnen Sie Ihr erstes Repository, um zu beginnen",
@@ -163,6 +166,7 @@
 		"cmd_refresh": "Repository aktualisieren",
 		"cmd_search": "Suche fokussieren",
 		"cmd_preferences": "Einstellungen öffnen",
+		"cmd_palette": "Befehlspalette",
 		"ctx_copy_sha": "SHA kopieren",
 		"ctx_copy_short_sha": "Kurze SHA kopieren",
 		"ctx_copy_message": "Commit-Nachricht kopieren",
@@ -355,6 +359,11 @@
 		"unstaged": "Nicht bereitgestellt",
 		"no_changes": "Keine Änderungen",
 		"mode_aria": "Arbeitskopie-Änderungsmodus"
+	},
+	"a11y": {
+		"resize_detail_panel": "Detailbereich skalieren",
+		"resize_file_list": "Dateiliste skalieren",
+		"resize_sidebar": "Seitenleiste skalieren"
 	},
 	"common": {
 		"close": "Schließen",

@@ -198,6 +198,18 @@
 		}
 		return { left, right };
 	}
+
+	function onHunkKeydown(e: KeyboardEvent, hi: number) {
+		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+			e.preventDefault();
+			const region = (e.currentTarget as HTMLElement).closest('[role="region"]');
+			const headings = region?.querySelectorAll<HTMLElement>('[data-hunk-heading]');
+			if (!headings) return;
+			const next = e.key === 'ArrowDown' ? hi + 1 : hi - 1;
+			const target = headings[next];
+			target?.focus();
+		}
+	}
 </script>
 
 {#if viewMode === 'side-by-side'}
@@ -209,14 +221,20 @@
 		{#each hunks as hunk, hi (hi)}
 			{@const oldEnd = hunk.old_start + hunk.old_count}
 			{@const newEnd = hunk.new_start + hunk.new_count}
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
+				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400 focus:bg-blue-900/40 focus:outline-none"
+				data-hunk-heading
+				tabindex="0"
 				aria-label={$t('diff_viewer.hunk_aria', {
 					old_start: hunk.old_start,
 					old_end: oldEnd,
 					new_start: hunk.new_start,
 					new_end: newEnd
 				})}
+				onkeydown={(e) => onHunkKeydown(e, hi)}
 			>
 				@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count}
 			</div>
@@ -317,14 +335,20 @@
 		{#each hunks as hunk, hi (hi)}
 			{@const oldEnd = hunk.old_start + hunk.old_count}
 			{@const newEnd = hunk.new_start + hunk.new_count}
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400"
+				class="border-t border-gray-700 bg-gray-800/50 px-2 py-0.5 text-gray-400 focus:bg-blue-900/40 focus:outline-none"
+				data-hunk-heading
+				tabindex="0"
 				aria-label={$t('diff_viewer.hunk_aria', {
 					old_start: hunk.old_start,
 					old_end: oldEnd,
 					new_start: hunk.new_start,
 					new_end: newEnd
 				})}
+				onkeydown={(e) => onHunkKeydown(e, hi)}
 			>
 				@@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count}
 			</div>

@@ -53,12 +53,6 @@ Specify two commits, view only the ancestry path between them.
 - Horizontal/vertical scrolling for large graphs
 - Must work in both Canvas 2D and wgpu renderers
 
-### Req 26.3: Back/Forward Navigation History
-Track commit selection, scroll position, filter state changes (min 50 steps).
-
-### Req 26.4: Graph Mini-Map
-Navigable overview for large commit graphs.
-
 ### Req 63: Mid-Stream Error Recovery
 Retain commits received before stream failure; retry button; per-file diff error handling.
 

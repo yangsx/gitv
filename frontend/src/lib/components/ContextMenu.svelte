@@ -24,6 +24,11 @@
 	let menuEl: HTMLDivElement | undefined = $state();
 	let adjustedX = $state(0);
 	let adjustedY = $state(0);
+	let activeIdx = $state(0);
+
+	const menuItems = $derived(
+		items.map((item, i) => ({ item, i })).filter((x) => !('separator' in x.item))
+	);
 
 	$effect(() => {
 		if (!menuEl) return;
@@ -36,10 +41,29 @@
 		else adjustedY = y;
 	});
 
+	$effect(() => {
+		activeIdx = 0;
+		const first = menuEl?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+		first?.focus();
+	});
+
+	function focusItem(idx: number) {
+		const buttons = menuEl?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+		buttons?.[idx]?.focus();
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			onclose();
+		} else if (menuItems.length > 0 && e.key === 'ArrowDown') {
+			e.preventDefault();
+			activeIdx = (activeIdx + 1) % menuItems.length;
+			focusItem(activeIdx);
+		} else if (menuItems.length > 0 && e.key === 'ArrowUp') {
+			e.preventDefault();
+			activeIdx = (activeIdx - 1 + menuItems.length) % menuItems.length;
+			focusItem(activeIdx);
 		}
 	}
 

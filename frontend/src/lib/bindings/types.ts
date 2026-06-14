@@ -359,7 +359,7 @@ export interface AppPreferences {
 	diff_mode: 'normal' | 'word-diff' | 'stat-only';
 	diff_whitespace: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines';
 	diff_view_mode: 'unified' | 'side-by-side';
-	theme: 'dark' | 'light';
+	theme: 'dark' | 'light' | 'auto';
 	font_size: number;
 	high_contrast: boolean;
 	language: string;

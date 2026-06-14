@@ -30,7 +30,7 @@
 
 {#if $debug.visible && $debugOverlayEnabled}
 	<div
-		class="fixed top-4 right-4 z-50 rounded-lg border border-gray-700 bg-gray-950/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
+		class="fixed top-4 right-4 z-50 rounded-lg border border-gray-700 bg-gray-900/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
 		role="dialog"
 		aria-label="Debug overlay"
 	>

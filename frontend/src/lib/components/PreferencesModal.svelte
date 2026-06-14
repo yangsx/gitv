@@ -23,6 +23,7 @@
 		getLocaleSelfName
 	} from '$lib/stores/locale';
 	import { draggable } from '$lib/actions/draggable';
+	import { dialogStackOffset } from '$lib/stores/dialog';
 
 	interface Props {
 		onclose: () => void;
@@ -32,16 +33,71 @@
 
 	let dialogEl: HTMLDivElement | undefined = $state();
 	let closeBtn: HTMLButtonElement | undefined = $state();
-	let x = $state(Math.max(0, Math.round((window.innerWidth - 384) / 2)));
-	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)));
+	const { offset: stackOffset, unregister } = dialogStackOffset();
+	let x = $state(Math.max(0, Math.round((window.innerWidth - 384) / 2)) + stackOffset);
+	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)) + stackOffset);
+	let dialogWidth = $state(384);
+	let dialogHeight = $state(400);
 
 	function handleDragMove(newX: number, newY: number) {
 		x = newX;
 		y = newY;
 	}
 
+	function handleResizeStart(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		const startX = e.clientX;
+		const startY = e.clientY;
+		const startWidth = dialogWidth;
+		const startHeight = dialogHeight;
+
+		function onMouseMove(e: MouseEvent) {
+			const maxW = Math.min(Math.round(window.innerWidth * 0.9), 700);
+			const maxH = Math.min(Math.round(window.innerHeight * 0.9), 700);
+			dialogWidth = Math.max(320, Math.min(maxW, startWidth + (e.clientX - startX)));
+			dialogHeight = Math.max(250, Math.min(maxH, startHeight + (e.clientY - startY)));
+		}
+
+		function onMouseUp() {
+			window.removeEventListener('mousemove', onMouseMove);
+			window.removeEventListener('mouseup', onMouseUp);
+		}
+
+		window.addEventListener('mousemove', onMouseMove);
+		window.addEventListener('mouseup', onMouseUp);
+	}
+
+	function handleResizeKeydown(e: KeyboardEvent) {
+		const maxW = Math.min(Math.round(window.innerWidth * 0.9), 700);
+		const maxH = Math.min(Math.round(window.innerHeight * 0.9), 700);
+		const step = e.shiftKey ? 40 : 10;
+		switch (e.key) {
+			case 'ArrowRight':
+				e.preventDefault();
+				dialogWidth = Math.min(maxW, dialogWidth + step);
+				break;
+			case 'ArrowLeft':
+				e.preventDefault();
+				dialogWidth = Math.max(320, dialogWidth - step);
+				break;
+			case 'ArrowDown':
+				e.preventDefault();
+				dialogHeight = Math.min(maxH, dialogHeight + step);
+				break;
+			case 'ArrowUp':
+				e.preventDefault();
+				dialogHeight = Math.max(250, dialogHeight - step);
+				break;
+		}
+	}
+
 	$effect(() => {
 		if (closeBtn) closeBtn.focus();
+	});
+
+	$effect(() => {
+		return () => unregister();
 	});
 
 	function getFocusableElements(): HTMLElement[] {
@@ -139,9 +195,9 @@
 		'ignore-blank-lines'
 	] as const;
 	const languages = SUPPORTED_LOCALES;
-	const themes = ['dark', 'light'] as const;
+	const themes = ['auto', 'dark', 'light'] as const;
 
-	function setTheme(t: 'dark' | 'light') {
+	function setTheme(t: 'dark' | 'light' | 'auto') {
 		theme.set(t);
 		savePreferences();
 	}
@@ -162,7 +218,6 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	bind:this={dialogEl}
 	class="fixed z-50"
@@ -172,9 +227,10 @@
 	tabindex="-1"
 >
 	<div
-		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden resize"
-		style="min-width: 320px; min-height: 250px; max-width: min(90vw, 700px); max-height: min(90vh, 700px); width: 384px;"
-		onresize={() => {}}
+		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden relative"
+		style="min-width: 320px; min-height: 250px; max-width: min(90vw, 700px); max-height: min(90vh, 700px);"
+		style:width="{dialogWidth}px"
+		style:height="{dialogHeight}px"
 	>
 		<div
 			class="flex items-center justify-between border-b border-gray-800 px-3 py-2 cursor-grab select-none"
@@ -498,12 +554,26 @@
 				</div>
 			</section>
 		</div>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<div
+			class="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize"
+			onmousedown={handleResizeStart}
+			onkeydown={handleResizeKeydown}
+			role="separator"
+			aria-orientation="vertical"
+			aria-label={$t('preferences.resize_aria')}
+			tabindex="0"
+		>
+			<svg
+				class="h-full w-full text-gray-600"
+				viewBox="0 0 16 16"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<path d="M14 14L8 14L14 8Z" />
+				<path d="M14 14L11 14L14 11Z" opacity="0.6" />
+			</svg>
+		</div>
 	</div>
 </div>
-
-<style>
-	:global(.resize)::-webkit-resizer {
-		background: #4b5563;
-		border-radius: 0 0 0.5rem 0;
-	}
-</style>

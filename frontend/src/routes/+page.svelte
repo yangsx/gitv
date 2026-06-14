@@ -69,7 +69,12 @@
 		stopMemoryTracking
 	} from '$lib/stores/debug';
 	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
-	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
+	import {
+		getClampedLayout,
+		updateLayout,
+		restoreWindowGeometry,
+		saveWindowGeometry
+	} from '$lib/stores/layout';
 	import { registerCommand, unregisterCommandsByPrefix } from '$lib/stores/commands';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
@@ -77,9 +82,15 @@
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
 	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 	import InfoDialog from '$lib/components/InfoDialog.svelte';
-	import { initPreferences, theme, fontSize, highContrast } from '$lib/stores/preferences';
+	import {
+		initPreferences,
+		resolvedTheme,
+		fontSize,
+		resolvedHighContrast
+	} from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
 	import { computeHideMergeLayout } from '$lib/graph/hide-merges';
+	import { announce } from '$lib/utils/a11y';
 
 	let repoPath = $state('');
 	let startupComplete = $state(false);
@@ -111,6 +122,21 @@
 	let showPreferences = $state(false);
 	let showShortcutHelp = $state(false);
 	let showInfo = $state(false);
+
+	let savedFocus: HTMLElement | null = null;
+
+	function openModal(modal: 'preferences' | 'shortcutHelp' | 'info' | 'commandPalette') {
+		savedFocus = document.activeElement as HTMLElement | null;
+		if (modal === 'preferences') showPreferences = true;
+		else if (modal === 'shortcutHelp') showShortcutHelp = true;
+		else if (modal === 'info') showInfo = true;
+		else if (modal === 'commandPalette') showCommandPalette = true;
+	}
+
+	function restoreFocus() {
+		savedFocus?.focus?.();
+		savedFocus = null;
+	}
 
 	let uncommittedCount = $derived(
 		workingChangesDiff ? workingChangesDiff.staged.length + workingChangesDiff.unstaged.length : 0
@@ -147,6 +173,10 @@
 
 	let focusBranchOid = $state<string | null>(null);
 	let refreshSignal = $state(0);
+	const modKey =
+		typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+			? '⌘'
+			: 'Ctrl+';
 
 	function copyToClipboard(text: string) {
 		navigator.clipboard
@@ -182,6 +212,7 @@
 		}
 
 		initPreferences().then(doStartup, doStartup);
+		restoreWindowGeometry();
 
 		function onResize() {
 			viewportHeight = window.innerHeight;
@@ -203,6 +234,7 @@
 			window.removeEventListener('keydown', handleKeydown);
 			cancelAnimationFrame(fpsRafId);
 			stopMemoryTracking();
+			saveWindowGeometry();
 		};
 	});
 
@@ -284,16 +316,20 @@
 			const code = e instanceof Error ? e.message : String(e);
 			if (code === 'not_a_git_repository') {
 				error.set(translate('page.not_a_git_repo', { path }));
+				announce(translate('page.not_a_git_repo', { path }));
 			} else if (code === 'open_failed') {
 				error.set(translate('page.open_failed', { path }));
+				announce(translate('page.open_failed', { path }));
 			} else {
 				loadError = code;
 				showToast(translate('page.load_failed'), 'error');
+				announce(translate('page.load_failed'));
 			}
 		}
 
 		if (!loadError && commitCount > 0) {
 			showToast(translate('page.count_commits', { count: commitCount }), 'info');
+			announce(translate('page.count_commits', { count: commitCount }));
 		}
 		operationState.set('Idle');
 	}
@@ -552,14 +588,14 @@
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		const root = document.documentElement;
-		if ($theme === 'light') {
+		if ($resolvedTheme === 'light') {
 			root.classList.remove('dark');
 			root.classList.add('light');
 		} else {
 			root.classList.add('dark');
 			root.classList.remove('light');
 		}
-		if ($highContrast) {
+		if ($resolvedHighContrast) {
 			root.classList.add('high-contrast');
 		} else {
 			root.classList.remove('high-contrast');
@@ -721,13 +757,35 @@
 		}
 		if ((e.key === 'p' && e.ctrlKey) || (e.key === 'p' && e.metaKey)) {
 			e.preventDefault();
-			showCommandPalette = true;
+			openModal('commandPalette');
 			return;
 		}
 		if (e.key === 'm' && e.ctrlKey) {
 			e.preventDefault();
 			isFullscreen = !isFullscreen;
 			return;
+		}
+		if (e.key === ',' && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			openModal('preferences');
+			return;
+		}
+		if (e.shiftKey && (e.ctrlKey || e.metaKey)) {
+			if (e.key === 'M') {
+				e.preventDefault();
+				graphHideMerges.update((v) => !v);
+				return;
+			}
+			if (e.key === 'A') {
+				e.preventDefault();
+				graphColorMode.update((v) => (v === 'by-branch' ? 'by-author' : 'by-branch'));
+				return;
+			}
+			if (e.key === 'G') {
+				e.preventDefault();
+				graphOrientation.update((v) => (v === 'top-to-bottom' ? 'bottom-to-top' : 'top-to-bottom'));
+				return;
+			}
 		}
 		if (e.key === 'w' && (e.ctrlKey || e.metaKey) && $repoInfo) {
 			e.preventDefault();
@@ -741,7 +799,7 @@
 		}
 		if ((e.key === 'F1' || (e.key === '/' && (e.ctrlKey || e.metaKey))) && !showPreferences) {
 			e.preventDefault();
-			showShortcutHelp = true;
+			openModal('shortcutHelp');
 			return;
 		}
 		if (e.key === 'Escape') {
@@ -863,21 +921,21 @@
 		registerCommand({
 			id: 'toggle-merges',
 			label: translate('page.cmd_toggle_merges'),
-			shortcut: undefined,
+			shortcut: 'Ctrl+Shift+M',
 			category: 'Graph',
 			action: () => graphHideMerges.update((v) => !v)
 		});
 		registerCommand({
 			id: 'toggle-color-mode',
 			label: translate('page.cmd_color_author'),
-			shortcut: undefined,
+			shortcut: 'Ctrl+Shift+A',
 			category: 'Graph',
 			action: () => graphColorMode.update((v) => (v === 'by-branch' ? 'by-author' : 'by-branch'))
 		});
 		registerCommand({
 			id: 'toggle-orientation',
 			label: translate('page.cmd_orientation'),
-			shortcut: undefined,
+			shortcut: 'Ctrl+Shift+G',
 			category: 'Graph',
 			action: () =>
 				graphOrientation.update((v) => (v === 'top-to-bottom' ? 'bottom-to-top' : 'top-to-bottom'))
@@ -938,7 +996,16 @@
 			shortcut: 'F1',
 			category: 'Help',
 			action: () => {
-				showShortcutHelp = true;
+				openModal('shortcutHelp');
+			}
+		});
+		registerCommand({
+			id: 'open-preferences',
+			label: translate('page.cmd_preferences'),
+			shortcut: 'Ctrl+,',
+			category: 'File',
+			action: () => {
+				openModal('preferences');
 			}
 		});
 		registerCommand({
@@ -972,7 +1039,7 @@
 			label: translate('toolbar.info'),
 			category: 'Help',
 			action: () => {
-				showInfo = true;
+				openModal('info');
 			}
 		});
 	}
@@ -1128,6 +1195,12 @@
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
 >
+	<a
+		href="#commit-list-container"
+		class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:rounded focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:text-white"
+	>
+		{$t('page.skip_to_content')}
+	</a>
 	{#if !$repoInfo || !repoLoaded}
 		<div class="flex flex-1 items-center justify-center" role="main">
 			{#if $operationState === 'LoadingRepo'}
@@ -1184,10 +1257,24 @@
 					{:else}
 						<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
 					{/if}
+					<div class="flex justify-center gap-4 text-xs text-gray-600">
+						<span
+							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">{modKey}O</kbd>
+							{$t('page.browse_repo')}</span
+						>
+						<span
+							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">{modKey}P</kbd>
+							{$t('page.cmd_palette')}</span
+						>
+						<span
+							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">F1</kbd>
+							{$t('page.cmd_shortcuts')}</span
+						>
+					</div>
 					<div class="flex justify-center gap-1">
 						<button
 							class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-							onclick={() => (showPreferences = true)}
+							onclick={() => openModal('preferences')}
 							aria-label={$t('page.settings_aria')}
 						>
 							<svg
@@ -1213,7 +1300,7 @@
 						</button>
 						<button
 							class="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-							onclick={() => (showInfo = true)}
+							onclick={() => openModal('info')}
 							aria-label={$t('toolbar.info_aria')}
 						>
 							<svg
@@ -1261,8 +1348,8 @@
 				{/each}
 				<Toolbar
 					onrefresh={manualRefresh}
-					onopensettings={() => (showPreferences = true)}
-					onopeninfo={() => (showInfo = true)}
+					onopensettings={() => openModal('preferences')}
+					onopeninfo={() => openModal('info')}
 				/>
 				{#if graphLayout}
 					<AuthorLegend layout={graphLayout} />
@@ -1323,13 +1410,21 @@
 						{/if}
 					{/snippet}
 				</Sidebar>
+				<ResizeHandle
+					direction="horizontal"
+					forSidebar
+					bind:sidebarWidth
+					minWidth={150}
+					maxWidth={512}
+					onDragEnd={() => updateLayout({ sidebarWidth })}
+				/>
 			{/if}
 			<div
 				class="flex-1 min-h-0 overflow-hidden flex flex-col"
 				role="main"
 				aria-label={$t('commit_list.aria')}
 			>
-				<div class="flex-1 min-h-0 overflow-hidden">
+				<div id="commit-list-container" class="flex-1 min-h-0 overflow-hidden">
 					{#if displayedCommits.length > 0}
 						{#key $repoInfo?.path ?? ''}
 							<CommitList
@@ -1505,16 +1600,36 @@
 	<ToastContainer />
 	<DebugOverlay />
 	{#if showPreferences}
-		<PreferencesModal onclose={() => (showPreferences = false)} />
+		<PreferencesModal
+			onclose={() => {
+				showPreferences = false;
+				restoreFocus();
+			}}
+		/>
 	{/if}
 	{#if showShortcutHelp}
-		<ShortcutHelp onclose={() => (showShortcutHelp = false)} />
+		<ShortcutHelp
+			onclose={() => {
+				showShortcutHelp = false;
+				restoreFocus();
+			}}
+		/>
 	{/if}
 	{#if showInfo}
-		<InfoDialog onclose={() => (showInfo = false)} />
+		<InfoDialog
+			onclose={() => {
+				showInfo = false;
+				restoreFocus();
+			}}
+		/>
 	{/if}
 	{#if showCommandPalette}
-		<CommandPalette onclose={() => (showCommandPalette = false)} />
+		<CommandPalette
+			onclose={() => {
+				showCommandPalette = false;
+				restoreFocus();
+			}}
+		/>
 	{/if}
 	{#if contextMenu}
 		<ContextMenu

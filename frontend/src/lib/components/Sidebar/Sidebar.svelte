@@ -43,6 +43,28 @@
 			activeTab = 'refs';
 		}
 	});
+
+	function onTabKeydown(e: KeyboardEvent) {
+		if (tabs.length === 0) return;
+		const currentIdx = tabs.findIndex((t) => t.id === activeTab);
+		if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			const next = tabs[(currentIdx + 1) % tabs.length];
+			activeTab = next.id;
+		} else if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			const prev = tabs[(currentIdx - 1 + tabs.length) % tabs.length];
+			activeTab = prev.id;
+		} else {
+			return;
+		}
+		const targetTab =
+			e.key === 'ArrowRight'
+				? tabs[(currentIdx + 1) % tabs.length]
+				: tabs[(currentIdx - 1 + tabs.length) % tabs.length];
+		const btn = document.querySelector<HTMLButtonElement>(`[data-tab-id="${targetTab?.id}"]`);
+		btn?.focus();
+	}
 </script>
 
 {#if collapsed}
@@ -70,11 +92,18 @@
 		aria-label={$t('sidebar.aria')}
 	>
 		<div class="flex items-center justify-between border-b border-gray-800 px-2 py-1">
-			<div class="flex gap-1" role="tablist" aria-label={$t('sidebar.tabs_aria')}>
+			<div
+				class="flex gap-1"
+				role="tablist"
+				tabindex="-1"
+				aria-label={$t('sidebar.tabs_aria')}
+				onkeydown={onTabKeydown}
+			>
 				{#each tabs as tab (tab.id)}
 					<button
 						role="tab"
 						aria-selected={activeTab === tab.id}
+						data-tab-id={tab.id}
 						aria-controls="sidebar-panel-{tab.id}"
 						class="whitespace-nowrap rounded px-2 py-0.5 text-xs {activeTab === tab.id
 							? 'bg-gray-700 text-white'

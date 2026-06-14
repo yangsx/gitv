@@ -5,6 +5,7 @@
 	import { logPath } from '$lib/stores/debug';
 	import { openLogDirectory } from '$lib/bindings/commands';
 	import { draggable } from '$lib/actions/draggable';
+	import { dialogStackOffset } from '$lib/stores/dialog';
 
 	interface Props {
 		onclose: () => void;
@@ -26,8 +27,9 @@
 	);
 
 	let closeBtn: HTMLButtonElement | undefined = $state();
-	let x = $state(Math.max(0, Math.round((window.innerWidth - 420) / 2)));
-	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)));
+	const { offset: stackOffset, unregister } = dialogStackOffset();
+	let x = $state(Math.max(0, Math.round((window.innerWidth - 420) / 2)) + stackOffset);
+	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)) + stackOffset);
 
 	function handleDragMove(newX: number, newY: number) {
 		x = newX;
@@ -36,6 +38,10 @@
 
 	$effect(() => {
 		if (closeBtn) closeBtn.focus();
+	});
+
+	$effect(() => {
+		return () => unregister();
 	});
 </script>
 

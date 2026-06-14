@@ -5,6 +5,8 @@ export function draggable(headerEl: HTMLElement, options?: { onMove?: MoveCallba
 	let offsetX = 0;
 	let offsetY = 0;
 
+	headerEl.tabIndex = 0;
+
 	function onMouseDown(e: MouseEvent) {
 		if (e.target instanceof HTMLElement && e.target.closest('button, a, input, select, textarea')) {
 			return;
@@ -27,13 +29,40 @@ export function draggable(headerEl: HTMLElement, options?: { onMove?: MoveCallba
 		}
 	}
 
+	function onKeyDown(e: KeyboardEvent) {
+		const step = e.shiftKey ? 50 : 10;
+		const rect = headerEl.getBoundingClientRect();
+		let dx = 0;
+		let dy = 0;
+		switch (e.key) {
+			case 'ArrowLeft':
+				dx = -step;
+				break;
+			case 'ArrowRight':
+				dx = step;
+				break;
+			case 'ArrowUp':
+				dy = -step;
+				break;
+			case 'ArrowDown':
+				dy = step;
+				break;
+			default:
+				return;
+		}
+		e.preventDefault();
+		options?.onMove?.(rect.left + dx, rect.top + dy);
+	}
+
 	headerEl.addEventListener('mousedown', onMouseDown);
+	headerEl.addEventListener('keydown', onKeyDown);
 	window.addEventListener('mousemove', onMouseMove);
 	window.addEventListener('mouseup', onMouseUp);
 
 	return {
 		destroy() {
 			headerEl.removeEventListener('mousedown', onMouseDown);
+			headerEl.removeEventListener('keydown', onKeyDown);
 			window.removeEventListener('mousemove', onMouseMove);
 			window.removeEventListener('mouseup', onMouseUp);
 		}
