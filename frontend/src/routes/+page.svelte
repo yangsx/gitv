@@ -748,7 +748,7 @@
 			browseForRepo();
 			return;
 		}
-		if (e.key === 'F12' || (e.key === 'D' && e.ctrlKey && e.shiftKey)) {
+		if (e.key === 'F12' || (e.key === 'D' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
 			e.preventDefault();
 			if ($debugOverlayEnabled) {
 				toggleDebug();
@@ -760,7 +760,7 @@
 			openModal('commandPalette');
 			return;
 		}
-		if (e.key === 'm' && e.ctrlKey) {
+		if (e.key === 'm' && e.ctrlKey && !e.metaKey) {
 			e.preventDefault();
 			isFullscreen = !isFullscreen;
 			return;
@@ -835,9 +835,9 @@
 			manualRefresh();
 			return;
 		}
-		if (!$selectedOid || !commits.length) return;
+		if (!$selectedOid || !displayedCommits.length) return;
 
-		const currentCommit = commits.find((c) => c.oid === $selectedOid);
+		const currentCommit = displayedCommits.find((c) => c.oid === $selectedOid);
 		if (!currentCommit) return;
 
 		if (e.key === 'n' && e.altKey) {
@@ -851,11 +851,11 @@
 
 	function navigateAuthor(current: CommitInfo, direction: 1 | -1) {
 		const authorKey = current.author.name + ' <' + current.author.email + '>';
-		const idx = commits.findIndex((c) => c.oid === current.oid);
+		const idx = displayedCommits.findIndex((c) => c.oid === current.oid);
 		if (idx < 0) return;
 
-		for (let i = idx + direction; i >= 0 && i < commits.length; i += direction) {
-			const c = commits[i];
+		for (let i = idx + direction; i >= 0 && i < displayedCommits.length; i += direction) {
+			const c = displayedCommits[i];
 			const key = c.author.name + ' <' + c.author.email + '>';
 			if (key === authorKey) {
 				onSelectCommit(c.oid);
@@ -950,6 +950,13 @@
 			}
 		});
 		registerCommand({
+			id: 'command-palette',
+			label: translate('page.cmd_command_palette'),
+			shortcut: modKey === '⌘' ? '⌘P' : 'Ctrl+P',
+			category: 'Help',
+			action: () => openModal('commandPalette')
+		});
+		registerCommand({
 			id: 'palette-default',
 			label: translate('page.cmd_palette_default'),
 			category: 'Palette',
@@ -993,7 +1000,7 @@
 		registerCommand({
 			id: 'show-shortcuts',
 			label: translate('page.cmd_shortcuts'),
-			shortcut: 'F1',
+			shortcut: 'F1, Ctrl+/',
 			category: 'Help',
 			action: () => {
 				openModal('shortcutHelp');
@@ -1041,6 +1048,77 @@
 			action: () => {
 				openModal('info');
 			}
+		});
+		registerCommand({
+			id: 'commit-next',
+			label: translate('page.cmd_commit_next'),
+			shortcut: '↓, J',
+			category: 'Navigation',
+			action: () => {}
+		});
+		registerCommand({
+			id: 'commit-prev',
+			label: translate('page.cmd_commit_prev'),
+			shortcut: '↑, K',
+			category: 'Navigation',
+			action: () => {}
+		});
+		registerCommand({
+			id: 'commit-page-down',
+			label: translate('page.cmd_page_down'),
+			shortcut: 'PageDown',
+			category: 'Navigation',
+			action: () => {}
+		});
+		registerCommand({
+			id: 'commit-page-up',
+			label: translate('page.cmd_page_up'),
+			shortcut: 'PageUp',
+			category: 'Navigation',
+			action: () => {}
+		});
+		registerCommand({
+			id: 'commit-first',
+			label: translate('page.cmd_commit_first'),
+			shortcut: 'Home',
+			category: 'Navigation',
+			action: () => {}
+		});
+		registerCommand({
+			id: 'commit-last',
+			label: translate('page.cmd_commit_last'),
+			shortcut: 'End',
+			category: 'Navigation',
+			action: () => {}
+		});
+		registerCommand({
+			id: 'author-next',
+			label: translate('page.cmd_author_next'),
+			shortcut: 'Alt+N',
+			category: 'Navigation',
+			action: () => {
+				if (!$selectedOid || !displayedCommits.length) return;
+				const currentCommit = displayedCommits.find((c) => c.oid === $selectedOid);
+				if (currentCommit) navigateAuthor(currentCommit, 1);
+			}
+		});
+		registerCommand({
+			id: 'author-prev',
+			label: translate('page.cmd_author_prev'),
+			shortcut: 'Alt+P',
+			category: 'Navigation',
+			action: () => {
+				if (!$selectedOid || !displayedCommits.length) return;
+				const currentCommit = displayedCommits.find((c) => c.oid === $selectedOid);
+				if (currentCommit) navigateAuthor(currentCommit, -1);
+			}
+		});
+		registerCommand({
+			id: 'file-history',
+			label: translate('page.cmd_file_history'),
+			shortcut: 'H',
+			category: 'Navigation',
+			action: () => {}
 		});
 	}
 
