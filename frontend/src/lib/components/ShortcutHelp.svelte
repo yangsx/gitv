@@ -14,20 +14,48 @@
 	);
 
 	let closeBtn: HTMLButtonElement | undefined = $state();
+	let dialogEl: HTMLDivElement | undefined = $state();
 
 	$effect(() => {
 		if (closeBtn) closeBtn.focus();
 	});
-</script>
 
-<svelte:window
-	onkeydown={(e) => {
+	function getFocusableElements(): HTMLElement[] {
+		if (!dialogEl) return [];
+		return Array.from(
+			dialogEl.querySelectorAll<HTMLElement>(
+				'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+			)
+		);
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			onclose();
+			return;
 		}
-	}}
-/>
+		if (e.key === 'Tab') {
+			const focusable = getFocusableElements();
+			if (focusable.length === 0) return;
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (e.shiftKey) {
+				if (document.activeElement === first) {
+					e.preventDefault();
+					last.focus();
+				}
+			} else {
+				if (document.activeElement === last) {
+					e.preventDefault();
+					first.focus();
+				}
+			}
+		}
+	}
+</script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 <div
@@ -40,6 +68,7 @@
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="w-[420px] max-h-[70vh] rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden"
+		bind:this={dialogEl}
 		onclick={(e) => e.stopPropagation()}
 		role="document"
 		tabindex="-1"
@@ -88,6 +117,11 @@
 									</kbd>
 								</div>
 							{/each}
+							{#if cat === 'Navigation'}
+								<p class="text-xs text-gray-500 italic pt-1">
+									{$t('shortcut_help.nav_context')}
+								</p>
+							{/if}
 						</div>
 					</div>
 				{/each}

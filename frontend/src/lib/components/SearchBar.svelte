@@ -69,8 +69,8 @@
 			await executeSearch();
 		}
 		if (e.key === 'Escape') {
+			e.stopPropagation();
 			if (showOptions) {
-				e.stopPropagation();
 				showOptions = false;
 				return;
 			}

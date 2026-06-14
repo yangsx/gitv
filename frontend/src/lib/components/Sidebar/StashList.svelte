@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
+	import { t, translate } from '$lib/stores/locale';
 	import type { StashEntry } from '$lib/bindings/types';
 	import { getStashList } from '$lib/bindings/commands';
 	import { formatGitDateTime } from '$lib/utils/format-date';
+	import { showToast } from '$lib/stores/toast';
 
 	let {
 		repoPath,
@@ -29,6 +30,7 @@
 			stashes = await getStashList(repoPath);
 		} catch {
 			stashes = [];
+			showToast(translate('sidebar.stash_load_failed'), 'error');
 		} finally {
 			loading = false;
 		}

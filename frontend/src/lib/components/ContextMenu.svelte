@@ -89,24 +89,28 @@
 		style="left: {adjustedX}px; top: {adjustedY}px; min-width: 180px;"
 		role="menu"
 	>
-		{#each items as item, i (i)}
-			{#if 'separator' in item && item.separator}
-				<div class="my-1 border-t border-gray-800"></div>
-			{:else if !('separator' in item)}
-				<button
-					class="flex w-full items-center justify-between px-3 py-1.5 text-xs text-gray-300 hover:bg-blue-600/30 hover:text-white"
-					onclick={() => {
-						item.action();
-						onclose();
-					}}
-					role="menuitem"
-				>
-					<span>{item.label}</span>
-					{#if item.shortcut}
-						<span class="ml-4 text-gray-500">{item.shortcut}</span>
-					{/if}
-				</button>
-			{/if}
-		{/each}
+		{#if menuItems.length === 0}
+			<div class="px-3 py-1.5 text-xs text-gray-500 italic">—</div>
+		{:else}
+			{#each items as item, i (i)}
+				{#if 'separator' in item && item.separator}
+					<div class="my-1 border-t border-gray-800"></div>
+				{:else if !('separator' in item)}
+					<button
+						class="flex w-full items-center justify-between px-3 py-1.5 text-xs text-gray-300 hover:bg-blue-600/30 hover:text-white"
+						onclick={() => {
+							item.action();
+							onclose();
+						}}
+						role="menuitem"
+					>
+						<span>{item.label}</span>
+						{#if item.shortcut}
+							<span class="ml-4 text-gray-500">{item.shortcut}</span>
+						{/if}
+					</button>
+				{/if}
+			{/each}
+		{/if}
 	</div>
 </div>

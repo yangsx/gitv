@@ -11,6 +11,7 @@
 	let query = $state('');
 	let selectedIndex = $state(0);
 	let inputEl: HTMLInputElement | undefined = $state();
+	let dialogEl: HTMLDivElement | undefined = $state();
 
 	let results = $derived.by(() => {
 		const all = $commandsStore;
@@ -55,6 +56,24 @@
 			if (results[selectedIndex]) {
 				execute(results[selectedIndex]);
 			}
+		} else if (e.key === 'Tab') {
+			const focusable = dialogEl?.querySelectorAll<HTMLElement>(
+				'button, [href], input, [tabindex]:not([tabindex="-1"])'
+			);
+			if (!focusable || focusable.length === 0) return;
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (e.shiftKey) {
+				if (document.activeElement === first) {
+					e.preventDefault();
+					last.focus();
+				}
+			} else {
+				if (document.activeElement === last) {
+					e.preventDefault();
+					first.focus();
+				}
+			}
 		}
 	}
 
@@ -74,7 +93,10 @@
 	aria-label={$t('command_palette.aria')}
 	tabindex="-1"
 >
-	<div class="w-full max-w-lg rounded-lg border border-gray-700 bg-gray-900 shadow-2xl">
+	<div
+		class="w-full max-w-lg rounded-lg border border-gray-700 bg-gray-900 shadow-2xl"
+		bind:this={dialogEl}
+	>
 		<div class="flex items-center border-b border-gray-800 px-3">
 			<svg
 				class="h-4 w-4 text-gray-500 shrink-0"

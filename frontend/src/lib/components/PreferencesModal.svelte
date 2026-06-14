@@ -93,7 +93,12 @@
 	}
 
 	$effect(() => {
-		if (closeBtn) closeBtn.focus();
+		if (dialogEl) {
+			const focusable = dialogEl.querySelector<HTMLElement>(
+				'select, input:not([type="radio"]), button:not([aria-label])'
+			);
+			focusable?.focus();
+		}
 	});
 
 	$effect(() => {

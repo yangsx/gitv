@@ -46,35 +46,131 @@
 	);
 </script>
 
-<div class="space-y-3">
-	{#if branches.length > 0}
-		<div>
-			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-				{$t('sidebar.branches')}
+{#if branches.length === 0 && tags.length === 0 && remotes.length === 0}
+	<div class="py-2 text-xs italic text-gray-500">{$t('sidebar.no_refs')}</div>
+{:else}
+	<div class="space-y-3">
+		{#if branches.length > 0}
+			<div>
+				<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+					{$t('sidebar.branches')}
+				</div>
+				<div class="space-y-0.5">
+					{#each branches as branch (branch.name)}
+						<button
+							class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {branch.name ===
+							selectedBranch
+								? 'bg-blue-900/40 text-blue-300'
+								: branch.is_merged
+									? 'text-gray-500'
+									: ''}"
+							aria-label={branch.is_head
+								? $t('sidebar.branch_aria', { name: branch.name })
+								: $t('sidebar.branch_aria_default', { name: branch.name })}
+							onclick={() => onbranchselect?.(branch.name)}
+							oncontextmenu={(e: MouseEvent) => {
+								e.preventDefault();
+								onbranchcontextmenu?.(e, branch.name);
+							}}
+						>
+							{#if branch.is_head}
+								<span class="text-green-400" aria-hidden="true">*</span>
+							{:else}
+								<svg
+									class="h-3 w-3 text-gray-500"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+									aria-hidden="true"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M13 10V3L4 14h7v7l9-11h-7z"
+									/>
+								</svg>
+							{/if}
+							<span class="truncate text-gray-300">{branch.name}</span>
+							<span class="ml-auto flex gap-1 shrink-0">
+								{#if branch.ahead > 0}
+									<span class="text-[10px] text-green-500 font-mono" title="ahead {branch.ahead}"
+										>↑{branch.ahead}</span
+									>
+								{/if}
+								{#if branch.behind > 0}
+									<span class="text-[10px] text-red-500 font-mono" title="behind {branch.behind}"
+										>↓{branch.behind}</span
+									>
+								{/if}
+							</span>
+						</button>
+					{/each}
+				</div>
 			</div>
-			<div class="space-y-0.5">
-				{#each branches as branch (branch.name)}
-					<button
-						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {branch.name ===
-						selectedBranch
-							? 'bg-blue-900/40 text-blue-300'
-							: branch.is_merged
-								? 'text-gray-500'
-								: ''}"
-						aria-label={branch.is_head
-							? $t('sidebar.branch_aria', { name: branch.name })
-							: $t('sidebar.branch_aria_default', { name: branch.name })}
-						onclick={() => onbranchselect?.(branch.name)}
-						oncontextmenu={(e: MouseEvent) => {
-							e.preventDefault();
-							onbranchcontextmenu?.(e, branch.name);
-						}}
-					>
-						{#if branch.is_head}
-							<span class="text-green-400" aria-hidden="true">*</span>
-						{:else}
+		{/if}
+
+		{#if tags.length > 0}
+			<div>
+				<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+					{$t('sidebar.tags')}
+				</div>
+				<div class="space-y-0.5">
+					{#each tags as tag (tag.name)}
+						<button
+							class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {tag.name ===
+							selectedTag
+								? 'bg-blue-900/40 text-blue-300'
+								: 'text-gray-300'}"
+							aria-label={$t('sidebar.tag_aria', { name: tag.name })}
+							onclick={() => ontagselect?.(tag.name)}
+						>
 							<svg
-								class="h-3 w-3 text-gray-500"
+								class="h-3 w-3 shrink-0 text-blue-400"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+								/>
+							</svg>
+							<span class="truncate">{tag.name}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		{#if remotes.length > 0}
+			<div>
+				<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+					{$t('sidebar.remotes')}
+				</div>
+				<div class="space-y-0.5">
+					{#each remotes as remote (remote.remote + '/' + remote.name)}
+						<button
+							class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {remote.remote +
+								'/' +
+								remote.name ===
+							selectedRemote
+								? 'bg-blue-900/40 text-blue-300'
+								: ''}"
+							aria-label={$t('sidebar.remote_aria', {
+								remote: remote.remote,
+								name: remote.name
+							})}
+							onclick={() => onremoteselect?.(remote.remote, remote.name)}
+							oncontextmenu={(e: MouseEvent) => {
+								e.preventDefault();
+								onremotecontextmenu?.(e, remote.remote, remote.name);
+							}}
+						>
+							<svg
+								class="h-3 w-3 shrink-0 text-gray-500"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"
@@ -84,107 +180,15 @@
 									stroke-linecap="round"
 									stroke-linejoin="round"
 									stroke-width="2"
-									d="M13 10V3L4 14h7v7l9-11h-7z"
+									d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
 								/>
 							</svg>
-						{/if}
-						<span class="truncate text-gray-300">{branch.name}</span>
-						<span class="ml-auto flex gap-1 shrink-0">
-							{#if branch.ahead > 0}
-								<span class="text-[10px] text-green-500 font-mono" title="ahead {branch.ahead}"
-									>↑{branch.ahead}</span
-								>
-							{/if}
-							{#if branch.behind > 0}
-								<span class="text-[10px] text-red-500 font-mono" title="behind {branch.behind}"
-									>↓{branch.behind}</span
-								>
-							{/if}
-						</span>
-					</button>
-				{/each}
+							<span class="text-gray-500">{remote.remote}/</span>
+							<span class="truncate text-gray-300">{remote.name}</span>
+						</button>
+					{/each}
+				</div>
 			</div>
-		</div>
-	{/if}
-
-	{#if tags.length > 0}
-		<div>
-			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-				{$t('sidebar.tags')}
-			</div>
-			<div class="space-y-0.5">
-				{#each tags as tag (tag.name)}
-					<button
-						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {tag.name ===
-						selectedTag
-							? 'bg-blue-900/40 text-blue-300'
-							: 'text-gray-300'}"
-						aria-label={$t('sidebar.tag_aria', { name: tag.name })}
-						onclick={() => ontagselect?.(tag.name)}
-					>
-						<svg
-							class="h-3 w-3 shrink-0 text-blue-400"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-							/>
-						</svg>
-						<span class="truncate">{tag.name}</span>
-					</button>
-				{/each}
-			</div>
-		</div>
-	{/if}
-
-	{#if remotes.length > 0}
-		<div>
-			<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-				{$t('sidebar.remotes')}
-			</div>
-			<div class="space-y-0.5">
-				{#each remotes as remote (remote.remote + '/' + remote.name)}
-					<button
-						class="flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left hover:bg-gray-800 {remote.remote +
-							'/' +
-							remote.name ===
-						selectedRemote
-							? 'bg-blue-900/40 text-blue-300'
-							: ''}"
-						aria-label={$t('sidebar.remote_aria', {
-							remote: remote.remote,
-							name: remote.name
-						})}
-						onclick={() => onremoteselect?.(remote.remote, remote.name)}
-						oncontextmenu={(e: MouseEvent) => {
-							e.preventDefault();
-							onremotecontextmenu?.(e, remote.remote, remote.name);
-						}}
-					>
-						<svg
-							class="h-3 w-3 shrink-0 text-gray-500"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-							aria-hidden="true"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
-						</svg>
-						<span class="text-gray-500">{remote.remote}/</span>
-						<span class="truncate text-gray-300">{remote.name}</span>
-					</button>
-				{/each}
-			</div>
-		</div>
-	{/if}
-</div>
+		{/if}
+	</div>
+{/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import {
@@ -332,6 +332,14 @@
 			announce(translate('page.count_commits', { count: commitCount }));
 		}
 		operationState.set('Idle');
+
+		if (!loadError && commitCount > 0) {
+			await tick();
+			const commitListEl = document.querySelector<HTMLElement>(
+				'#commit-list-container [tabindex="0"]'
+			);
+			commitListEl?.focus();
+		}
 	}
 
 	async function browseForRepo() {
@@ -398,6 +406,7 @@
 	async function manualRefresh() {
 		if (!repoPath) return;
 		refreshSignal++;
+		operationState.set('LoadingRepo');
 		loadRepo(repoPath);
 	}
 
@@ -773,17 +782,41 @@
 		if (e.shiftKey && (e.ctrlKey || e.metaKey)) {
 			if (e.key === 'M') {
 				e.preventDefault();
-				graphHideMerges.update((v) => !v);
+				graphHideMerges.update((v) => {
+					const next = !v;
+					announce(translate(next ? 'page.merges_hidden' : 'page.cmd_toggle_merges'));
+					return next;
+				});
 				return;
 			}
 			if (e.key === 'A') {
 				e.preventDefault();
-				graphColorMode.update((v) => (v === 'by-branch' ? 'by-author' : 'by-branch'));
+				graphColorMode.update((v) => {
+					const next = v === 'by-branch' ? 'by-author' : 'by-branch';
+					announce(
+						translate('page.cmd_color_author') +
+							': ' +
+							(next === 'by-author'
+								? translate('preferences.by_author')
+								: translate('preferences.by_branch'))
+					);
+					return next;
+				});
 				return;
 			}
 			if (e.key === 'G') {
 				e.preventDefault();
-				graphOrientation.update((v) => (v === 'top-to-bottom' ? 'bottom-to-top' : 'top-to-bottom'));
+				graphOrientation.update((v) => {
+					const next = v === 'top-to-bottom' ? 'bottom-to-top' : 'top-to-bottom';
+					announce(
+						translate('page.cmd_orientation') +
+							': ' +
+							(next === 'bottom-to-top'
+								? translate('preferences.bottom_to_top')
+								: translate('preferences.top_to_bottom'))
+					);
+					return next;
+				});
 				return;
 			}
 		}
@@ -1052,14 +1085,14 @@
 		registerCommand({
 			id: 'commit-next',
 			label: translate('page.cmd_commit_next'),
-			shortcut: '↓, J',
+			shortcut: '\u2193, J',
 			category: 'Navigation',
 			action: () => {}
 		});
 		registerCommand({
 			id: 'commit-prev',
 			label: translate('page.cmd_commit_prev'),
-			shortcut: '↑, K',
+			shortcut: '\u2191, K',
 			category: 'Navigation',
 			action: () => {}
 		});
@@ -1112,13 +1145,6 @@
 				const currentCommit = displayedCommits.find((c) => c.oid === $selectedOid);
 				if (currentCommit) navigateAuthor(currentCommit, -1);
 			}
-		});
-		registerCommand({
-			id: 'file-history',
-			label: translate('page.cmd_file_history'),
-			shortcut: 'H',
-			category: 'Navigation',
-			action: () => {}
 		});
 	}
 
@@ -1502,6 +1528,7 @@
 				role="main"
 				aria-label={$t('commit_list.aria')}
 			>
+				<h1 class="sr-only">{$repoInfo?.path ?? $t('page.repository')}</h1>
 				<div id="commit-list-container" class="flex-1 min-h-0 overflow-hidden">
 					{#if displayedCommits.length > 0}
 						{#key $repoInfo?.path ?? ''}
@@ -1525,6 +1552,10 @@
 								></div>
 								<span class="text-sm text-gray-500">{$t('page.loading_repo')}</span>
 							</div>
+						</div>
+					{:else}
+						<div class="flex h-full items-center justify-center" role="status">
+							<span class="text-sm text-gray-500">{$t('page.no_commits')}</span>
 						</div>
 					{/if}
 				</div>
@@ -1607,7 +1638,6 @@
 	{#if $repoInfo}
 		<footer
 			class="flex items-center gap-3 border-t border-gray-800 px-4 py-1 text-xs text-gray-500 shrink-0"
-			role="status"
 			aria-label={$t('page.statusbar_aria')}
 		>
 			<span class="font-mono text-gray-400">{$repoInfo.path}</span>
@@ -1669,7 +1699,7 @@
 			{#if $operationState !== 'Idle'}
 				{@const opKey = 'page.' + $operationState.toLowerCase()}
 				{@const opLabel = $t(opKey)}
-				<span class="text-blue-400">
+				<span class="text-blue-400" aria-live="polite">
 					{opLabel === opKey ? $operationState : opLabel}
 				</span>
 			{/if}

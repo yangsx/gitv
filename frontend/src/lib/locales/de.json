@@ -123,7 +123,10 @@
 		"changes_deleted_plural": "{count} Löschungen",
 		"loading_details": "Details werden geladen...",
 		"raw": "Raw",
-		"markdown": "Markdown"
+		"markdown": "Markdown",
+		"diff_failed": "Diff konnte nicht geladen werden",
+		"tree_failed": "Dateibaum konnte nicht geladen werden",
+		"blob_failed": "Dateiinhalt konnte nicht geladen werden"
 	},
 	"page": {
 		"title": "gitv",
@@ -204,7 +207,9 @@
 		"statusbar_aria": "Statusleiste",
 		"settings_aria": "Einstellungen öffnen",
 		"comparing": "Vergleich",
-		"compare_mode": "Commit zum Vergleichen auswählen"
+		"compare_mode": "Commit zum Vergleichen auswählen",
+		"no_commits": "Keine Commits anzuzeigen",
+		"repository": "Repository"
 	},
 	"commit_graph": {
 		"aria": "Commit-Grafik"
@@ -246,7 +251,10 @@
 		"loading_reflog": "Reflog wird geladen...",
 		"no_reflog": "Keine Reflog-Einträge",
 		"reflog_aria": "{message}, {oid}, {author}",
-		"select_ref": "Ref für Reflog auswählen"
+		"select_ref": "Ref für Reflog auswählen",
+		"no_refs": "Keine Refs",
+		"stash_load_failed": "Stashes konnten nicht geladen werden",
+		"reflog_load_failed": "Reflog konnte nicht geladen werden"
 	},
 	"search": {
 		"placeholder": "Commits suchen... (Esc zum Löschen)",
@@ -290,7 +298,8 @@
 		"title": "Tastenkürzel",
 		"close_aria": "Tastenkürzel-Hilfe schließen",
 		"none": "Keine Tastenkürzel registriert",
-		"dismiss_hint": "Esc zum Schließen drücken"
+		"dismiss_hint": "Esc zum Schließen drücken",
+		"nav_context": "Navigations-Tastenkürzel funktionieren, wenn die Commit-Liste fokussiert ist"
 	},
 	"shortcut_categories": {
 		"Branch": "Branch",
@@ -334,7 +343,8 @@
 		"loading": "Verlauf wird geladen...",
 		"none": "Kein Verlauf gefunden",
 		"renamed_from": "Umbenannt von {path}",
-		"entry_aria": "{summary} von {author}, {oid}"
+		"entry_aria": "{summary} von {author}, {oid}",
+		"load_failed": "Dateiverlauf konnte nicht geladen werden"
 	},
 	"comparison": {
 		"loading": "Vergleich wird geladen...",

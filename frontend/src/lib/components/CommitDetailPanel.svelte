@@ -323,6 +323,7 @@
 			fileTree = await getFileTree(repoPath, treeOid);
 		} catch {
 			fileTree = null;
+			showToast(translate('commit_detail.tree_failed'), 'error');
 		} finally {
 			loadingTree = false;
 		}
@@ -351,6 +352,7 @@
 			blobContent = await getBlobContent(repoPath, details.info.oid, path);
 		} catch {
 			blobContent = null;
+			showToast(translate('commit_detail.blob_failed'), 'error');
 		} finally {
 			blobLoading = false;
 		}
@@ -756,6 +758,10 @@
 									{file.is_submodule
 										? $t('commit_detail.submodule')
 										: $t('commit_detail.binary_not_displayed')}
+								</div>
+							{:else if !diffsLoading}
+								<div class="px-4 py-3 text-xs text-red-400">
+									{$t('commit_detail.diff_failed')}
 								</div>
 							{:else}
 								<div class="px-4 py-3 text-xs text-gray-500">{$t('common.loading')}</div>

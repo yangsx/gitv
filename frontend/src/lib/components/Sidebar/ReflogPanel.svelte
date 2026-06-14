@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Ref, ReflogEntry } from '$lib/bindings/types';
 	import { getReflog } from '$lib/bindings/commands';
-	import { t } from '$lib/stores/locale';
+	import { t, translate } from '$lib/stores/locale';
 	import { formatGitDateTime } from '$lib/utils/format-date';
+	import { showToast } from '$lib/stores/toast';
 
 	let {
 		repoPath,
@@ -44,6 +45,7 @@
 			entries = await getReflog(repoPath, refName);
 		} catch {
 			entries = [];
+			showToast(translate('sidebar.reflog_load_failed'), 'error');
 		} finally {
 			loading = false;
 		}

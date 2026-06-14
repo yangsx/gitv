@@ -121,7 +121,10 @@
 		"changes_deleted_plural": "{count} deletions",
 		"loading_details": "Loading details...",
 		"raw": "Raw",
-		"markdown": "Markdown"
+		"markdown": "Markdown",
+		"diff_failed": "Failed to load diff",
+		"tree_failed": "Failed to load file tree",
+		"blob_failed": "Failed to load file content"
 	},
 	"page": {
 		"title": "gitv",
@@ -202,7 +205,9 @@
 		"statusbar_aria": "Status bar",
 		"settings_aria": "Open preferences",
 		"comparing": "Comparing",
-		"compare_mode": "Select a commit to compare"
+		"compare_mode": "Select a commit to compare",
+		"no_commits": "No commits to display",
+		"repository": "Repository"
 	},
 	"commit_graph": {
 		"aria": "Commit graph"
@@ -244,7 +249,10 @@
 		"loading_reflog": "Loading reflog...",
 		"no_reflog": "No reflog entries",
 		"reflog_aria": "{message}, {oid}, {author}",
-		"select_ref": "Select ref for reflog"
+		"select_ref": "Select ref for reflog",
+		"no_refs": "No refs",
+		"stash_load_failed": "Failed to load stashes",
+		"reflog_load_failed": "Failed to load reflog"
 	},
 	"search": {
 		"placeholder": "Search commits... (Esc to clear)",
@@ -288,7 +296,8 @@
 		"title": "Keyboard Shortcuts",
 		"close_aria": "Close shortcut help",
 		"none": "No shortcuts registered",
-		"dismiss_hint": "Press Esc to dismiss"
+		"dismiss_hint": "Press Esc to dismiss",
+		"nav_context": "Navigation shortcuts work when the commit list is focused"
 	},
 	"shortcut_categories": {
 		"Branch": "Branch",
@@ -332,7 +341,8 @@
 		"loading": "Loading history...",
 		"none": "No history found",
 		"renamed_from": "Renamed from {path}",
-		"entry_aria": "{summary} by {author}, {oid}"
+		"entry_aria": "{summary} by {author}, {oid}",
+		"load_failed": "Failed to load file history"
 	},
 	"comparison": {
 		"loading": "Loading comparison...",

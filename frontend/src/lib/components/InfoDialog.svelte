@@ -27,6 +27,7 @@
 	);
 
 	let closeBtn: HTMLButtonElement | undefined = $state();
+	let dialogEl: HTMLDivElement | undefined = $state();
 	const { offset: stackOffset, unregister } = dialogStackOffset();
 	let x = $state(Math.max(0, Math.round((window.innerWidth - 420) / 2)) + stackOffset);
 	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)) + stackOffset);
@@ -43,16 +44,43 @@
 	$effect(() => {
 		return () => unregister();
 	});
-</script>
 
-<svelte:window
-	onkeydown={(e) => {
+	function getFocusableElements(): HTMLElement[] {
+		if (!dialogEl) return [];
+		return Array.from(
+			dialogEl.querySelectorAll<HTMLElement>(
+				'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+			)
+		);
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			onclose();
+			return;
 		}
-	}}
-/>
+		if (e.key === 'Tab') {
+			const focusable = getFocusableElements();
+			if (focusable.length === 0) return;
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (e.shiftKey) {
+				if (document.activeElement === first) {
+					e.preventDefault();
+					last.focus();
+				}
+			} else {
+				if (document.activeElement === last) {
+					e.preventDefault();
+					first.focus();
+				}
+			}
+		}
+	}
+</script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div
 	class="fixed z-50"
@@ -63,6 +91,7 @@
 >
 	<div
 		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden"
+		bind:this={dialogEl}
 		style="min-width: 320px; min-height: 200px; max-width: min(90vw, 500px); max-height: min(90vh, 600px); width: 420px;"
 	>
 		<div

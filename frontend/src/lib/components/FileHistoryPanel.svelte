@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { FileHistoryEntry } from '$lib/bindings/types';
 	import { getFileHistory } from '$lib/bindings/commands';
-	import { t } from '$lib/stores/locale';
+	import { t, translate } from '$lib/stores/locale';
 	import { formatGitDateTime } from '$lib/utils/format-date';
+	import { showToast } from '$lib/stores/toast';
 
 	interface Props {
 		repoPath: string;
@@ -29,6 +30,7 @@
 			entries = await getFileHistory(repoPath, filePath);
 		} catch {
 			entries = [];
+			showToast(translate('file_history.load_failed'), 'error');
 		} finally {
 			loading = false;
 		}
