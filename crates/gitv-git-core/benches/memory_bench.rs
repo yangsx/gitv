@@ -137,6 +137,7 @@ fn bench_search_engine_memory() {
                 author: None,
                 date_range: None,
                 file_path: None,
+                search_patch: false,
                 combine_mode: CombineMode::And,
             };
             let _results = engine.search(&query);

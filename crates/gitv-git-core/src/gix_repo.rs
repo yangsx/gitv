@@ -3142,7 +3142,7 @@ mod tests {
     #[test]
     fn info_returns_correct_head() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let info = repo.info().expect("info");
         assert!(info.head_commit.is_some());
@@ -3152,8 +3152,8 @@ mod tests {
     #[test]
     fn commits_returns_results() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
-        temp.commit_file("b.txt", "world", "second commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("b.txt", "world", "second commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let commits = repo.commits(None, &[]).expect("commits");
         assert_eq!(commits.len(), 2);
@@ -3166,9 +3166,9 @@ mod tests {
     #[test]
     fn commits_respects_max_count() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
-        temp.commit_file("b.txt", "world", "second commit");
-        temp.commit_file("c.txt", "!", "third commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("b.txt", "world", "second commit");
+        let _ = temp.commit_file("c.txt", "!", "third commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let commits = repo.commits(Some(2), &[]).expect("commits");
         assert_eq!(commits.len(), 2);
@@ -3178,7 +3178,7 @@ mod tests {
     fn commits_includes_remote_only_commits() {
         let temp = TempRepo::new();
         let first = temp.commit_file("a.txt", "hello", "first commit");
-        temp.commit_file("b.txt", "world", "second commit");
+        let _ = temp.commit_file("b.txt", "world", "second commit");
 
         run_git(
             temp.path(),
@@ -3199,7 +3199,7 @@ mod tests {
     fn commits_includes_tag_only_commits() {
         let temp = TempRepo::new();
         let first = temp.commit_file("a.txt", "hello", "first commit");
-        temp.commit_file("b.txt", "world", "second commit");
+        let _ = temp.commit_file("b.txt", "world", "second commit");
 
         run_git(
             temp.path(),
@@ -3231,7 +3231,7 @@ mod tests {
     #[test]
     fn refs_includes_branch() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let refs = repo.refs().expect("refs");
         let has_branch = refs
@@ -3342,8 +3342,8 @@ mod tests {
     #[test]
     fn file_tree_returns_children() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first");
-        temp.commit_file("dir/b.txt", "world", "add nested");
+        let _ = temp.commit_file("a.txt", "hello", "first");
+        let _ = temp.commit_file("dir/b.txt", "world", "add nested");
         let repo = GixRepository::open(temp.path()).expect("open");
         let tree = repo.file_tree(None).expect("file_tree");
         assert!(matches!(tree.node_type, FileNodeType::Directory));
@@ -3680,8 +3680,8 @@ mod tests {
     #[test]
     fn reflog_returns_entries_for_head() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
-        temp.commit_file("b.txt", "world", "second commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("b.txt", "world", "second commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let entries = repo.reflog(None).expect("reflog");
         assert!(entries.len() >= 2, "should have at least 2 reflog entries");
@@ -3692,9 +3692,9 @@ mod tests {
     #[test]
     fn reflog_for_named_ref() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         run_git(temp.path(), &["checkout", "-b", "feature"]);
-        temp.commit_file("b.txt", "world", "on feature");
+        let _ = temp.commit_file("b.txt", "world", "on feature");
         let repo = GixRepository::open(temp.path()).expect("open");
         let entries = repo.reflog(Some("refs/heads/feature")).expect("reflog");
         assert!(
@@ -3717,7 +3717,7 @@ mod tests {
     #[test]
     fn stash_list_empty_when_no_stashes() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let stashes = repo.stash_list().expect("stash_list");
         assert!(stashes.is_empty());
@@ -3726,7 +3726,7 @@ mod tests {
     #[test]
     fn stash_list_returns_entries() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         std::fs::write(temp.dir.path().join("a.txt"), "modified").expect("write");
         run_git(temp.path(), &["stash", "--include-untracked"]);
         let repo = GixRepository::open(temp.path()).expect("open");
@@ -3740,7 +3740,7 @@ mod tests {
     #[test]
     fn stash_list_multiple_stashes() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         std::fs::write(temp.dir.path().join("a.txt"), "mod1").expect("write");
         run_git(temp.path(), &["stash"]);
         std::fs::write(temp.dir.path().join("a.txt"), "mod2").expect("write");
@@ -3755,7 +3755,7 @@ mod tests {
     #[test]
     fn stash_diff_returns_combined_diff() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         std::fs::write(temp.dir.path().join("a.txt"), "modified content").expect("write");
         run_git(temp.path(), &["stash"]);
         let repo = GixRepository::open(temp.path()).expect("open");
@@ -3769,7 +3769,7 @@ mod tests {
     #[test]
     fn stash_split_diff_returns_staged_and_unstaged() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "hello", "first commit");
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
         std::fs::write(temp.dir.path().join("a.txt"), "modified").expect("write");
         run_git(temp.path(), &["stash"]);
         let repo = GixRepository::open(temp.path()).expect("open");
@@ -3784,7 +3784,7 @@ mod tests {
     #[test]
     fn blame_returns_line_attributions() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "line1\nline2\nline3", "first commit");
+        let _ = temp.commit_file("a.txt", "line1\nline2\nline3", "first commit");
         let repo = GixRepository::open(temp.path()).expect("open");
         let blame = repo
             .blame(std::path::Path::new("a.txt"), None)
@@ -3838,7 +3838,7 @@ mod tests {
     #[test]
     fn unstaged_file_diff_shows_changes() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
+        let _ = temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
         std::fs::write(
             temp.path().join("a.txt"),
             "line1\nline2\nMODIFIED\nline4\nline5",
@@ -3869,7 +3869,7 @@ mod tests {
     #[test]
     fn staged_file_diff_shows_changes() {
         let temp = TempRepo::new();
-        temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
+        let _ = temp.commit_file("a.txt", "line1\nline2\nline3\nline4\nline5", "first");
         std::fs::write(
             temp.path().join("a.txt"),
             "line1\nline2\nMODIFIED\nline4\nline5",
