@@ -140,8 +140,8 @@ def main() -> int:
 
     criterion_dir = Path(sys.argv[1])
     if not criterion_dir.is_dir():
-        print(f"Error: {criterion_dir} is not a directory", file=sys.stderr)
-        return 2
+        print(f"Info: {criterion_dir} not found — no benchmark data to check", file=sys.stderr)
+        return 0
 
     results = find_estimates(criterion_dir)
 

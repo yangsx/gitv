@@ -1,0 +1,47 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Tarpaulin — gitv-git-core
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-coverage-
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Run tarpaulin
+        run: |
+          cargo tarpaulin \
+            --manifest-path crates/gitv-git-core/Cargo.toml \
+            --out Html \
+            --out Xml \
+            --output-dir coverage-report
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarpaulin-report-${{ github.sha }}
+          path: coverage-report/
+          retention-days: 30
