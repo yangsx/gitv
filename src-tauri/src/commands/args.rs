@@ -12,8 +12,7 @@ pub fn init_startup_paths(paths: Vec<String>) {
 }
 
 pub fn set_debug_overlay(enabled: bool) {
-    let effective = cfg!(debug_assertions) || enabled;
-    let _ = DEBUG_OVERLAY.set(effective);
+    let _ = DEBUG_OVERLAY.set(enabled);
 }
 
 pub fn set_log_path(path: PathBuf) {

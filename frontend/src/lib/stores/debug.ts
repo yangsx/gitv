@@ -54,7 +54,6 @@ export const recentIpcTimings = derived(debug, ($d) => {
 	return $d.ipcTimings.slice(-20);
 });
 
-export const debugOverlayEnabled = writable(false);
 export const logPath = writable('');
 
 const MAX_TIMINGS = 100;

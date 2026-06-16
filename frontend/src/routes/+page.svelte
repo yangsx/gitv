@@ -63,7 +63,6 @@
 		tickFps,
 		updateDebugGraphStats,
 		updateLoadPhaseTimings,
-		debugOverlayEnabled,
 		logPath,
 		startMemoryTracking,
 		stopMemoryTracking
@@ -197,7 +196,6 @@
 				});
 			} else {
 				getStartupInfo().then((info) => {
-					debugOverlayEnabled.set(info.debug_overlay_enabled);
 					logPath.set(info.log_path);
 					if (info.paths.length > 0) {
 						repoPath = info.paths[0];
@@ -759,9 +757,7 @@
 		}
 		if (e.key === 'F12' || (e.key === 'D' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
 			e.preventDefault();
-			if ($debugOverlayEnabled) {
-				toggleDebug();
-			}
+			toggleDebug();
 			return;
 		}
 		if ((e.key === 'p' && e.ctrlKey) || (e.key === 'p' && e.metaKey)) {
@@ -976,10 +972,10 @@
 		registerCommand({
 			id: 'toggle-debug',
 			label: translate('page.cmd_debug'),
-			shortcut: 'F12',
+			shortcut: 'F12 / Ctrl+Shift+D',
 			category: 'Debug',
 			action: () => {
-				if ($debugOverlayEnabled) toggleDebug();
+				toggleDebug();
 			}
 		});
 		registerCommand({
