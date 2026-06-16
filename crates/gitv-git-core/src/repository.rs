@@ -51,6 +51,8 @@ pub trait Repository {
         max_count: Option<usize>,
     ) -> Result<Vec<FileHistoryEntry>, GitError>;
     fn blob_content(&self, oid: Oid, path: &Path) -> Result<String, GitError>;
+    fn blob_content_staged(&self, path: &Path) -> Result<String, GitError>;
+    fn blob_content_worktree(&self, path: &Path) -> Result<String, GitError>;
     fn working_changes_diff(&self) -> Result<WorkingChangesDiff, GitError>;
     fn working_changes_file_diffs(
         &self,

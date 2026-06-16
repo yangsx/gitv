@@ -638,6 +638,37 @@ impl Repository for GixRepository {
         Err(GitError::ObjectNotFound(path.display().to_string()))
     }
 
+    fn blob_content_staged(&self, path: &Path) -> Result<String, GitError> {
+        let repo = self.thread_local();
+        let index = repo.index().map_err(|e| GitError::Gix(e.to_string()))?;
+        let path_str = path.to_string_lossy();
+        let path_bstr = gix::bstr::BStr::new(path_str.as_bytes());
+
+        let entry = index
+            .entry_by_path(path_bstr)
+            .ok_or_else(|| GitError::ObjectNotFound(path.display().to_string()))?;
+
+        let blob = repo
+            .find_object(entry.id)
+            .map_err(|e| GitError::Gix(e.to_string()))?
+            .try_into_blob()
+            .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+
+        String::from_utf8(blob.data.to_vec())
+            .map_err(|e| GitError::Gix(format!("blob is not valid UTF-8: {e}")))
+    }
+
+    fn blob_content_worktree(&self, path: &Path) -> Result<String, GitError> {
+        let repo = self.thread_local();
+        let workdir = repo
+            .workdir()
+            .ok_or_else(|| GitError::Gix("bare repository has no worktree".into()))?;
+        let full_path = workdir.join(path);
+        let data = std::fs::read(&full_path)
+            .map_err(|e| GitError::Gix(format!("failed to read worktree file: {e}")))?;
+        String::from_utf8(data).map_err(|e| GitError::Gix(format!("blob is not valid UTF-8: {e}")))
+    }
+
     fn working_changes_diff(&self) -> Result<WorkingChangesDiff, GitError> {
         if self.is_bare() {
             return Ok(WorkingChangesDiff {
@@ -3377,6 +3408,88 @@ mod tests {
             .any(|c| matches!(c.node_type, FileNodeType::File) && c.name == "b.txt");
         assert!(has_a, "first commit should have a.txt");
         assert!(!has_b, "first commit should not have b.txt");
+    }
+
+    #[test]
+    fn blob_content_staged_returns_index_version() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "original", "first");
+        std::fs::write(temp.path().join("a.txt"), "staged content").expect("write");
+        run_git(temp.path(), &["add", "a.txt"]);
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let content = repo
+            .blob_content_staged(std::path::Path::new("a.txt"))
+            .expect("staged blob");
+        assert_eq!(content, "staged content");
+    }
+
+    #[test]
+    fn blob_content_staged_missing_file_errors() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "hello", "first");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let result = repo.blob_content_staged(std::path::Path::new("nonexistent.txt"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn blob_content_worktree_returns_disk_version() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "committed", "first");
+        std::fs::write(temp.path().join("a.txt"), "modified on disk").expect("write");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let content = repo
+            .blob_content_worktree(std::path::Path::new("a.txt"))
+            .expect("worktree blob");
+        assert_eq!(content, "modified on disk");
+    }
+
+    #[test]
+    fn blob_content_worktree_nested_path() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("src/main.rs", "fn main() {}", "first");
+        std::fs::create_dir_all(temp.path().join("src")).expect("dir");
+        std::fs::write(temp.path().join("src/main.rs"), "fn main() { updated }").expect("write");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let content = repo
+            .blob_content_worktree(std::path::Path::new("src/main.rs"))
+            .expect("worktree blob");
+        assert_eq!(content, "fn main() { updated }");
+    }
+
+    #[test]
+    fn blob_content_returns_file_at_commit() {
+        let temp = TempRepo::new();
+        let oid = temp.commit_file("a.txt", "hello world", "first");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let content = repo
+            .blob_content(oid, std::path::Path::new("a.txt"))
+            .expect("blob_content");
+        assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn blob_content_nested_path_at_commit() {
+        let temp = TempRepo::new();
+        let oid = temp.commit_file("src/main.rs", "fn main() {}", "first");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let content = repo
+            .blob_content(oid, std::path::Path::new("src/main.rs"))
+            .expect("blob_content");
+        assert_eq!(content, "fn main() {}");
+    }
+
+    #[test]
+    fn blob_content_missing_file_errors() {
+        let temp = TempRepo::new();
+        let oid = temp.commit_file("a.txt", "hello", "first");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let result = repo.blob_content(oid, std::path::Path::new("nonexistent.txt"));
+        assert!(result.is_err());
     }
 
     #[test]

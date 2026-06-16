@@ -1,11 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import {
-		debug,
-		avgIpcTime,
-		recentIpcTimings,
-		formatBytes
-	} from '$lib/stores/debug';
+	import { debug, avgIpcTime, recentIpcTimings, formatBytes } from '$lib/stores/debug';
 	import { operationState } from '$lib/stores/repository';
 
 	let formatMs = (ms: number) => ms.toFixed(1);

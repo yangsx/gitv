@@ -125,9 +125,17 @@ pub fn get_blob_content(
 ) -> Result<String, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
-    let oid = Oid::from_hex(&at_commit).map_err(|e| e.to_string())?;
-    repo.blob_content(oid, std::path::Path::new(&file_path))
-        .map_err(|e| e.to_string())
+    let file_path = std::path::Path::new(&file_path);
+
+    match at_commit.as_str() {
+        "__staged__" => repo.blob_content_staged(file_path),
+        "__unstaged__" => repo.blob_content_worktree(file_path),
+        hex => {
+            let oid = Oid::from_hex(hex).map_err(|e| e.to_string())?;
+            repo.blob_content(oid, file_path)
+        }
+    }
+    .map_err(|e| e.to_string())
 }
 
 fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
