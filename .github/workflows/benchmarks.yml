@@ -13,13 +13,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Restore a cached criterion baseline from the target branch so we can
       # compare PR results against it.  The cache key includes the branch name
       # so each long-lived branch keeps its own baseline.
       - name: Restore criterion baseline cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target/criterion
           key: criterion-baseline-${{ github.base_ref || github.ref_name }}
@@ -32,7 +32,7 @@ jobs:
 
       # Cache compiled dependencies to keep CI fast.
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -106,7 +106,7 @@ jobs:
       # Upload the full criterion HTML report as an artifact so reviewers
       # can browse detailed plots without re-running locally.
       - name: Upload benchmark report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: criterion-report-${{ github.sha }}

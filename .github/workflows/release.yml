@@ -28,14 +28,14 @@ jobs:
     runs-on: ${{ matrix.config.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           target: ${{ matrix.config.target }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -58,16 +58,20 @@ jobs:
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
 
-      - name: Install system deps (macOS)
-        if: runner.os == 'macOS'
+      - name: Install tauri-cli
         run: |
-          brew install --quiet webkit2gtk
+          cargo install cargo-binstall
+          cargo binstall tauri-cli --no-confirm
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
 
       - name: Build (cargo tauri)
         run: cargo tauri build
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: gitv-${{ matrix.config.name }}
           path: src-tauri/target/release/bundle/
@@ -79,10 +83,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
 
       - name: Generate release notes
         run: |

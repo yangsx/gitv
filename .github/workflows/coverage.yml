@@ -9,16 +9,18 @@ env:
 
 jobs:
   coverage:
-    name: Tarpaulin — gitv-git-core
+    name: llvm-cov — gitv-git-core
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -28,20 +30,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-coverage-
 
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
 
-      - name: Run tarpaulin
+      - name: Run llvm-cov
         run: |
-          cargo tarpaulin \
-            --manifest-path crates/gitv-git-core/Cargo.toml \
-            --out Html \
-            --out Xml \
-            --output-dir coverage-report
+          cargo llvm-cov \
+            -p gitv-git-core \
+            --text \
+            --lcov \
+            --output-path lcov.info \
+            --ignore-filename-regex '<WORKSPACE>'
 
-      - name: Upload HTML report
-        uses: actions/upload-artifact@v4
+      - name: Upload LCOV report
+        uses: actions/upload-artifact@v5
         with:
-          name: tarpaulin-report-${{ github.sha }}
-          path: coverage-report/
+          name: lcov-${{ github.sha }}
+          path: lcov.info
           retention-days: 30

@@ -303,7 +303,8 @@ Intel Core i7-1165G7:
 ### Coverage
 
 ```bash
-cargo tarpaulin --manifest-path crates/gitv-git-core/Cargo.toml --out Html
+cargo llvm-cov -p gitv-git-core --html --output-dir coverage-report \
+  --ignore-filename-regex '<WORKSPACE>'
 # Target: >= 80% line coverage
 ```
 
