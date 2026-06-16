@@ -15,15 +15,22 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: Linux
+          - name: Linux x86_64
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - name: macOS
+            artifact: linux
+          # Universal binary covers both Apple Silicon and Intel Macs.
+          # Built on an ARM runner — GitHub retired the last free Intel
+          # runner (macos-13) in Dec 2025.
+          - name: macOS universal
             os: macos-latest
-            target: x86_64-apple-darwin
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            build-target: universal-apple-darwin
+            artifact: macos
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            artifact: windows
 
     runs-on: ${{ matrix.config.os }}
 
@@ -33,7 +40,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          target: ${{ matrix.config.target }}
+          targets: ${{ matrix.config.targets || matrix.config.target }}
 
       - uses: actions/cache@v5
         with:
@@ -68,19 +75,21 @@ jobs:
         working-directory: frontend
 
       - name: Build (cargo tauri)
-        run: cargo tauri build
+        run: cargo tauri build --target ${{ matrix.config.build-target || matrix.config.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: gitv-${{ matrix.config.name }}
-          path: src-tauri/target/release/bundle/
+          name: gitv-${{ matrix.config.artifact }}
+          path: target/${{ matrix.config.build-target || matrix.config.target }}/release/bundle/
           retention-days: 30
 
   release:
     name: Create GitHub Release
     needs: [build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v5
@@ -100,8 +109,10 @@ jobs:
           name: Gitv ${{ github.ref_name }}
           body_path: /tmp/release-notes.md
           files: |
-            gitv-Linux/**
-            gitv-macOS/**
-            gitv-Windows/**
+            gitv-linux/**/*.deb
+            gitv-linux/**/*.AppImage
+            gitv-macos/**/*.dmg
+            gitv-windows/**/*.msi
+            gitv-windows/**/*.exe
           draft: true
           prerelease: false
