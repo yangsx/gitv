@@ -86,14 +86,14 @@
 	</div>
 {:else}
 	<div
-		class="flex flex-col border-r border-gray-800 bg-gray-900"
+		class="flex flex-col overflow-hidden border-r border-gray-800 bg-gray-900"
 		style="width: {width}px; min-width: 150px;"
 		role="navigation"
 		aria-label={$t('sidebar.aria')}
 	>
 		<div class="flex items-center justify-between border-b border-gray-800 px-2 py-1">
 			<div
-				class="flex gap-1"
+				class="flex min-w-0 flex-1 gap-1 overflow-x-auto"
 				role="tablist"
 				tabindex="-1"
 				aria-label={$t('sidebar.tabs_aria')}
@@ -115,7 +115,7 @@
 				{/each}
 			</div>
 			<button
-				class="rounded p-0.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+				class="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-800 hover:text-white"
 				onclick={() => (collapsed = true)}
 				title={$t('sidebar.collapse')}
 				aria-label={$t('sidebar.collapse')}
