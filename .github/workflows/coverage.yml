@@ -3,6 +3,8 @@ name: Coverage
 on:
   push:
     branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,7 +33,9 @@ jobs:
             ${{ runner.os }}-cargo-coverage-
 
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
 
       - name: Run llvm-cov
         run: |

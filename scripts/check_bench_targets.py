@@ -8,8 +8,8 @@ performance targets defined in AGENTS.md / requirements.md (Req 27.6).
 Usage:
     python3 scripts/check_bench_targets.py <criterion-dir>
 
-criterion-dir:  path that contains <bench-name>/*/new/estimates.json files
-                (typically crates/gitv-git-core/target/criterion)
+criterion-dir:  path that contains <bench-name>/*/bench-baseline/estimates.json files
+                (typically target/criterion)
 
 Exit codes:
     0  all targets met
@@ -100,14 +100,19 @@ def find_estimates(criterion_dir: Path) -> dict[tuple[str, str], float]:
     Walk criterion_dir and collect (group, test_path) → mean_ns mappings.
 
     Criterion stores results at:
-        <criterion_dir>/<group>/<function>[/<param>]/new/estimates.json
+        <criterion_dir>/<group>/<function>[/<param>]/<baseline>/estimates.json
 
-    The test_path captures everything between group and new/estimates.json,
+    The glob matches any baseline folder (e.g. "bench-baseline" in CI, or
+    "new" for ad-hoc criterion runs); "change/" dirs produced by comparison
+    runs are skipped to avoid double-counting.
+    The test_path captures everything between group and the baseline folder,
     so parameterized benchmarks like linear/10000 and build/100000 get
     distinct keys.
     """
     results: dict[tuple[str, str], float] = {}
-    for estimates_path in criterion_dir.rglob("new/estimates.json"):
+    for estimates_path in criterion_dir.rglob("*/estimates.json"):
+        if "change" in estimates_path.parts:
+            continue
         try:
             data = json.loads(estimates_path.read_text())
             mean_ns: float = data["mean"]["point_estimate"]
