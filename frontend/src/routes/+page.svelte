@@ -85,6 +85,7 @@
 		initPreferences,
 		resolvedTheme,
 		fontSize,
+		adjustFontSize,
 		resolvedHighContrast
 	} from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
@@ -217,6 +218,7 @@
 		}
 		window.addEventListener('resize', onResize);
 		window.addEventListener('keydown', handleKeydown);
+		window.addEventListener('wheel', handleWheel, { passive: false });
 
 		let fpsRafId = 0;
 		function fpsLoop() {
@@ -230,6 +232,7 @@
 		return () => {
 			window.removeEventListener('resize', onResize);
 			window.removeEventListener('keydown', handleKeydown);
+			window.removeEventListener('wheel', handleWheel);
 			cancelAnimationFrame(fpsRafId);
 			stopMemoryTracking();
 			saveWindowGeometry();
@@ -732,6 +735,12 @@
 		}
 	}
 
+	function handleWheel(e: WheelEvent) {
+		if (!e.ctrlKey && !e.metaKey) return;
+		e.preventDefault();
+		announce(translate('page.cmd_font_size', { size: adjustFontSize(e.deltaY > 0 ? -1 : 1) }));
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		const target = e.target as HTMLElement | null;
 		if (
@@ -816,6 +825,23 @@
 				return;
 			}
 		}
+		if (e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt' || e.key === 'Meta') return;
+		const mod = e.ctrlKey || e.metaKey;
+		if (mod && !e.altKey && ['-', '_'].includes(e.key)) {
+			e.preventDefault();
+			announce(translate('page.cmd_font_size', { size: adjustFontSize(-1) }));
+			return;
+		}
+		if (mod && !e.altKey && ['=', '+'].includes(e.key)) {
+			e.preventDefault();
+			announce(translate('page.cmd_font_size', { size: adjustFontSize(1) }));
+			return;
+		}
+		if (mod && !e.altKey && !e.shiftKey && e.key === '0') {
+			e.preventDefault();
+			announce(translate('page.cmd_font_size', { size: adjustFontSize(0) }));
+			return;
+		}
 		if (e.key === 'w' && (e.ctrlKey || e.metaKey) && $repoInfo) {
 			e.preventDefault();
 			closeRepo();
@@ -826,7 +852,7 @@
 			quitApp();
 			return;
 		}
-		if ((e.key === 'F1' || (e.key === '/' && (e.ctrlKey || e.metaKey))) && !showPreferences) {
+		if (e.key === 'F1' || (e.key === '/' && (e.ctrlKey || e.metaKey))) {
 			e.preventDefault();
 			openModal('shortcutHelp');
 			return;
@@ -1017,6 +1043,27 @@
 			action: () => {
 				isFullscreen = !isFullscreen;
 			}
+		});
+		registerCommand({
+			id: 'font-increase',
+			label: translate('page.cmd_font_increase'),
+			shortcut: modKey === '⌘' ? '⌘=' : 'Ctrl+=',
+			category: 'View',
+			action: () => adjustFontSize(1)
+		});
+		registerCommand({
+			id: 'font-decrease',
+			label: translate('page.cmd_font_decrease'),
+			shortcut: modKey === '⌘' ? '⌘-' : 'Ctrl+-',
+			category: 'View',
+			action: () => adjustFontSize(-1)
+		});
+		registerCommand({
+			id: 'font-reset',
+			label: translate('page.cmd_font_reset'),
+			shortcut: modKey === '⌘' ? '⌘0' : 'Ctrl+0',
+			category: 'View',
+			action: () => adjustFontSize(0)
 		});
 		registerCommand({
 			id: 'compare-commits',

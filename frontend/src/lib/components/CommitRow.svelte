@@ -14,6 +14,7 @@
 		onclick: (_oid: string, _ctrlKey: boolean) => void;
 		oncontextmenu?: (_e: MouseEvent, _oid: string) => void;
 		id?: string;
+		rowHeight?: number;
 	}
 
 	let {
@@ -25,7 +26,8 @@
 		matchType,
 		onclick,
 		oncontextmenu,
-		id
+		id,
+		rowHeight = 28
 	}: Props = $props();
 
 	function escapeHtml(s: string): string {
@@ -76,7 +78,8 @@
 		tabindex="-1"
 		role="option"
 		aria-selected={isSelected}
-		class="flex w-full items-center gap-3 px-3 h-7 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
+		style="height: {rowHeight}px;"
+		class="flex w-full items-center gap-3 px-3 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
 			? 'bg-blue-900/40 text-blue-200'
 			: isComparison
 				? 'bg-indigo-900/40 text-indigo-200'
@@ -105,7 +108,8 @@
 		tabindex="-1"
 		role="option"
 		aria-selected={isSelected}
-		class="flex w-full items-center gap-3 px-3 h-7 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
+		style="height: {rowHeight}px;"
+		class="flex w-full items-center gap-3 px-3 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
 			? 'bg-blue-900/40 text-blue-200'
 			: isComparison
 				? 'bg-indigo-900/40 text-indigo-200'

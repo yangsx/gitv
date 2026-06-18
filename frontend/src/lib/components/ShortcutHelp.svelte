@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { commands as commandsStore } from '$lib/stores/commands';
 	import { t } from '$lib/stores/locale';
+	import { draggable } from '$lib/actions/draggable';
+	import { dialogStackOffset } from '$lib/stores/dialog';
 
 	interface Props {
 		onclose: () => void;
@@ -15,9 +17,21 @@
 
 	let closeBtn: HTMLButtonElement | undefined = $state();
 	let dialogEl: HTMLDivElement | undefined = $state();
+	const { offset: stackOffset, unregister } = dialogStackOffset();
+	let x = $state(Math.max(0, Math.round((window.innerWidth - 420) / 2)) + stackOffset);
+	let y = $state(Math.max(0, Math.round((window.innerHeight - 400) / 2)) + stackOffset);
+
+	function handleDragMove(newX: number, newY: number) {
+		x = newX;
+		y = newY;
+	}
 
 	$effect(() => {
 		if (closeBtn) closeBtn.focus();
+	});
+
+	$effect(() => {
+		return () => unregister();
 	});
 
 	function getFocusableElements(): HTMLElement[] {
@@ -57,23 +71,25 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 <div
-	class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-	onclick={onclose}
+	class="fixed z-50"
+	style="left: {x}px; top: {y}px;"
 	role="dialog"
 	aria-label={$t('shortcut_help.title')}
 	tabindex="-1"
 >
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
-		class="w-[420px] max-h-[70vh] rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden"
+		class="flex flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden"
 		bind:this={dialogEl}
-		onclick={(e) => e.stopPropagation()}
-		role="document"
-		tabindex="-1"
+		style="min-width: 320px; min-height: 200px; max-width: min(90vw, 500px); max-height: min(90vh, 600px); width: 420px;"
 	>
-		<div class="flex items-center justify-between border-b border-gray-800 px-4 py-2">
+		<div
+			class="flex items-center justify-between border-b border-gray-800 px-4 py-2 cursor-grab select-none"
+			use:draggable={{ onMove: handleDragMove }}
+			role="toolbar"
+			aria-label={$t('shortcut_help.title')}
+			tabindex="-1"
+		>
 			<h2 class="text-sm font-semibold text-gray-100">{$t('shortcut_help.title')}</h2>
 			<button
 				bind:this={closeBtn}

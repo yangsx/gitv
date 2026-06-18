@@ -13,6 +13,8 @@
 		theme,
 		fontSize,
 		highContrast,
+		FONT_SIZE_MIN,
+		FONT_SIZE_MAX,
 		savePreferences
 	} from '$lib/stores/preferences';
 	import {
@@ -214,7 +216,7 @@
 			target.value = String($fontSize);
 			return;
 		}
-		const clamped = Math.max(10, Math.min(24, val));
+		const clamped = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, val));
 		target.value = String(clamped);
 		fontSize.set(clamped);
 		savePreferences();
@@ -525,12 +527,12 @@
 						<span class="text-gray-300">{$t('preferences.font_size')}</span>
 						<input
 							type="number"
-							min="10"
-							max="24"
+							min={FONT_SIZE_MIN}
+							max={FONT_SIZE_MAX}
 							step="1"
 							value={$fontSize}
 							onchange={setFontSize}
-							title="10–24"
+							title="{FONT_SIZE_MIN}–{FONT_SIZE_MAX}"
 							class="w-16 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500"
 							aria-label={$t('preferences.font_size_aria')}
 						/>

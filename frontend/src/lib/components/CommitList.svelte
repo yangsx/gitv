@@ -246,6 +246,7 @@
 							matchType={matchTypeByOid.get(commit.oid)}
 							onclick={onSelect}
 							oncontextmenu={onContextMenu}
+							{rowHeight}
 						/>
 					{/each}
 				</div>

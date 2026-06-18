@@ -227,6 +227,9 @@
 		void comparisonOid;
 		void hoveredEdgeIdx;
 		void selectedEdgeIdx;
+		void rowHeight;
+		void laneWidth;
+		void nodeRadius;
 		scheduleRender();
 	});
 

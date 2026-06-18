@@ -4,6 +4,10 @@ import type { AppPreferences } from '$lib/bindings/types';
 import { graphColorMode, graphHideMerges, graphOrientation, graphPalette } from './repository';
 import { locale, initLocale, setLocale, SUPPORTED_LOCALES, DEFAULT_LOCALE } from './locale';
 
+export const FONT_SIZE_MIN = 10;
+export const FONT_SIZE_MAX = 24;
+export const FONT_SIZE_DEFAULT = 13;
+
 const DEFAULTS: AppPreferences = {
 	graph_color_mode: 'by-branch',
 	graph_hide_merges: false,
@@ -14,7 +18,7 @@ const DEFAULTS: AppPreferences = {
 	diff_whitespace: 'none',
 	diff_view_mode: 'unified',
 	theme: 'auto',
-	font_size: 13,
+	font_size: FONT_SIZE_DEFAULT,
 	high_contrast: false,
 	language: 'en'
 };
@@ -106,7 +110,7 @@ function updateFromPreferences(p: AppPreferences) {
 	if (p.renderer === 'wgpu' || p.renderer === 'canvas2d') {
 		renderer.set(p.renderer);
 	}
-	if (p.font_size >= 10 && p.font_size <= 24) {
+	if (p.font_size >= FONT_SIZE_MIN && p.font_size <= FONT_SIZE_MAX) {
 		fontSize.set(p.font_size);
 	}
 	diffMode.set(p.diff_mode);
@@ -160,4 +164,19 @@ export async function initPreferences() {
 export function savePreferences() {
 	const prefs = toPreferences();
 	debouncedSave(prefs);
+}
+
+/**
+ * Adjust the root font size by `delta` px (clamped to FONT_SIZE_MIN..FONT_SIZE_MAX).
+ * Pass 0 to reset to the default. Persists the result and returns the new size.
+ */
+export function adjustFontSize(delta: number): number {
+	const current = get(fontSize);
+	const next =
+		delta === 0
+			? FONT_SIZE_DEFAULT
+			: Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, current + delta));
+	fontSize.set(next);
+	savePreferences();
+	return next;
 }
