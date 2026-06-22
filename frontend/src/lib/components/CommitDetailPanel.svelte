@@ -25,7 +25,7 @@
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 	import { showToast } from '$lib/stores/toast';
-	import { CHANGE_COLORS, CHANGE_LETTERS } from '$lib/constants';
+	import { CHANGE_COLORS, CHANGE_LETTERS, STAGED_OID, UNSTAGED_OID } from '$lib/constants';
 	import { formatGitDateTime } from '$lib/utils/format-date';
 
 	function copyToClipboard(text: string) {
@@ -222,12 +222,12 @@
 
 		if (
 			!isComparison &&
-			(details.info.oid === '__staged__' || details.info.oid === '__unstaged__')
+			(details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID)
 		) {
 			try {
 				const diffs = await getWorkingChangesDiffs(
 					repoPath,
-					details.info.oid === '__staged__',
+					details.info.oid === STAGED_OID,
 					localDiffMode,
 					localDiffWhitespace
 				);
@@ -317,7 +317,7 @@
 		loadingTree = true;
 		try {
 			const treeOid =
-				details.info.oid === '__staged__' || details.info.oid === '__unstaged__'
+				details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID
 					? null
 					: details.info.oid;
 			fileTree = await getFileTree(repoPath, treeOid);
@@ -541,20 +541,20 @@
 				</div>
 			{:else}
 				{#if !isComparison}
-					{#if details.info.oid === '__staged__' || details.info.oid === '__unstaged__'}
+					{#if details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID}
 						<div class="px-4 py-3 border-b border-gray-800">
 							<div class="flex items-center gap-2 text-sm">
 								<span
-									class="inline-block h-2 w-2 rounded-full {details.info.oid === '__staged__'
+									class="inline-block h-2 w-2 rounded-full {details.info.oid === STAGED_OID
 										? 'bg-green-400'
 										: 'bg-orange-400'}"
 								></span>
 								<span
-									class="font-medium {details.info.oid === '__staged__'
+									class="font-medium {details.info.oid === STAGED_OID
 										? 'text-green-300'
 										: 'text-orange-300'}"
 								>
-									{$t(details.info.oid === '__staged__' ? 'page.staged' : 'page.unstaged')}
+									{$t(details.info.oid === STAGED_OID ? 'page.staged' : 'page.unstaged')}
 								</span>
 								<span class="text-xs text-gray-500">
 									{$t(

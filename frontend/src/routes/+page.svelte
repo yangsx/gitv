@@ -90,6 +90,7 @@
 	} from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
 	import { computeHideMergeLayout } from '$lib/graph/hide-merges';
+	import { applyVirtualWorkingChanges, createVirtualCommitInfos } from '$lib/graph/virtual-working-changes';
 	import { announce } from '$lib/utils/a11y';
 
 	let repoPath = $state('');
@@ -411,21 +412,6 @@
 		loadRepo(repoPath);
 	}
 
-	function makeVirtualCommit(oid: string, summary: string, _fileCount: number): CommitInfo {
-		return {
-			oid,
-			short_oid: '',
-			message: summary,
-			summary,
-			author: { name: '', email: '' },
-			committer: { name: '', email: '' },
-			author_time: '',
-			commit_time: '',
-			parent_oids: [],
-			refs: []
-		};
-	}
-
 	let allCommits = $derived.by(() => {
 		if (!graphLayout || graphLayout.stash_commits.length === 0) return commits;
 		return [...commits, ...graphLayout.stash_commits];
@@ -433,106 +419,12 @@
 
 	let displayCommits = $derived.by(() => {
 		void $locale;
-		if (!workingChangesDiff) return allCommits;
-		const hasStaged = workingChangesDiff.staged.length > 0;
-		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
-		if (!hasStaged && !hasUnstaged) return allCommits;
-		const virtuals: CommitInfo[] = [];
-		if (hasUnstaged)
-			virtuals.push(
-				makeVirtualCommit(
-					UNSTAGED_OID,
-					translate('page.unstaged'),
-					workingChangesDiff.unstaged.length
-				)
-			);
-		if (hasStaged)
-			virtuals.push(
-				makeVirtualCommit(STAGED_OID, translate('page.staged'), workingChangesDiff.staged.length)
-			);
-		return [...virtuals, ...allCommits];
+		return [...createVirtualCommitInfos(workingChangesDiff, translate), ...allCommits];
 	});
 
-	let displayLayout = $derived.by(() => {
-		if (!graphLayout) return null;
-		if (!workingChangesDiff) return graphLayout;
-		const hasStaged = workingChangesDiff.staged.length > 0;
-		const hasUnstaged = workingChangesDiff.unstaged.length > 0;
-		if (!hasStaged && !hasUnstaged) return graphLayout;
-		const virtualCount = (hasStaged ? 1 : 0) + (hasUnstaged ? 1 : 0);
-		const virtualNodes: import('$lib/bindings/types').NodePosition[] = [];
-		if (hasUnstaged) {
-			virtualNodes.push({
-				oid: UNSTAGED_OID,
-				row: 0,
-				column: 0,
-				is_merge: false,
-				color: { r: 255, g: 255, b: 255, a: 255 },
-				is_dimmed: false,
-				is_highlighted: false,
-				is_stash: false
-			});
-		}
-		if (hasStaged) {
-			virtualNodes.push({
-				oid: STAGED_OID,
-				row: hasUnstaged ? 1 : 0,
-				column: 0,
-				is_merge: false,
-				color: { r: 255, g: 255, b: 255, a: 255 },
-				is_dimmed: false,
-				is_highlighted: false,
-				is_stash: false
-			});
-		}
-		const virtualEdges: import('$lib/bindings/types').Edge[] = [];
-		const headNode = graphLayout.nodes.length > 0 ? graphLayout.nodes[0] : null;
-		if (headNode) {
-			const headRow = headNode.row + virtualCount;
-			const headCol = headNode.column;
-			if (hasUnstaged) {
-				virtualEdges.push({
-					from_row: 0,
-					from_col: 0,
-					to_row: headRow,
-					to_col: headCol,
-					edge_type: 'Straight' as const,
-					color: { r: 251, g: 146, b: 60, a: 200 },
-					is_dimmed: false,
-					edge_style: 'Solid' as const
-				});
-			}
-			if (hasStaged) {
-				virtualEdges.push({
-					from_row: hasUnstaged ? 1 : 0,
-					from_col: 0,
-					to_row: headRow,
-					to_col: headCol,
-					edge_type: 'Straight' as const,
-					color: { r: 74, g: 222, b: 128, a: 200 },
-					is_dimmed: false,
-					edge_style: 'Solid' as const
-				});
-			}
-		}
-		return {
-			...graphLayout,
-			nodes: [
-				...virtualNodes,
-				...graphLayout.nodes.map((n) => ({ ...n, row: n.row + virtualCount }))
-			],
-			edges: [
-				...virtualEdges,
-				...graphLayout.edges.map((e) => ({
-					...e,
-					from_row: e.from_row + virtualCount,
-					to_row: e.to_row + virtualCount
-				}))
-			],
-			stash_markers: graphLayout.stash_markers.map((s) => ({ ...s, row: s.row + virtualCount })),
-			total_rows: graphLayout.total_rows + virtualCount
-		};
-	});
+	let displayLayout = $derived(
+		applyVirtualWorkingChanges(graphLayout, workingChangesDiff, $repoInfo?.head_commit)
+	);
 
 	let effectiveCommits = $derived.by(() => {
 		let result = displayCommits;
