@@ -1379,4 +1379,202 @@ mod tests {
             }
         }
     }
+
+    /// Verify the parent-preservation invariant: every non-merge commit that
+    /// has ≥1 parent when merges are shown must still have ≥1 parent edge
+    /// when merges are hidden.
+    fn assert_parents_preserved(show_layout: &GraphLayout, hide_layout: &GraphLayout, label: &str) {
+        let show_oid_to_node: HashMap<Oid, &NodePosition> =
+            show_layout.nodes.iter().map(|n| (n.oid, n)).collect();
+
+        for node in &hide_layout.nodes {
+            let show_node = match show_oid_to_node.get(&node.oid) {
+                Some(n) => *n,
+                None => continue,
+            };
+
+            let had_parents = show_layout
+                .edges
+                .iter()
+                .any(|e| e.from_row == show_node.row && e.from_col == show_node.column);
+
+            if !had_parents {
+                continue;
+            }
+
+            let has_parents = hide_layout
+                .edges
+                .iter()
+                .any(|e| e.from_row == node.row && e.from_col == node.column);
+
+            assert!(
+                has_parents,
+                "{label}: node {} had parents in show-layout but has none in hide-layout",
+                node.oid.short_hex(),
+            );
+        }
+    }
+
+    #[test]
+    fn property_hide_merges_preserves_parents_simple() {
+        let c1 = make_commit(1, vec![], "root A");
+        let c2 = make_commit(2, vec![], "root B");
+        let m = make_commit(3, vec![1, 2], "merge");
+        let c4 = make_commit(4, vec![3], "after merge");
+        let commits = vec![c4, m, c2, c1];
+
+        let show_calc = GraphCalculator::new(
+            commits.clone(),
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let hide_calc = GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions {
+                hide_merges: true,
+                ..GraphOptions::default()
+            },
+        );
+
+        let show_layout = show_calc.calculate_layout();
+        let hide_layout = hide_calc.calculate_layout();
+
+        assert_parents_preserved(&show_layout, &hide_layout, "simple merge");
+    }
+
+    #[test]
+    fn property_hide_merges_preserves_parents_chained() {
+        let c1 = make_commit(1, vec![], "root A");
+        let c2 = make_commit(2, vec![], "root B");
+        let c3 = make_commit(3, vec![], "root C");
+        let m1 = make_commit(4, vec![1, 2], "inner merge");
+        let m2 = make_commit(5, vec![4, 3], "outer merge");
+        let c6 = make_commit(6, vec![5], "after outer merge");
+        let commits = vec![c6, m2, m1, c3, c2, c1];
+
+        let show_calc = GraphCalculator::new(
+            commits.clone(),
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let hide_calc = GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions {
+                hide_merges: true,
+                ..GraphOptions::default()
+            },
+        );
+
+        let show_layout = show_calc.calculate_layout();
+        let hide_layout = hide_calc.calculate_layout();
+
+        assert_parents_preserved(&show_layout, &hide_layout, "chained merges");
+    }
+
+    #[test]
+    fn property_hide_merges_preserves_parents_multiple_children() {
+        let c1 = make_commit(1, vec![], "root A");
+        let c2 = make_commit(2, vec![], "root B");
+        let m = make_commit(3, vec![1, 2], "merge");
+        let c4 = make_commit(4, vec![3], "child 1");
+        let c5 = make_commit(5, vec![3], "child 2");
+        let commits = vec![c5, c4, m, c2, c1];
+
+        let show_calc = GraphCalculator::new(
+            commits.clone(),
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let hide_calc = GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions {
+                hide_merges: true,
+                ..GraphOptions::default()
+            },
+        );
+
+        let show_layout = show_calc.calculate_layout();
+        let hide_layout = hide_calc.calculate_layout();
+
+        assert_parents_preserved(&show_layout, &hide_layout, "multiple children");
+    }
+
+    #[test]
+    fn property_hide_merges_preserves_parents_only_merge_parent() {
+        let c1 = make_commit(1, vec![], "root A");
+        let c2 = make_commit(2, vec![], "root B");
+        let m = make_commit(3, vec![1, 2], "merge");
+        let c4 = make_commit(4, vec![3], "only merge parent");
+        let c5 = make_commit(5, vec![4], "grandchild");
+        let commits = vec![c5, c4, m, c2, c1];
+
+        let show_calc = GraphCalculator::new(
+            commits.clone(),
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let hide_calc = GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions {
+                hide_merges: true,
+                ..GraphOptions::default()
+            },
+        );
+
+        let show_layout = show_calc.calculate_layout();
+        let hide_layout = hide_calc.calculate_layout();
+
+        assert_parents_preserved(&show_layout, &hide_layout, "only merge parent");
+    }
+
+    #[test]
+    fn property_hide_merges_preserves_parents_merge_of_merge() {
+        // c1 → c2 → m1 ← c3
+        //              ↓
+        //      m2 ← c4
+        //       ↓
+        //      c5
+        // m1 is a merge, m2 is a merge whose first parent is m1
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "main line");
+        let c3 = make_commit(3, vec![1], "branch");
+        let m1 = make_commit(4, vec![2, 3], "inner merge");
+        let c4 = make_commit(5, vec![1], "feature");
+        let m2 = make_commit(6, vec![4, 5], "outer merge");
+        let c7 = make_commit(7, vec![6], "after outer merge");
+        let commits = vec![c7, m2, m1, c4, c3, c2, c1];
+
+        let show_calc = GraphCalculator::new(
+            commits.clone(),
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let hide_calc = GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions {
+                hide_merges: true,
+                ..GraphOptions::default()
+            },
+        );
+
+        let show_layout = show_calc.calculate_layout();
+        let hide_layout = hide_calc.calculate_layout();
+
+        assert_parents_preserved(&show_layout, &hide_layout, "merge of merge");
+    }
 }

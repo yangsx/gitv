@@ -385,12 +385,11 @@ describe('computeHideMergeLayout', () => {
 			const result = computeHideMergeLayout(l, true)!;
 
 			const ancestorRow = result.nodes.find((n) => n.oid === 'ancestor')!.row;
-			expect(incomingEdges(result, ancestorRow)).toHaveLength(1);
-			const totalOutgoing = result.nodes.reduce(
-				(sum, n) => sum + outgoingEdges(result, n.row).length,
-				0
-			);
-			expect(totalOutgoing).toBeGreaterThan(0);
+			expect(incomingEdges(result, ancestorRow).length).toBeGreaterThan(0);
+			for (const oid of ['c1', 'c2', 'c3']) {
+				const r = result.nodes.find((n) => n.oid === oid)!.row;
+				expect(outgoingEdges(result, r).length).toBeGreaterThan(0);
+			}
 		});
 
 		it('first-parent ancestor keeps incoming count unchanged', () => {
@@ -752,10 +751,12 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 
-			const c1Row = result.nodes.find((n) => n.oid === 'c1')!.row;
-			expect(outgoingEdges(result, c1Row).length).toBe(1);
+			for (const oid of ['c1', 'c2']) {
+				const r = result.nodes.find((n) => n.oid === oid)!.row;
+				expect(outgoingEdges(result, r).length).toBeGreaterThan(0);
+			}
 			const aRow = result.nodes.find((n) => n.oid === 'a')!.row;
-			expect(incomingEdges(result, aRow).length).toBeLessThanOrEqual(1);
+			expect(incomingEdges(result, aRow).length).toBeGreaterThan(0);
 		});
 
 		it('child with merge and non-merge parents does not exceed showOutgoing', () => {
@@ -794,12 +795,12 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 
+			for (const oid of ['c1', 'c2']) {
+				const r = result.nodes.find((n) => n.oid === oid)!.row;
+				expect(outgoingEdges(result, r).length).toBeGreaterThan(0);
+			}
 			const aRow = result.nodes.find((n) => n.oid === 'a')!.row;
-			expect(incomingEdges(result, aRow).length).toBeLessThanOrEqual(1);
-			const childrenWithOutgoing = result.nodes.filter(
-				(n) => n.oid !== 'a' && outgoingEdges(result, n.row).length > 0
-			);
-			expect(childrenWithOutgoing.length).toBeGreaterThan(0);
+			expect(incomingEdges(result, aRow).length).toBeGreaterThan(0);
 		});
 
 		it('octopus merge children maintain connectivity per ancestor capacity', () => {
@@ -891,12 +892,12 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 
-			const childrenWithOutgoing = result.nodes.filter(
-				(n) => n.oid !== 'a' && outgoingEdges(result, n.row).length > 0
-			);
-			expect(childrenWithOutgoing.length).toBeGreaterThan(0);
+			for (const oid of ['c1', 'c2']) {
+				const r = result.nodes.find((n) => n.oid === oid)!.row;
+				expect(outgoingEdges(result, r).length).toBeGreaterThan(0);
+			}
 			const aRow = result.nodes.find((n) => n.oid === 'a')!.row;
-			expect(incomingEdges(result, aRow).length).toBeLessThanOrEqual(1);
+			expect(incomingEdges(result, aRow).length).toBeGreaterThan(0);
 		});
 
 		it('feature branch with descendants: branch disconnects from above', () => {
@@ -991,6 +992,180 @@ describe('computeHideMergeLayout', () => {
 
 			const c2Row = result.nodes.find((n) => n.oid === 'c2')!.row;
 			expect(incomingEdges(result, c2Row)).toHaveLength(0);
+		});
+	});
+
+	describe('parent-preservation invariant', () => {
+		function assertOutgoingPreserved(input: GraphLayout, result: GraphLayout, label: string) {
+			for (const showNode of input.nodes) {
+				if (showNode.is_merge || showNode.is_stash) continue;
+				const hadOutgoing = input.edges.some(
+					(e) => e.from_row === showNode.row && e.from_col === showNode.column
+				);
+				if (!hadOutgoing) continue;
+
+				const hideNode = result.nodes.find((n) => n.oid === showNode.oid);
+				expect(hideNode).toBeDefined();
+
+				const hasOutgoing = result.edges.some(
+					(e) => e.from_row === hideNode!.row && e.from_col === hideNode!.column
+				);
+				expect(hasOutgoing, `${label}: node ${showNode.oid} lost all outgoing edges`).toBe(true);
+			}
+		}
+
+		it('simple merge with child', () => {
+			const l = layout(
+				[
+					node('child', 0, 0),
+					node('merge', 1, 0, { is_merge: true }),
+					node('rootA', 2, 0),
+					node('rootB', 3, 1)
+				],
+				[edge(0, 0, 1, 0, 'Straight'), edge(1, 0, 2, 0, 'Straight'), edge(1, 0, 3, 1, 'Merge')]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'simple merge');
+		});
+
+		it('chained merges', () => {
+			const l = layout(
+				[
+					node('child', 0, 0),
+					node('outer', 1, 0, { is_merge: true }),
+					node('inner', 2, 0, { is_merge: true }),
+					node('rootC', 3, 1),
+					node('rootA', 4, 0),
+					node('rootB', 5, 1)
+				],
+				[
+					edge(0, 0, 1, 0, 'Straight'),
+					edge(1, 0, 2, 0, 'Straight'),
+					edge(1, 0, 3, 1, 'Merge'),
+					edge(2, 0, 4, 0, 'Straight'),
+					edge(2, 0, 5, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'chained merges');
+		});
+
+		it('multiple children of same merge', () => {
+			const l = layout(
+				[
+					node('c1', 0, 0),
+					node('c2', 1, 1),
+					node('merge', 2, 0, { is_merge: true }),
+					node('rootA', 3, 0),
+					node('rootB', 4, 1)
+				],
+				[
+					edge(0, 0, 2, 0, 'Straight'),
+					edge(1, 1, 2, 0, 'Branch'),
+					edge(2, 0, 3, 0, 'Straight'),
+					edge(2, 0, 4, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'multiple children');
+		});
+
+		it('child whose only parent is a merge', () => {
+			const l = layout(
+				[
+					node('grandchild', 0, 0),
+					node('child', 1, 0),
+					node('merge', 2, 0, { is_merge: true }),
+					node('rootA', 3, 0),
+					node('rootB', 4, 1)
+				],
+				[
+					edge(0, 0, 1, 0, 'Straight'),
+					edge(1, 0, 2, 0, 'Straight'),
+					edge(2, 0, 3, 0, 'Straight'),
+					edge(2, 0, 4, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'only merge parent');
+		});
+
+		it('merge of merge (nested)', () => {
+			const l = layout(
+				[
+					node('child', 0, 0),
+					node('outer', 1, 0, { is_merge: true }),
+					node('inner', 2, 0, { is_merge: true }),
+					node('feature', 3, 1),
+					node('main', 4, 0),
+					node('branch', 5, 1),
+					node('root', 6, 0)
+				],
+				[
+					edge(0, 0, 1, 0, 'Straight'),
+					edge(1, 0, 2, 0, 'Straight'),
+					edge(1, 0, 3, 1, 'Merge'),
+					edge(2, 0, 4, 0, 'Straight'),
+					edge(2, 0, 5, 1, 'Merge'),
+					edge(3, 1, 6, 0, 'Branch'),
+					edge(4, 0, 6, 0, 'Straight'),
+					edge(5, 1, 6, 0, 'Branch')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'merge of merge');
+		});
+
+		it('two merges sharing the same ancestor', () => {
+			const l = layout(
+				[
+					node('c1', 0, 0),
+					node('m1', 1, 0, { is_merge: true }),
+					node('c2', 2, 1),
+					node('m2', 3, 0, { is_merge: true }),
+					node('shared', 4, 0),
+					node('other', 5, 1)
+				],
+				[
+					edge(0, 0, 1, 0, 'Straight'),
+					edge(1, 0, 4, 0, 'Straight'),
+					edge(1, 0, 5, 1, 'Merge'),
+					edge(2, 1, 3, 0, 'Branch'),
+					edge(3, 0, 4, 0, 'Straight'),
+					edge(3, 0, 5, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'shared ancestor');
+		});
+
+		it('three siblings all with only-merge parent', () => {
+			const l = layout(
+				[
+					node('s1', 0, 0),
+					node('s2', 1, 1),
+					node('s3', 2, 2),
+					node('merge', 3, 0, { is_merge: true }),
+					node('rootA', 4, 0),
+					node('rootB', 5, 1)
+				],
+				[
+					edge(0, 0, 3, 0, 'Straight'),
+					edge(1, 1, 3, 0, 'Branch'),
+					edge(2, 2, 3, 0, 'Branch'),
+					edge(3, 0, 4, 0, 'Straight'),
+					edge(3, 0, 5, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+			assertOutgoingPreserved(l, result, 'three siblings');
 		});
 	});
 });

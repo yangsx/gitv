@@ -290,8 +290,13 @@ export function computeHideMergeLayout(
 		if (current <= limit) continue;
 		const removable = getRemovableIncoming(mappedRow);
 		const toRemove = current - limit;
-		for (let i = 0; i < toRemove && i < removable.length; i++) {
+		let removedCount = 0;
+		for (let i = 0; i < removable.length && removedCount < toRemove; i++) {
+			const e = iEdges[removable[i]];
+			const sourceOut = hideOutgoing.get(e.from_row) ?? [];
+			if (sourceOut.length <= 1) continue;
 			pruneEdge(removable[i]);
+			removedCount++;
 		}
 	}
 
