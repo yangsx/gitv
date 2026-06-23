@@ -24,9 +24,9 @@ impl GraphLayout {
             .edges
             .iter()
             .filter(|e| {
-                (e.from_row >= start_row && e.from_row < clamped_end)
-                    || (e.to_row >= start_row && e.to_row < clamped_end)
-                    || (e.from_row < start_row && e.to_row >= clamped_end)
+                let min_row = e.from_row.min(e.to_row);
+                let max_row = e.from_row.max(e.to_row);
+                min_row < clamped_end && max_row >= start_row
             })
             .cloned()
             .collect();

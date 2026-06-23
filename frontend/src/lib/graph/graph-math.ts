@@ -20,8 +20,9 @@ export function colorToCSS(c: Color): string {
 }
 
 export function isEdgeVisible(edge: Edge, startRow: number, endRow: number): boolean {
-	const inRange = (r: number) => r >= startRow && r <= endRow;
-	return inRange(edge.from_row) || inRange(edge.to_row);
+	const minRow = Math.min(edge.from_row, edge.to_row);
+	const maxRow = Math.max(edge.from_row, edge.to_row);
+	return minRow <= endRow && maxRow >= startRow;
 }
 
 export function nodeHitTest(

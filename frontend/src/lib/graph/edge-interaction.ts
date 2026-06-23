@@ -113,9 +113,9 @@ export function computeVisibleEdgeCoords(
 	const result: Array<{ edge: Edge; idx: number; coords: EdgeCoords }> = [];
 	for (let i = 0; i < layout.edges.length; i++) {
 		const edge = layout.edges[i];
-		const fromVisible = edge.from_row >= startRow && edge.from_row <= endRow;
-		const toVisible = edge.to_row >= startRow && edge.to_row <= endRow;
-		if (!fromVisible && !toVisible) continue;
+		const minRow = Math.min(edge.from_row, edge.to_row);
+		const maxRow = Math.max(edge.from_row, edge.to_row);
+		if (minRow > endRow || maxRow < startRow) continue;
 		result.push({
 			edge,
 			idx: i,

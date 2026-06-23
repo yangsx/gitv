@@ -1101,6 +1101,32 @@ mod tests {
     }
 
     #[test]
+    fn viewport_retains_spanning_edges() {
+        // Topology that produces a long-spanning edge:
+        //   c1 (root, row 4)
+        //   c2 (root, row 3)
+        //   c3 (root, row 2)
+        //   c4 (child of c1, row 1)
+        //   c5 (merge of c2+c4, row 0)
+        // Edge c5→c2 spans from row 0 to row 3 — both outside viewport [1,3).
+        let c1 = make_commit(1, vec![], "root1");
+        let c2 = make_commit(2, vec![], "root2");
+        let c3 = make_commit(3, vec![], "root3");
+        let c4 = make_commit(4, vec![1], "branch from c1");
+        let c5 = make_commit(5, vec![2, 4], "merge c2+c4");
+        let commits = vec![c5, c4, c3, c2, c1];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let vp = layout.from_visible_range(1, 3);
+        assert!(
+            vp.edges.iter().any(|e| e.from_row < 1 && e.to_row >= 3),
+            "spanning edge (both endpoints outside viewport) should be retained"
+        );
+    }
+
+    #[test]
     fn empty_commits_produce_empty_layout() {
         let calc = GraphCalculator::new(
             Vec::new(),
