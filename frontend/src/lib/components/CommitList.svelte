@@ -3,6 +3,7 @@
 	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
 	import { debug } from '$lib/stores/debug';
+	import { GRAPH_PADDING_LEFT, GRAPH_LANE_WIDTH, GRAPH_MAX_VIEWPORT_RATIO } from '$lib/constants';
 	import CommitRow from './CommitRow.svelte';
 	import GraphRenderer from './graph/GraphRenderer.svelte';
 
@@ -68,6 +69,28 @@
 	);
 	let totalHeight = $derived(orderedCommits.length * rowHeight);
 	let visibleCommits = $derived(orderedCommits.slice(visibleStart, visibleEnd));
+
+	let viewportWidth = $state(window.innerWidth);
+
+	$effect(() => {
+		const onResize = () => {
+			viewportWidth = window.innerWidth;
+		};
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
+
+	let effectiveGraphWidth = $derived(
+		layout
+			? Math.max(
+					graphWidth,
+					Math.min(
+						layout.total_columns * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT * 2,
+						Math.floor(viewportWidth * GRAPH_MAX_VIEWPORT_RATIO)
+					)
+				)
+			: graphWidth
+	);
 
 	$effect(() => {
 		debug.update((d) => ({
@@ -218,7 +241,7 @@
 				{#if layout}
 					<div
 						class="shrink-0 overflow-x-auto overflow-y-hidden relative"
-						style="width: {graphWidth}px;"
+						style="width: {effectiveGraphWidth}px;"
 						aria-hidden="true"
 					>
 						<GraphRenderer

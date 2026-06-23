@@ -21,6 +21,8 @@ export const CHANGE_LETTERS: Record<string, string> = {
 };
 
 export const GRAPH_PADDING_LEFT = 12;
+export const GRAPH_LANE_WIDTH = 24;
+export const GRAPH_MAX_VIEWPORT_RATIO = 0.5;
 export const GRAPH_EDGE_HIT_TOLERANCE = 6;
 
 // ── Diff loading ──────────────────────────────────────────────
