@@ -49,11 +49,12 @@ function sampleBezierPoints(
 	y2: number,
 	n: number
 ): Array<{ x: number; y: number }> {
-	const midY = (y1 + y2) / 2;
-	const cp1x = x1;
-	const cp1y = midY;
-	const cp2x = x2;
-	const cp2y = midY;
+	const midX = (x1 + x2) / 2;
+	const dy = y2 - y1;
+	const cp1x = midX;
+	const cp1y = y1 + dy * 0.25;
+	const cp2x = midX;
+	const cp2y = y2 - dy * 0.25;
 	const pts: Array<{ x: number; y: number }> = [];
 	for (let i = 0; i <= n; i++) {
 		const t = i / n;

@@ -118,8 +118,12 @@ fn tessellate_edge(
             },
         ]
     } else {
-        let cp_x = (x1 + x2) / 2.0;
-        let cp_y = y1 + (y2 - y1) * 0.25;
+        let mid_x = (x1 + x2) / 2.0;
+        let dy = y2 - y1;
+        let cp1_x = mid_x;
+        let cp1_y = y1 + dy * 0.25;
+        let cp2_x = mid_x;
+        let cp2_y = y2 - dy * 0.25;
         let segments = 16usize;
         let mut verts = Vec::with_capacity(segments * 4);
 
@@ -129,10 +133,25 @@ fn tessellate_edge(
             let t0 = i as f32 / segments as f32;
             let t1 = (i + 1) as f32 / segments as f32;
 
-            let bx0 = (1.0 - t0).powi(2) * x1 + 2.0 * (1.0 - t0) * t0 * cp_x + t0.powi(2) * x2;
-            let by0 = (1.0 - t0).powi(2) * y1 + 2.0 * (1.0 - t0) * t0 * cp_y + t0.powi(2) * y2;
-            let bx1 = (1.0 - t1).powi(2) * x1 + 2.0 * (1.0 - t1) * t1 * cp_x + t1.powi(2) * x2;
-            let by1 = (1.0 - t1).powi(2) * y1 + 2.0 * (1.0 - t1) * t1 * cp_y + t1.powi(2) * y2;
+            let u0 = 1.0 - t0;
+            let u1 = 1.0 - t1;
+
+            let bx0 = u0.powi(3) * x1
+                + 3.0 * u0.powi(2) * t0 * cp1_x
+                + 3.0 * u0 * t0.powi(2) * cp2_x
+                + t0.powi(3) * x2;
+            let by0 = u0.powi(3) * y1
+                + 3.0 * u0.powi(2) * t0 * cp1_y
+                + 3.0 * u0 * t0.powi(2) * cp2_y
+                + t0.powi(3) * y2;
+            let bx1 = u1.powi(3) * x1
+                + 3.0 * u1.powi(2) * t1 * cp1_x
+                + 3.0 * u1 * t1.powi(2) * cp2_x
+                + t1.powi(3) * x2;
+            let by1 = u1.powi(3) * y1
+                + 3.0 * u1.powi(2) * t1 * cp1_y
+                + 3.0 * u1 * t1.powi(2) * cp2_y
+                + t1.powi(3) * y2;
 
             let dx = bx1 - bx0;
             let dy = by1 - by0;
