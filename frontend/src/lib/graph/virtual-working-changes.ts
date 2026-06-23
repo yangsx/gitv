@@ -1,4 +1,10 @@
-import type { GraphLayout, NodePosition, Edge, WorkingChangesDiff, CommitInfo } from '$lib/bindings/types';
+import type {
+	GraphLayout,
+	NodePosition,
+	Edge,
+	WorkingChangesDiff,
+	CommitInfo
+} from '$lib/bindings/types';
 import { STAGED_OID, UNSTAGED_OID } from '$lib/constants';
 
 export const UNSTAGED_EDGE_COLOR = { r: 251, g: 146, b: 60, a: 200 };
@@ -46,8 +52,10 @@ export function applyVirtualWorkingChanges(
 
 	const virtualEdges: Edge[] = [];
 	const headNode = headOid
-		? graphLayout.nodes.find((n) => n.oid === headOid) ?? null
-		: (graphLayout.nodes.length > 0 ? graphLayout.nodes[0] : null);
+		? (graphLayout.nodes.find((n) => n.oid === headOid) ?? null)
+		: graphLayout.nodes.length > 0
+			? graphLayout.nodes[0]
+			: null;
 	if (headNode) {
 		const headRow = headNode.row + virtualCount;
 		const headCol = headNode.column;
@@ -120,13 +128,7 @@ export function createVirtualCommitInfos(
 	const hasUnstaged = workingChangesDiff.unstaged.length > 0;
 	if (!hasStaged && !hasUnstaged) return [];
 	const virtuals: CommitInfo[] = [];
-	if (hasUnstaged)
-		virtuals.push(
-			makeVirtualCommit(UNSTAGED_OID, t('page.unstaged'))
-		);
-	if (hasStaged)
-		virtuals.push(
-			makeVirtualCommit(STAGED_OID, t('page.staged'))
-		);
+	if (hasUnstaged) virtuals.push(makeVirtualCommit(UNSTAGED_OID, t('page.unstaged')));
+	if (hasStaged) virtuals.push(makeVirtualCommit(STAGED_OID, t('page.staged')));
 	return virtuals;
 }

@@ -119,7 +119,7 @@ fn tessellate_edge(
         ]
     } else {
         let cp_x = (x1 + x2) / 2.0;
-        let cp_y = (y1 + y2) / 2.0;
+        let cp_y = y1 + (y2 - y1) * 0.25;
         let segments = 16usize;
         let mut verts = Vec::with_capacity(segments * 4);
 

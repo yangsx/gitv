@@ -372,7 +372,11 @@ impl GraphCalculator {
                     lane
                 }
                 None => {
-                    let nil_slot = lanes.iter().position(|l| l.is_none());
+                    let nil_slot = lanes
+                        .iter()
+                        .enumerate()
+                        .find(|(j, l)| l.is_none() && !forbidden.contains(j))
+                        .map(|(j, _)| j);
                     let lane = nil_slot.unwrap_or(lanes.len());
                     if lane == lanes.len() {
                         lanes.push(Some(c.oid));
@@ -393,6 +397,7 @@ impl GraphCalculator {
             for &(_, child_col) in &branch_children {
                 if child_col != assigned_lane && child_col < lanes.len() {
                     lanes[child_col] = None;
+                    last_occupied_row[child_col] = 0;
                 }
             }
 
@@ -1144,5 +1149,234 @@ mod tests {
             !colors.is_empty(),
             "color-by-author should assign colors to nodes"
         );
+    }
+
+    #[test]
+    fn merge_child_has_no_spurious_edge_to_merge_side() {
+        // Topology from bug report: 5701a67 (parents: 59295b8, ed13a61),
+        // 59295b8 (parents: 2f38767, 5cb5908).
+        // 59295b8 must have exactly 2 out-edges (to its own parents),
+        // not a spurious third edge to ed13a61.
+        //
+        // Layout:
+        //   row 0: 5701a67 (merge of 59295b8 + ed13a61)
+        //   row 1: 59295b8 (merge of 2f38767 + 5cb5908)
+        //   row 2: ed13a61
+        //   row 3: 5cb5908
+        //   row 4: 2f38767
+        //   row 5-7: roots
+        let roots = vec![
+            make_commit(1, vec![], "root for 2f38767"),
+            make_commit(2, vec![], "root for 5cb5908"),
+            make_commit(3, vec![], "root for ed13a61"),
+        ];
+        let c4 = make_commit(4, vec![1], "2f38767");
+        let c5 = make_commit(5, vec![2], "5cb5908");
+        let c6 = make_commit(6, vec![3], "ed13a61");
+        let c7 = make_commit(7, vec![4, 5], "59295b8");
+        let c8 = make_commit(8, vec![7, 6], "5701a67");
+        let commits = vec![c8, c7, c6, c5, c4];
+        let mut all = roots;
+        all.extend(commits);
+        let calc = GraphCalculator::new(all, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let commit_59295b8 = make_oid(7);
+        let commit_ed13a61 = make_oid(6);
+
+        // Find 59295b8's node
+        let n7 = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == commit_59295b8)
+            .expect("59295b8 must be in layout");
+
+        // Find all edges from 59295b8
+        let edges_from_59295b8: Vec<&Edge> = layout
+            .edges
+            .iter()
+            .filter(|e| e.from_row == n7.row && e.from_col == n7.column)
+            .collect();
+
+        // 59295b8 must have exactly 2 out-edges (to 2f38767 and 5cb5908)
+        assert_eq!(
+            edges_from_59295b8.len(),
+            2,
+            "59295b8 must have exactly 2 out-edges, got {}",
+            edges_from_59295b8.len()
+        );
+
+        // Verify no edge from 59295b8 to ed13a61
+        for edge in &edges_from_59295b8 {
+            let to_node = layout
+                .nodes
+                .iter()
+                .find(|n| n.row == edge.to_row && n.column == edge.to_col);
+            if let Some(to_node) = to_node {
+                assert_ne!(
+                    to_node.oid, commit_ed13a61,
+                    "59295b8 must not have an edge to ed13a61"
+                );
+            }
+        }
+
+        // Verify 5701a67 has edges to both 59295b8 and ed13a61
+        let n8 = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(8))
+            .expect("5701a67 must be in layout");
+        let edges_from_5701a67: Vec<&Edge> = layout
+            .edges
+            .iter()
+            .filter(|e| e.from_row == n8.row && e.from_col == n8.column)
+            .collect();
+        assert_eq!(
+            edges_from_5701a67.len(),
+            2,
+            "5701a67 must have exactly 2 out-edges"
+        );
+
+        // Verify 59295b8's two parents (2f38767, 5cb5908) have distinct columns
+        let commit_2f38767 = make_oid(4);
+        let commit_5cb5908 = make_oid(5);
+        let n4 = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == commit_2f38767)
+            .expect("2f38767 must be in layout");
+        let n5 = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == commit_5cb5908)
+            .expect("5cb5908 must be in layout");
+        assert_ne!(
+            n4.column, n5.column,
+            "59295b8's two parents must be in different columns, got {} and {}",
+            n4.column, n5.column
+        );
+    }
+
+    #[test]
+    fn property_merge_parents_have_distinct_columns() {
+        let test_cases = vec![
+            vec![
+                make_commit(1, vec![], "root1"),
+                make_commit(2, vec![], "root2"),
+                make_commit(3, vec![], "root3"),
+                make_commit(4, vec![1], "2f38767"),
+                make_commit(5, vec![2], "5cb5908"),
+                make_commit(6, vec![3], "ed13a61"),
+                make_commit(7, vec![4, 5], "59295b8"),
+                make_commit(8, vec![7, 6], "5701a67"),
+            ],
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "main"),
+                make_commit(3, vec![1], "branch"),
+                make_commit(4, vec![2, 3], "merge"),
+            ],
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a"),
+                make_commit(3, vec![1], "b"),
+                make_commit(4, vec![2, 3], "merge1"),
+                make_commit(5, vec![4], "c"),
+                make_commit(6, vec![1], "d"),
+                make_commit(7, vec![5, 6], "merge2"),
+            ],
+        ];
+
+        for commits in &test_cases {
+            let calc = GraphCalculator::new(
+                commits.clone(),
+                HashMap::new(),
+                Vec::new(),
+                GraphOptions::default(),
+            );
+            let layout = calc.calculate_layout();
+
+            let node_by_oid: HashMap<Oid, &NodePosition> =
+                layout.nodes.iter().map(|n| (n.oid, n)).collect();
+
+            for commit in &layout.nodes {
+                let orig = match commits.iter().find(|c| c.oid == commit.oid) {
+                    Some(c) => c,
+                    None => continue,
+                };
+                if orig.parent_oids.len() < 2 {
+                    continue;
+                }
+                let first_parent = match node_by_oid.get(&orig.parent_oids[0]) {
+                    Some(n) => n,
+                    None => continue,
+                };
+                for parent_oid in orig.parent_oids[1..].iter() {
+                    if let Some(other_parent) = node_by_oid.get(parent_oid) {
+                        assert_ne!(
+                            first_parent.column, other_parent.column,
+                            "Merge commit {} has two parents in column {}",
+                            orig.short_oid, first_parent.column,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn property_no_same_column_edge_passes_through_other_branch() {
+        let test_cases = vec![vec![
+            make_commit(1, vec![], "root1"),
+            make_commit(2, vec![], "root2"),
+            make_commit(3, vec![], "root3"),
+            make_commit(4, vec![1], "2f38767"),
+            make_commit(5, vec![2], "5cb5908"),
+            make_commit(6, vec![3], "ed13a61"),
+            make_commit(7, vec![4, 5], "59295b8"),
+            make_commit(8, vec![7, 6], "5701a67"),
+        ]];
+
+        for commits in &test_cases {
+            let calc = GraphCalculator::new(
+                commits.clone(),
+                HashMap::new(),
+                Vec::new(),
+                GraphOptions::default(),
+            );
+            let layout = calc.calculate_layout();
+
+            for edge in &layout.edges {
+                if edge.from_col != edge.to_col {
+                    continue;
+                }
+                let min_r = edge.from_row.min(edge.to_row);
+                let max_r = edge.from_row.max(edge.to_row);
+                for node in &layout.nodes {
+                    if node.column == edge.from_col && node.row > min_r && node.row < max_r {
+                        let src_oid = layout
+                            .nodes
+                            .iter()
+                            .find(|n| n.row == edge.from_row && n.column == edge.from_col)
+                            .map(|n| n.oid);
+                        let src_info =
+                            src_oid.and_then(|oid| commits.iter().find(|c| c.oid == oid));
+                        let on_chain = src_info
+                            .map_or(false, |si| si.parent_oids.iter().any(|p| *p == node.oid));
+                        assert!(
+                            on_chain,
+                            "Same-column edge ({},{})→({},{}) passes through non-chain node {} at ({},{})",
+                            edge.from_row,
+                            edge.from_col,
+                            edge.to_row,
+                            edge.to_col,
+                            node.oid.short_hex(),
+                            node.row,
+                            node.column,
+                        );
+                    }
+                }
+            }
+        }
     }
 }

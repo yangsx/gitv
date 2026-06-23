@@ -311,9 +311,10 @@
 			ctx.moveTo(x1, y1);
 			ctx.lineTo(x2, y2);
 		} else {
-			const midY = (y1 + y2) / 2;
+			const midX = (x1 + x2) / 2;
+			const dy = y2 - y1;
 			ctx.moveTo(x1, y1);
-			ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
+			ctx.bezierCurveTo(midX, y1 + dy * 0.25, midX, y2 - dy * 0.25, x2, y2);
 		}
 
 		ctx.stroke();

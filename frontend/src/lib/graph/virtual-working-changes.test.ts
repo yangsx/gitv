@@ -172,18 +172,12 @@ describe('applyVirtualWorkingChanges', () => {
 
 	it('connects to HEAD even when HEAD is not the first node in layout — regression test', () => {
 		const l = layout(
-			[
-				node('newer-feature', 0, 0),
-				node('head', 1, 0),
-				node('older-main', 2, 0)
-			],
+			[node('newer-feature', 0, 0), node('head', 1, 0), node('older-main', 2, 0)],
 			[edge(0, 0, 1, 0), edge(1, 0, 2, 0)]
 		);
 		const result = apply(l, workingDiff(1, 1), 'head');
 
-		const unstagedEdge = result.edges.find(
-			(e) => e.from_row === 0 && e.from_col === 0
-		);
+		const unstagedEdge = result.edges.find((e) => e.from_row === 0 && e.from_col === 0);
 		expect(unstagedEdge).toBeDefined();
 		expect(unstagedEdge!.to_row).toBe(1 + 2);
 		expect(unstagedEdge!.to_col).toBe(0);
@@ -193,31 +187,21 @@ describe('applyVirtualWorkingChanges', () => {
 	});
 
 	it('falls back to nodes[0] when headOid is null', () => {
-		const l = layout(
-			[node('first', 0, 0), node('second', 1, 1)],
-			[edge(0, 0, 1, 1)]
-		);
+		const l = layout([node('first', 0, 0), node('second', 1, 1)], [edge(0, 0, 1, 1)]);
 		const result = apply(l, workingDiff(1, 0), null);
 
 		const firstNodeNewRow = 0 + 1;
-		const stagedEdge = result.edges.find(
-			(e) => e.to_row === firstNodeNewRow && e.to_col === 0
-		);
+		const stagedEdge = result.edges.find((e) => e.to_row === firstNodeNewRow && e.to_col === 0);
 		expect(stagedEdge).toBeDefined();
 		expect(stagedEdge!.to_row).toBe(firstNodeNewRow);
 		expect(stagedEdge!.to_col).toBe(0);
 	});
 
 	it('omits virtual edges when headOid is not found in layout', () => {
-		const l = layout(
-			[node('a', 0, 0), node('b', 1, 0)],
-			[edge(0, 0, 1, 0)]
-		);
+		const l = layout([node('a', 0, 0), node('b', 1, 0)], [edge(0, 0, 1, 0)]);
 		const result = apply(l, workingDiff(0, 1), 'nonexistent');
 
-		const virtualEdge = result.edges.find(
-			(e) => e.from_row < virtualNodes(result).length
-		);
+		const virtualEdge = result.edges.find((e) => e.from_row < virtualNodes(result).length);
 		expect(virtualEdge).toBeUndefined();
 	});
 
@@ -226,9 +210,7 @@ describe('applyVirtualWorkingChanges', () => {
 		const result = apply(l, workingDiff(1, 0));
 
 		const firstNewRow = 0 + 1;
-		const stagedEdge = result.edges.find(
-			(e) => e.to_row === firstNewRow && e.to_col === 0
-		);
+		const stagedEdge = result.edges.find((e) => e.to_row === firstNewRow && e.to_col === 0);
 		expect(stagedEdge).toBeDefined();
 	});
 
@@ -243,10 +225,7 @@ describe('applyVirtualWorkingChanges', () => {
 	});
 
 	it('offsets real node rows by virtual count', () => {
-		const l = layout(
-			[node('head', 0, 0), node('parent', 1, 0)],
-			[edge(0, 0, 1, 0)]
-		);
+		const l = layout([node('head', 0, 0), node('parent', 1, 0)], [edge(0, 0, 1, 0)]);
 		const result = apply(l, workingDiff(1, 1), 'head');
 
 		expect(findNode(result, 'head')!.row).toBe(0 + 2);
@@ -254,10 +233,7 @@ describe('applyVirtualWorkingChanges', () => {
 	});
 
 	it('offsets real edge rows by virtual count', () => {
-		const l = layout(
-			[node('head', 0, 0), node('parent', 1, 0)],
-			[edge(0, 0, 1, 0)]
-		);
+		const l = layout([node('head', 0, 0), node('parent', 1, 0)], [edge(0, 0, 1, 0)]);
 		const result = apply(l, workingDiff(1, 1), 'head');
 
 		const parentEdge = result.edges.find((e) => e.from_row === 2);
@@ -267,7 +243,16 @@ describe('applyVirtualWorkingChanges', () => {
 
 	it('offsets stash_marker rows by virtual count', () => {
 		const l = layout([node('head', 0, 0)], [], {
-			stash_markers: [{ row: 0, column: 0, stash_index: 0, stash_oid: 'stash1', parent_oid: 'head', message: 'WIP' }]
+			stash_markers: [
+				{
+					row: 0,
+					column: 0,
+					stash_index: 0,
+					stash_oid: 'stash1',
+					parent_oid: 'head',
+					message: 'WIP'
+				}
+			]
 		});
 		const result = apply(l, workingDiff(1, 0), 'head');
 
@@ -285,7 +270,20 @@ describe('applyVirtualWorkingChanges', () => {
 		const l = layout([node('head', 0, 0)], [], {
 			total_columns: 5,
 			orientation: 'BottomToTop' as const,
-			stash_commits: [{ oid: 's1', short_oid: '', message: '', summary: '', author: { name: '', email: '' }, committer: { name: '', email: '' }, author_time: '', commit_time: '', parent_oids: [], refs: [] }]
+			stash_commits: [
+				{
+					oid: 's1',
+					short_oid: '',
+					message: '',
+					summary: '',
+					author: { name: '', email: '' },
+					committer: { name: '', email: '' },
+					author_time: '',
+					commit_time: '',
+					parent_oids: [],
+					refs: []
+				}
+			]
 		});
 		const result = apply(l, workingDiff(1, 0), 'head');
 
@@ -303,7 +301,15 @@ describe('applyVirtualWorkingChanges', () => {
 
 	it('preserves node properties other than row when shifting', () => {
 		const l = layout(
-			[node('head', 0, 0, { is_merge: true, is_stash: false, color: { r: 1, g: 2, b: 3, a: 255 }, is_dimmed: true, is_highlighted: true })],
+			[
+				node('head', 0, 0, {
+					is_merge: true,
+					is_stash: false,
+					color: { r: 1, g: 2, b: 3, a: 255 },
+					is_dimmed: true,
+					is_highlighted: true
+				})
+			],
 			[]
 		);
 		const result = apply(l, workingDiff(1, 0), 'head');

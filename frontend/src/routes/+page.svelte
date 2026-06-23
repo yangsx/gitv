@@ -90,7 +90,10 @@
 	} from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
 	import { computeHideMergeLayout } from '$lib/graph/hide-merges';
-	import { applyVirtualWorkingChanges, createVirtualCommitInfos } from '$lib/graph/virtual-working-changes';
+	import {
+		applyVirtualWorkingChanges,
+		createVirtualCommitInfos
+	} from '$lib/graph/virtual-working-changes';
 	import { announce } from '$lib/utils/a11y';
 
 	let repoPath = $state('');
