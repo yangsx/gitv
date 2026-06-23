@@ -4,6 +4,7 @@
 	import { t, translate } from '$lib/stores/locale';
 	import { formatGitDateTime } from '$lib/utils/format-date';
 	import { showToast } from '$lib/stores/toast';
+	import { REFLOG_DISPLAY_LIMIT, REFLOG_MSG_MAX_LEN, REFLOG_OID_DISPLAY_LEN } from '$lib/constants';
 
 	let {
 		repoPath,
@@ -20,6 +21,7 @@
 	let selectedRef = $state('HEAD');
 	let selectedOpType = $state('all');
 	let filterText = $state('');
+	let displayedCount = $state(REFLOG_DISPLAY_LIMIT);
 
 	let refNames = $derived.by(() => {
 		const names: string[] = ['HEAD'];
@@ -40,6 +42,7 @@
 	async function loadReflog() {
 		loading = true;
 		selectedOpType = 'all';
+		displayedCount = REFLOG_DISPLAY_LIMIT;
 		try {
 			const refName = selectedRef === 'HEAD' ? undefined : selectedRef;
 			entries = await getReflog(repoPath, refName);
@@ -123,12 +126,12 @@
 		<div class="text-gray-500 italic">{$t('sidebar.no_reflog')}</div>
 	{:else}
 		<div class="space-y-0.5">
-			{#each filteredEntries.slice(0, 100) as entry, i (entry.oid + '-' + i)}
+			{#each filteredEntries.slice(0, displayedCount) as entry, i (entry.oid + '-' + i)}
 				<button
 					class="w-full rounded px-1.5 py-1 text-left hover:bg-gray-800"
 					aria-label={$t('sidebar.reflog_aria', {
-						message: stripReflogPrefix(entry.message).slice(0, 50),
-						oid: entry.oid.slice(0, 7),
+						message: stripReflogPrefix(entry.message).slice(0, REFLOG_MSG_MAX_LEN),
+						oid: entry.oid.slice(0, REFLOG_OID_DISPLAY_LEN),
 						author: entry.author.name
 					})}
 					onclick={() => onentryselect?.(entry.oid)}
@@ -137,10 +140,11 @@
 						<span class="rounded bg-gray-700/50 px-1 text-[10px] text-gray-400 shrink-0">
 							{extractOpType(entry.message)}
 						</span>
-						<span class="font-mono text-gray-400">{entry.oid.slice(0, 7)}</span>
-						<span class="truncate text-gray-300"
-							>{stripReflogPrefix(entry.message).slice(0, 50)}</span
+						<span class="font-mono text-gray-400">{entry.oid.slice(0, REFLOG_OID_DISPLAY_LEN)}</span
 						>
+						<span class="truncate text-gray-300" title={stripReflogPrefix(entry.message)}>
+							{stripReflogPrefix(entry.message)}
+						</span>
 					</div>
 					<div class="mt-0.5 text-gray-500">
 						{entry.author.name} · {formatGitDateTime(entry.time)}
@@ -148,5 +152,15 @@
 				</button>
 			{/each}
 		</div>
+		{#if displayedCount < filteredEntries.length}
+			<button
+				class="w-full rounded px-2 py-1 text-xs text-blue-400 hover:bg-gray-800"
+				onclick={() => (displayedCount += REFLOG_DISPLAY_LIMIT)}
+			>
+				{$t('sidebar.reflog_show_more', {
+					count: filteredEntries.length - displayedCount
+				})}
+			</button>
+		{/if}
 	{/if}
 </div>

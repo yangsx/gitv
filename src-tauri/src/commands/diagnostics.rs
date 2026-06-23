@@ -12,6 +12,8 @@ use crate::commands::args;
 static CRASH_DIR: OnceLock<PathBuf> = OnceLock::new();
 static CRASH_LOCK: Mutex<()> = Mutex::new(());
 
+const CRASH_RETENTION_COUNT: usize = 5;
+
 fn get_crash_dir() -> &'static PathBuf {
     CRASH_DIR.get_or_init(|| {
         let dir = dirs::data_dir()
@@ -76,7 +78,7 @@ pub fn install_panic_hook(app_version: &str) {
             let _ = f.write_all(report.as_bytes());
         }
         let _lock = CRASH_LOCK.lock().ok();
-        evict_old_crashes(dir, 5);
+        evict_old_crashes(dir, CRASH_RETENTION_COUNT);
     }));
 }
 

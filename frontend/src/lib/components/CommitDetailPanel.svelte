@@ -25,7 +25,14 @@
 	import { renderMarkdown } from '$lib/utils/markdown';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 	import { showToast } from '$lib/stores/toast';
-	import { CHANGE_COLORS, CHANGE_LETTERS, STAGED_OID, UNSTAGED_OID } from '$lib/constants';
+	import {
+		CHANGE_COLORS,
+		CHANGE_LETTERS,
+		DIFF_CONCURRENCY,
+		DIFF_FILE_LIMIT,
+		STAGED_OID,
+		UNSTAGED_OID
+	} from '$lib/constants';
 	import { formatGitDateTime } from '$lib/utils/format-date';
 
 	function copyToClipboard(text: string) {
@@ -73,6 +80,7 @@
 	let fileDiffs = new SvelteMap<string, FileDiff>();
 	let diffsLoading = $state(false);
 	let tooManyFiles = $state(0);
+	let forceLoad = $state(false);
 	let blobContent = $state<string | null>(null);
 	let blobLoading = $state(false);
 	let blobPath = $state<string | null>(null);
@@ -196,6 +204,7 @@
 		blobContent = null;
 		blobPath = null;
 		highlightedFileIndex = -1;
+		forceLoad = false;
 		fileDiffs.clear();
 		localDiffMode = $diffMode;
 		localDiffWhitespace = $diffWhitespace;
@@ -220,10 +229,7 @@
 		tooManyFiles = 0;
 		diffsLoading = true;
 
-		if (
-			!isComparison &&
-			(details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID)
-		) {
+		if (!isComparison && (details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID)) {
 			try {
 				const diffs = await getWorkingChangesDiffs(
 					repoPath,
@@ -247,13 +253,13 @@
 
 		const files = details.changed_files;
 
-		if (files.length > 100) {
+		if (files.length > DIFF_FILE_LIMIT && !forceLoad) {
 			tooManyFiles = files.length;
 			diffsLoading = false;
 			return;
 		}
 
-		const CONCURRENCY = 4;
+		const CONCURRENCY = DIFF_CONCURRENCY;
 		let next = 0;
 		const results: [string, FileDiff | null][] = [];
 
@@ -666,8 +672,20 @@
 				{/if}
 
 				{#if tooManyFiles > 0}
-					<div class="flex items-center justify-center py-4 text-sm text-amber-500">
-						{$t('commit_detail.too_many_changed_files', { count: tooManyFiles })}
+					<div class="flex items-center justify-center gap-3 py-4 text-sm text-amber-500">
+						<span>
+							{$t('commit_detail.too_many_changed_files', { count: tooManyFiles })}
+						</span>
+						<button
+							class="rounded border border-amber-500 px-2 py-0.5 text-xs hover:bg-amber-500/10"
+							onclick={() => {
+								forceLoad = true;
+								tooManyFiles = 0;
+								loadAllDiffs();
+							}}
+						>
+							{$t('commit_detail.load_anyway')}
+						</button>
 					</div>
 				{:else if diffsLoading}
 					<div class="flex items-center justify-center py-4 text-sm text-gray-500">

@@ -22,3 +22,12 @@ export const CHANGE_LETTERS: Record<string, string> = {
 
 export const GRAPH_PADDING_LEFT = 12;
 export const GRAPH_EDGE_HIT_TOLERANCE = 6;
+
+// ── Diff loading ──────────────────────────────────────────────
+export const DIFF_FILE_LIMIT = 100;
+export const DIFF_CONCURRENCY = 4;
+
+// ── Reflog display ────────────────────────────────────────────
+export const REFLOG_DISPLAY_LIMIT = 100;
+export const REFLOG_MSG_MAX_LEN = 50;
+export const REFLOG_OID_DISPLAY_LEN = 7;

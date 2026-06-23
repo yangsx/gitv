@@ -57,7 +57,7 @@ impl GixRepository {
 
     pub fn thread_local(&self) -> gix::Repository {
         let mut repo = self.inner.to_thread_local();
-        repo.object_cache_size(10 * 1024 * 1024);
+        repo.object_cache_size(crate::OBJECT_CACHE_SIZE);
         repo
     }
 }
@@ -1157,7 +1157,7 @@ impl Repository for GixRepository {
                     Err(_) => continue,
                 };
                 let data = blob.data.as_slice();
-                if data.iter().take(8192).any(|&b| b == 0) {
+                if data.iter().take(crate::BINARY_SCAN_SIZE).any(|&b| b == 0) {
                     continue;
                 }
                 let matched = if let Some(re) = compiled {
@@ -1218,7 +1218,8 @@ impl Repository for GixRepository {
                     };
 
                     if let Some(text) = matched_text {
-                        let truncated: String = text.chars().take(200).collect();
+                        let truncated: String =
+                            text.chars().take(crate::SEARCH_MATCH_MAX_LEN).collect();
                         all_matches.push(PatchMatchLocation {
                             file_path: file_path_str.clone(),
                             old_line,
@@ -1926,7 +1927,7 @@ fn staged_change_to_file_diff(
                 .find_object(dst)
                 .map_err(|e| DiffError::Gix(e.to_string()))?;
             let data = obj.data.as_slice();
-            if data.iter().take(8192).any(|&b| b == 0) {
+            if data.iter().take(crate::BINARY_SCAN_SIZE).any(|&b| b == 0) {
                 return Ok(Some(FileDiff {
                     path,
                     old_path,
@@ -1945,7 +1946,7 @@ fn staged_change_to_file_diff(
                 .find_object(src)
                 .map_err(|e| DiffError::Gix(e.to_string()))?;
             let data = obj.data.as_slice();
-            if data.iter().take(8192).any(|&b| b == 0) {
+            if data.iter().take(crate::BINARY_SCAN_SIZE).any(|&b| b == 0) {
                 return Ok(Some(FileDiff {
                     path,
                     old_path,
@@ -2203,7 +2204,7 @@ fn count_lines_for_change(
 }
 
 fn count_lines_in_data(data: &[u8]) -> usize {
-    if data.iter().take(8192).any(|&b| b == 0) {
+    if data.iter().take(crate::BINARY_SCAN_SIZE).any(|&b| b == 0) {
         return 0;
     }
     data.iter().filter(|&&b| b == b'\n').count()
@@ -2276,7 +2277,7 @@ fn compute_hunks_for_addition(
         .find_object(*id)
         .map_err(|e| DiffError::Gix(e.to_string()))?;
     let data = obj.data.as_slice();
-    if data.iter().take(8192).any(|&b| b == 0) {
+    if data.iter().take(crate::BINARY_SCAN_SIZE).any(|&b| b == 0) {
         return Ok(Vec::new());
     }
     let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
@@ -2310,7 +2311,7 @@ fn compute_hunks_for_deletion(
         .find_object(*id)
         .map_err(|e| DiffError::Gix(e.to_string()))?;
     let data = obj.data.as_slice();
-    if data.iter().take(8192).any(|&b| b == 0) {
+    if data.iter().take(crate::BINARY_SCAN_SIZE).any(|&b| b == 0) {
         return Ok(Vec::new());
     }
     let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
@@ -2450,8 +2451,14 @@ fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<BlobDiffResult,
 }
 
 fn compute_hunks_from_data(old_data: &[u8], new_data: &[u8]) -> (Vec<Hunk>, bool) {
-    let old_is_binary = old_data.iter().take(8192).any(|&b| b == 0);
-    let new_is_binary = new_data.iter().take(8192).any(|&b| b == 0);
+    let old_is_binary = old_data
+        .iter()
+        .take(crate::BINARY_SCAN_SIZE)
+        .any(|&b| b == 0);
+    let new_is_binary = new_data
+        .iter()
+        .take(crate::BINARY_SCAN_SIZE)
+        .any(|&b| b == 0);
     if old_is_binary || new_is_binary {
         return (Vec::new(), true);
     }

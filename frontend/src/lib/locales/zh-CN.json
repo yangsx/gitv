@@ -84,6 +84,7 @@
 		"no_changed_files": "没有更改的文件",
 		"patch_match_count": "{count} 个补丁搜索匹配",
 		"too_many_changed_files": "更改文件过多 ({count}) — 未加载差异",
+		"load_anyway": "仍然加载",
 		"binary_not_displayed": "二进制文件（不显示）",
 		"blame": "追溯",
 		"comments": "评论",
@@ -256,6 +257,7 @@
 		"select_ref": "选择引用以查看日志",
 		"no_refs": "无引用",
 		"stash_load_failed": "加载暂存失败",
+		"reflog_show_more": "显示更多（剩余 {count} 条）",
 		"reflog_load_failed": "加载引用日志失败"
 	},
 	"search": {

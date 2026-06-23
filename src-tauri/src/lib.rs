@@ -5,6 +5,8 @@ mod wgpu_state;
 
 use std::path::PathBuf;
 
+const MAX_LOG_FILES: usize = 3;
+
 fn init_tracing(cli_log_level: Option<&str>) {
     let log_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -15,7 +17,7 @@ fn init_tracing(cli_log_level: Option<&str>) {
     commands::args::set_log_path(log_dir.clone());
 
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
-        .max_log_files(3)
+        .max_log_files(MAX_LOG_FILES)
         .filename_prefix("gitv")
         .filename_suffix("log")
         .rotation(tracing_appender::rolling::Rotation::DAILY)

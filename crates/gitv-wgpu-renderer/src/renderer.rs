@@ -5,6 +5,7 @@ use tracing::{Level, debug, info, info_span, span};
 use wgpu::util::DeviceExt;
 
 const STAGING_BUFFER_COUNT: usize = 2;
+const GPU_READBACK_TIMEOUT_SECS: u64 = 5;
 
 /// Configuration for the render target.
 pub struct RenderConfig {
@@ -413,7 +414,7 @@ impl WgpuRenderer {
         self.device.poll(wgpu::Maintain::Wait);
 
         // Check mapping result
-        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        match rx.recv_timeout(std::time::Duration::from_secs(GPU_READBACK_TIMEOUT_SECS)) {
             Ok(Ok(())) => {}
             Ok(Err(e)) => return Err(format!("buffer map failed: {e}")),
             Err(_) => return Err("staging buffer map timed out".into()),

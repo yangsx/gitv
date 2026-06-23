@@ -86,6 +86,7 @@
 		"no_changed_files": "Keine geänderten Dateien",
 		"patch_match_count": "{count} Patch-Suchtreffer",
 		"too_many_changed_files": "Zu viele geänderte Dateien ({count}) — Diff nicht geladen",
+		"load_anyway": "Trotzdem laden",
 		"binary_not_displayed": "Binärdatei (nicht angezeigt)",
 		"blame": "Blame",
 		"comments": "Kommentare",
@@ -258,6 +259,7 @@
 		"select_ref": "Ref für Reflog auswählen",
 		"no_refs": "Keine Refs",
 		"stash_load_failed": "Stashes konnten nicht geladen werden",
+		"reflog_show_more": "Mehr anzeigen ({count} übrig)",
 		"reflog_load_failed": "Reflog konnte nicht geladen werden"
 	},
 	"search": {

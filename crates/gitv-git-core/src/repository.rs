@@ -33,7 +33,14 @@ pub trait Repository {
         mode: DiffMode,
         whitespace: WhitespaceMode,
     ) -> Result<FileDiff, DiffError> {
-        self.file_diff_limited(from, to, path, mode, whitespace, Some(10_000))
+        self.file_diff_limited(
+            from,
+            to,
+            path,
+            mode,
+            whitespace,
+            Some(crate::DIFF_LINE_LIMIT),
+        )
     }
 
     fn file_diff_limited(

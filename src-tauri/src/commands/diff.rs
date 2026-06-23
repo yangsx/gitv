@@ -64,7 +64,7 @@ pub fn get_file_diff(
     let line_limit = if full.unwrap_or(false) {
         None
     } else {
-        Some(10_000)
+        Some(gitv_git_core::DIFF_LINE_LIMIT)
     };
     repo.file_diff_limited(
         from_oid,

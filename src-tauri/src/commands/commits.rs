@@ -6,6 +6,8 @@ use tracing::instrument;
 
 use crate::state::AppState;
 
+const STREAM_BATCH_SIZE: usize = 100;
+
 #[tauri::command]
 #[instrument(skip(state, path, filter), fields(command = "get_commits"))]
 pub fn get_commits(
@@ -21,7 +23,9 @@ pub fn get_commits(
 
     let mut all = Vec::new();
     while stream.has_more() {
-        let batch = stream.next_batch(100).map_err(|e| e.to_string())?;
+        let batch = stream
+            .next_batch(STREAM_BATCH_SIZE)
+            .map_err(|e| e.to_string())?;
         match batch {
             Some(commits) => {
                 all.extend(commits);
@@ -48,7 +52,9 @@ pub fn stream_commits(
 
     let mut batch_index = 0usize;
     while stream.has_more() {
-        let batch = stream.next_batch(100).map_err(|e| e.to_string())?;
+        let batch = stream
+            .next_batch(STREAM_BATCH_SIZE)
+            .map_err(|e| e.to_string())?;
         match batch {
             Some(commits) => {
                 let payload = CommitBatch {
