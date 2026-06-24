@@ -39,9 +39,9 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Stashes displayed as proper graph nodes with their own row and a branch-out edge to the parent commit (not gitk's two-node double-diff display); combined diff by default with optional staged/unstaged split toggle (Req 38)
 - Diff viewer supports normal, word-diff, and stat-only modes with whitespace modifiers (Req 54)
 - Graph supports color-by-author mode (Req 52), merge filtering (Req 53), commit dimming (Req 56), and orientation toggle (Req 57)
-- Edge interaction: clickable graph edges with bezier hit-testing, hover highlighting, and click-to-navigate (commit ef495f9)
+- Edge interaction: clickable graph edges with cubic bezier hit-testing, hover highlighting (thicker same-curve + endpoint rings), and click-to-navigate (commit ef495f9)
 - Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility, rendered via WGSL shaders on wgpu or Canvas 2D draw calls
-- CLI accepts repo path arguments (`gitv /repo1 /repo2`) and `--log-level`/`--debug-overlay` flags (Req 42, Req 55 revision ranges not yet implemented)
+- CLI accepts repo path arguments (`gitv /repo1 /repo2`) and `--log-level` flag (Req 42, Req 55 revision ranges not yet implemented)
 - CLI argument parsing via `clap`
 - Panel widths/heights are clamped on restore to min/max bounds — prevents unusable layouts from tiling WMs (Req 59)
 - Structured tracing via `tracing` crate with rolling file logs; debug overlay with FPS/memory/IPC timing (Reqs 68-69)
@@ -60,6 +60,9 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Merged initial IPC: `getInitialData` combines repo info, commits, graph layout, refs, working changes, and timing in a single call (commit d4fe74a)
 - Parallelized diff loading with 4 concurrent workers for faster commit detail display
 - Repo switch: all selection state is cleared and CommitList is force-remounted via `{#key}` to prevent stale internal state from the previous repo
+- Debug overlay available in all builds via F12/Ctrl+Shift+D — no CLI flag or feature gate required (commit 996dfc2)
+- Font size zoom via Ctrl+=/Ctrl+-/Ctrl+0 (commit 746e15f)
+- wgpu hover performance: base render cached as `ImageData`, hover/selection changes use fast Canvas 2D re-blit path (no IPC/GPU roundtrip) (commit a71db87)
 
 ## Tech Stack
 | Layer | Tool |
@@ -96,7 +99,7 @@ Before every commit checkpoint (phase milestones, PRs, substantive changes), ALL
 
 ### Rust
 - `cargo fmt --check` — zero formatting diffs
-- `cargo clippy -- -D warnings` — zero warnings, zero errors
+- `cargo clippy --workspace --all-targets -- -D warnings` — zero warnings, zero errors
 - `cargo check` / `cargo build` — compiles cleanly
 - `cargo doc --no-deps` — builds without warnings (public API documented)
 - `cargo test` (or `cargo nextest run`) — all tests pass

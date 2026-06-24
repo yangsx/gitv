@@ -897,7 +897,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 4. THE debug overlay SHALL display GPU stats: draw call count, vertex count, viewport size
 5. THE debug overlay SHALL display cache stats: cache hit/miss ratio, last cache load duration
 6. THE debug overlay SHALL be positioned in the top-right corner, semi-transparent, and SHALL NOT interfere with normal UI interaction
-7. THE debug overlay SHALL NOT be available in release builds by default, but SHALL be enabled via CLI flag (`gitv --debug-overlay`) for power-user diagnostics
+7. THE debug overlay SHALL be available in all builds (debug and release), toggled via keyboard shortcut (F12 or Ctrl+Shift+D / Cmd+Shift+D)
 
 ### Requirement 70: Crash Diagnostics
 

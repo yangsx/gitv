@@ -49,7 +49,8 @@ Filter commits by branch/tag/remote glob patterns, combine/exclude.
 Specify two commits, view only the ancestry path between them.
 
 ### Req 4.5–4.7: Graph Zoom and Scrolling
-- Zoom in/out while maintaining readable commit info
+- ~~Font size zoom (Ctrl+= / Ctrl+- / Ctrl+0)~~ — implemented (commit 746e15f)
+- Graph zoom (row height scaling) — not yet implemented
 - Horizontal/vertical scrolling for large graphs
 - Must work in both Canvas 2D and wgpu renderers
 

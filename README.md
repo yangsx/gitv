@@ -35,7 +35,7 @@ search, and instant re-open for cached repos.
 - **Persistent cache** — disk cache (postcard serialized) for instant re-open
   of previously visited repos; incremental updates on ref changes
 - **Keyboard navigation** — full keyboard control: arrow keys, J/K, Page Up/Down,
-  Home/End, author jump, branch cycling
+  Home/End, author jump, branch cycling, font zoom (Ctrl+= / Ctrl+- / Ctrl+0)
 - **Multi-instance** — each launch opens an independent window; no tab
   complexity, no shared state
 - **Preferences** — persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json`
@@ -82,9 +82,6 @@ gitv /path/to/repo
 
 # Open multiple repositories (each in its own window)
 gitv /repo1 /repo2
-
-# Enable debug overlay on launch
-gitv /path/to/repo --debug-overlay
 
 # Set log level (debug, trace)
 gitv /path/to/repo --log-level=debug
@@ -223,6 +220,10 @@ cd frontend && npm install && cd ..
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev \
   libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev \
   libjavascriptcoregtk-4.1-dev
+
+# Coverage tooling (optional, for running cargo llvm-cov)
+cargo install cargo-llvm-cov
+rustup component add llvm-tools-preview
 ```
 
 ### Dev Workflow

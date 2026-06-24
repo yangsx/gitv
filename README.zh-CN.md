@@ -61,9 +61,6 @@ gitv /path/to/repo
 # 打开多个仓库（各在独立窗口中）
 gitv /repo1 /repo2
 
-# 启动时启用调试叠加层
-gitv /path/to/repo --debug-overlay
-
 # 设置日志级别（debug、trace）
 gitv /path/to/repo --log-level=debug
 ```
@@ -277,14 +274,8 @@ cargo tarpaulin --manifest-path crates/gitv-git-core/Cargo.toml --out Html
 ### 调试
 
 ```bash
-# 启动时启用调试叠加层
-gitv /path/to/repo --debug-overlay
-
 # 启用详细日志
 gitv /path/to/repo --log-level=trace
-
-# 组合使用
-gitv /path/to/repo --debug-overlay --log-level=debug
 ```
 
 - **F12** 切换调试叠加层（FPS、内存、图统计信息、IPC 时序）

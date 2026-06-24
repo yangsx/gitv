@@ -464,6 +464,11 @@ impl GraphCalculator {
     /// Stash markers are placed on their parent commit rows after layout calculation.
     /// When hide_merges is true, merge commits are excluded and edges reconnect
     /// through the hidden merge to its first parent (Req 53.3).
+    /// Merge+branch preservation: merges with 2+ non-merge children are kept
+    /// (they are branch points). Processed in ascending row order so kept merges
+    /// cascade — a kept merge counts as a visible child of its own merge parents.
+    /// Source-orphan guard: an edge is not removed if its source would be left
+    /// with zero outgoing edges.
     /// When orientation is BottomToTop, rows are reversed (Req 57.3).
     /// When color_mode is ByAuthor, author_colors is populated instead of branch_colors (Req 52).
     pub fn calculate_layout(&self) -> GraphLayout;
@@ -835,16 +840,15 @@ struct Cli {
     /// Set log level (e.g., debug, trace)
     #[arg(long = "log-level")]
     log_level: Option<String>,
-
-    /// Show debug overlay
-    #[arg(long = "debug-overlay")]
-    debug_overlay: bool,
 }
 
 // Resolution logic:
 // 1. If no args: show welcome screen
 // 2. If repo paths given: open those repos
 // 3. Future: --branches, --author, revision ranges (Req 55 not yet implemented)
+//
+// Note: --debug-overlay flag was removed; the debug overlay is now always
+// available in all builds via F12 / Ctrl+Shift+D (Req 69).
 ```
 
 ### Frontend Components (Svelte)
@@ -907,7 +911,7 @@ frontend/
 │       ├── graph/
 │       │   ├── edge-interaction.ts   # Bezier hit-testing, hover detection for edges
 │       │   ├── graph-math.ts         # Shared position/color/hit-test math
-│       │   ├── hide-merges.ts        # Merge commit filtering + edge reconnection (Req 53)
+│       │   ├── hide-merges.ts        # Merge commit filtering + edge reconnection with merge+branch preservation (Req 53)
 │       │   └── hide-merges.test.ts   # Tests for merge filtering
 │       ├── actions/
 │       │   └── draggable.ts          # Svelte action for draggable panels/dialogs
@@ -999,6 +1003,25 @@ filterVisibleEdges
 - Dimmed commits rendered at reduced opacity (Req 56)
 - Stash markers rendered as "S{index}" labels on parent commit rows (Req 38)
 - Color mode / orientation / hide-merges: controlled via preferences store, not per-component props
+
+**Edge geometry**:
+- Same-column edges: straight vertical lines
+- Cross-column edges: cubic bezier curves with control points at `(midX, y1 + 0.25·dy)` and `(midX, y2 - 0.25·dy)`, producing a symmetric S-curve
+- Unified across all three render paths: Canvas 2D (`CommitGraph.svelte`), wgpu tessellation (`render.rs`), and hit-testing (`edge-interaction.ts`)
+- Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility
+
+**Edge interaction** (hover/click/highlight):
+- Hover: edge is redrawn with thicker line (2.5px vs 1.5px) at increased opacity (0.9 vs 0.8), using the same bezier curve — no shape change
+- Selected: edge is drawn at 3.5px width and full opacity (1.0)
+- Endpoint rings: when an edge is hovered or selected, a thin ring (`nodeRadius + 3`, 1.5px) is drawn around both endpoint nodes using the edge's own color
+- Click on a selected edge navigates to the "far" endpoint (the end not currently selected); click on an unselected edge selects it
+- Hit-testing: samples the bezier curve at 12 points and checks point-to-segment distance with configurable tolerance
+
+**wgpu base render caching**:
+- The wgpu base render (all nodes + edges at normal width) is cached as an `ImageData` after each full render
+- Hover/selection changes use a fast path: `putImageData(cached)` + Canvas 2D overdraw of highlighted edges — no IPC or GPU roundtrip
+- A dimension guard skips the cache if canvas dimensions have changed (e.g. during resize), falling back to a full re-render
+- This makes hover/leave response time equivalent to Canvas 2D
 
 ##### CommitList Component
 
@@ -2324,6 +2347,9 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Cache diff: new commits are exactly those reachable from new tips but not old tips
 - Comparison diff is symmetric (diff(A,B) == inverse of diff(B,A))
 - Hide-merges filter preserves first-parent connectivity (Req 53)
+- Hide-merges preserves merges with 2+ non-merge children (merge+branch nodes)
+- Hide-merges never creates orphaned nodes (source-orphan guard in third pruning pass)
+- Hide-merges never creates new leaf nodes (assertNoNewLeaves invariant)
 - Graph orientation round-trip (top-to-bottom → bottom-to-top → same layout)
 - Color-by-author produces no duplicate colors in small author sets
 
@@ -2393,6 +2419,10 @@ Based on research from [Pierre Vigier's commit graph algorithms](https://pvigier
 1. **Temporal Topological Sort**: Combines topological ordering with timestamp awareness
 2. **Straight Branch Algorithm**: Keeps commits on the same branch in the same column
 3. **Forbidden Index Calculation**: Prevents edge overlaps using interval trees
+4. **Lane Assignment**: Each commit is assigned to a column (lane) based on branch affinity:
+   - Branch children (first parent same column) inherit the parent's lane
+   - Merge children (non-first parent) acquire a free slot, avoiding lanes in the `forbidden` set (lanes occupied by earlier branches in the same row range)
+   - When freeing a branch-child lane, `last_occupied_row` is reset to 0 (the lane is fully released); merge-child lanes keep their `last_occupied_row` (preventing two parents of the same merge from sharing a column)
 
 ```
 Time Complexity: O(n log n + m) where n = commits, m = edges
@@ -2410,8 +2440,11 @@ pub struct GraphViewport {
 }
 
 impl GraphViewport {
-    /// Calculate visible portion using interval tree
-    /// O(k log m) where k = visible edges, m = total edges
+    /// Calculate visible portion using interval-overlap test
+    /// O(k) where k = visible edges
+    /// An edge is retained if its row range [min(from_row, to_row), max(from_row, to_row)]
+    /// overlaps the visible range [start_row, end_row] — not just endpoint containment.
+    /// This correctly retains edges that span across the viewport without endpoints in it.
     pub fn from_visible_range(
         layout: &GraphLayout,
         start_row: usize,
@@ -2419,6 +2452,19 @@ impl GraphViewport {
     ) -> Self;
 }
 ```
+
+#### Graph Column Auto-Grow
+
+The graph column width automatically grows to fit all columns when the total layout width exceeds the available space:
+
+```
+effectiveGraphWidth = max(persistedGraphWidth, totalColumns * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT)
+```
+
+- `GRAPH_LANE_WIDTH = 24`px (minimum lane width for readability)
+- `GRAPH_MAX_VIEWPORT_RATIO = 0.5` (graph column never exceeds 50% of viewport)
+- The persisted user preference is treated as a minimum, not a fixed value
+- Viewport width is tracked via a `$state` variable with a resize listener for reactivity
 
 #### GPU Rendering Pipeline
 
@@ -2467,6 +2513,27 @@ function onPanelResizeEnd() {
   persistLayout({ sidebarWidth, detailPanelHeight, ... });
 }
 ```
+
+### Named Constants
+
+Performance limits and layout values are centralized in named constants rather than magic numbers:
+
+**Frontend** (`frontend/src/lib/constants.ts`):
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `GRAPH_LANE_WIDTH` | 24 | Minimum pixel width per graph lane |
+| `GRAPH_PADDING_LEFT` | 16 | Left padding before first lane |
+| `GRAPH_MAX_VIEWPORT_RATIO` | 0.5 | Max fraction of viewport for graph column |
+| `GRAPH_EDGE_HIT_TOLERANCE` | 6 | Mouse tolerance for edge click (px) |
+| `DIFF_MAX_FILES` | 100 | Max files loaded before "Load anyway" prompt |
+| `REFLOG_MAX_ENTRIES` | 100 | Max reflog entries shown initially |
+
+**Backend** (`crates/gitv-git-core/src/lib.rs`, `src-tauri/src/commands/`):
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `STREAM_BATCH_SIZE` | 500 | Commits per batch in streaming IPC |
+| `SEARCH_MAX_RESULTS` | 1000 | Max search results returned |
+| `LAYOUT_BOUNDS` | varies | Panel min/max widths for clamping (Req 59) |
 
 ### Streaming Git Data
 
@@ -2608,6 +2675,9 @@ frontend/src/lib/locales/
 | Navigate back (history) | Alt+Left | Alt+Left / Cmd+[ |
 | Navigate forward (history) | Alt+Right | Alt+Right / Cmd+] |
 | Toggle debug overlay | F12 / Ctrl+Shift+D | F12 / Cmd+Shift+D |
+| Zoom in (font size) | Ctrl+= | Cmd+= |
+| Zoom out (font size) | Ctrl+- | Cmd+- |
+| Reset zoom (font size) | Ctrl+0 | Cmd+0 |
 
 // Copy behavior depends on focused element:
 //   Commit list → copy full SHA; with Shift → copy short SHA
