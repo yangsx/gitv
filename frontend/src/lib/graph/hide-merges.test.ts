@@ -78,6 +78,17 @@ function outgoingEdges(result: GraphLayout, nodeRow: number): Edge[] {
 	return result.edges.filter((e) => e.from_row === nodeRow);
 }
 
+function assertNoNewLeaves(input: GraphLayout, result: GraphLayout, label: string) {
+	for (const inputNode of input.nodes) {
+		const resultNode = result.nodes.find((n) => n.oid === inputNode.oid);
+		if (!resultNode) continue;
+		const hadOutgoing = input.edges.some((e) => e.from_row === inputNode.row);
+		if (!hadOutgoing) continue;
+		const hasOutgoing = result.edges.some((e) => e.from_row === resultNode.row);
+		expect(hasOutgoing, `${label}: node ${inputNode.oid} became a leaf`).toBe(true);
+	}
+}
+
 describe('computeHideMergeLayout', () => {
 	it('returns null when layout is null', () => {
 		expect(computeHideMergeLayout(null, true)).toBeNull();
@@ -151,7 +162,7 @@ describe('computeHideMergeLayout', () => {
 		expect(outgoingEdges(result, 0)).toHaveLength(2);
 	});
 
-	it('pairs multiple children to multiple parents', () => {
+	it('preserves merge with 2+ children (merge+branch node)', () => {
 		const l = layout(
 			[
 				node('c1', 0, 0),
@@ -170,15 +181,25 @@ describe('computeHideMergeLayout', () => {
 
 		const result = computeHideMergeLayout(l, true)!;
 
-		expect(result.nodes).toHaveLength(4);
-		const parentIdx = result.nodes.findIndex((n) => n.oid === 'parent');
-		const branchIdx = result.nodes.findIndex((n) => n.oid === 'branch');
+		expect(result.nodes).toHaveLength(5);
+		const mergeNode = result.nodes.find((n) => n.oid === 'merge');
+		expect(mergeNode).toBeDefined();
+		expect(mergeNode!.is_merge).toBe(true);
+
 		const c1Row = result.nodes.findIndex((n) => n.oid === 'c1');
 		const c2Row = result.nodes.findIndex((n) => n.oid === 'c2');
-		expect(result.edges.find((e) => e.from_row === c1Row && e.to_row === parentIdx)).toBeDefined();
-		expect(result.edges.find((e) => e.from_row === c2Row && e.to_row === branchIdx)).toBeDefined();
-		expect(result.edges.filter((e) => e.from_row === c1Row)).toHaveLength(1);
-		expect(result.edges.filter((e) => e.from_row === c2Row)).toHaveLength(1);
+		const mergeRow = result.nodes.findIndex((n) => n.oid === 'merge');
+		const parentRow = result.nodes.findIndex((n) => n.oid === 'parent');
+		const branchRow = result.nodes.findIndex((n) => n.oid === 'branch');
+
+		expect(result.edges.find((e) => e.from_row === c1Row && e.to_row === mergeRow)).toBeDefined();
+		expect(result.edges.find((e) => e.from_row === c2Row && e.to_row === mergeRow)).toBeDefined();
+		expect(
+			result.edges.find((e) => e.from_row === mergeRow && e.to_row === parentRow)
+		).toBeDefined();
+		expect(
+			result.edges.find((e) => e.from_row === mergeRow && e.to_row === branchRow)
+		).toBeDefined();
 	});
 
 	it('handles consecutive merges', () => {
@@ -1027,6 +1048,7 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'simple merge');
+			assertNoNewLeaves(l, result, 'simple merge');
 		});
 
 		it('chained merges', () => {
@@ -1050,6 +1072,7 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'chained merges');
+			assertNoNewLeaves(l, result, 'chained merges');
 		});
 
 		it('multiple children of same merge', () => {
@@ -1071,6 +1094,7 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'multiple children');
+			assertNoNewLeaves(l, result, 'multiple children');
 		});
 
 		it('child whose only parent is a merge', () => {
@@ -1092,6 +1116,7 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'only merge parent');
+			assertNoNewLeaves(l, result, 'only merge parent');
 		});
 
 		it('merge of merge (nested)', () => {
@@ -1119,6 +1144,7 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'merge of merge');
+			assertNoNewLeaves(l, result, 'merge of merge');
 		});
 
 		it('two merges sharing the same ancestor', () => {
@@ -1143,6 +1169,7 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'shared ancestor');
+			assertNoNewLeaves(l, result, 'shared ancestor');
 		});
 
 		it('three siblings all with only-merge parent', () => {
@@ -1166,6 +1193,148 @@ describe('computeHideMergeLayout', () => {
 
 			const result = computeHideMergeLayout(l, true)!;
 			assertOutgoingPreserved(l, result, 'three siblings');
+			assertNoNewLeaves(l, result, 'three siblings');
+		});
+	});
+
+	describe('merge+branch preservation', () => {
+		it('keeps merge with 2 direct children and 2 parents', () => {
+			const l = layout(
+				[
+					node('d1', 0, 0),
+					node('d2', 1, 1),
+					node('merge', 2, 0, { is_merge: true }),
+					node('p1', 3, 0),
+					node('p2', 4, 1)
+				],
+				[
+					edge(0, 0, 2, 0, 'Straight'),
+					edge(1, 1, 2, 0, 'Straight'),
+					edge(2, 0, 3, 0, 'Straight'),
+					edge(2, 1, 4, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+
+			expect(result.nodes.find((n) => n.oid === 'merge')).toBeDefined();
+			expect(result.nodes).toHaveLength(5);
+			assertNoNewLeaves(l, result, 'merge with 2 children');
+		});
+
+		it('removes merge with 1 child (single trunk above)', () => {
+			const l = layout(
+				[
+					node('child', 0, 0),
+					node('merge', 1, 0, { is_merge: true }),
+					node('p1', 2, 0),
+					node('p2', 3, 1)
+				],
+				[edge(0, 0, 1, 0, 'Straight'), edge(1, 0, 2, 0, 'Straight'), edge(1, 1, 3, 1, 'Merge')]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+
+			expect(result.nodes.find((n) => n.oid === 'merge')).toBeUndefined();
+			expect(result.nodes).toHaveLength(3);
+		});
+
+		it('kept child merge allows parent merge to be removed (inner rewires to ancestors)', () => {
+			const l = layout(
+				[
+					node('c1', 0, 0),
+					node('c2', 1, 1),
+					node('inner', 2, 0, { is_merge: true }),
+					node('outer', 3, 0, { is_merge: true }),
+					node('root', 4, 0),
+					node('side', 5, 1)
+				],
+				[
+					edge(0, 0, 2, 0, 'Straight'),
+					edge(1, 1, 2, 0, 'Straight'),
+					edge(2, 0, 3, 0, 'Straight'),
+					edge(3, 0, 4, 0, 'Straight'),
+					edge(3, 1, 5, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+
+			expect(result.nodes.find((n) => n.oid === 'inner')).toBeDefined();
+			expect(result.nodes.find((n) => n.oid === 'outer')).toBeUndefined();
+
+			const innerRow = result.nodes.findIndex((n) => n.oid === 'inner');
+			const rootRow = result.nodes.findIndex((n) => n.oid === 'root');
+			const sideRow = result.nodes.findIndex((n) => n.oid === 'side');
+
+			expect(
+				result.edges.find((e) => e.from_row === innerRow && e.to_row === rootRow)
+			).toBeDefined();
+			expect(
+				result.edges.find((e) => e.from_row === innerRow && e.to_row === sideRow)
+			).toBeDefined();
+			assertNoNewLeaves(l, result, 'kept child merge');
+		});
+
+		it('removes both merges when inner has only 1 child (single trunk)', () => {
+			const l = layout(
+				[
+					node('head', 0, 0),
+					node('inner', 1, 0, { is_merge: true }),
+					node('outer', 2, 0, { is_merge: true }),
+					node('p1', 3, 0),
+					node('p2', 4, 1)
+				],
+				[
+					edge(0, 0, 1, 0, 'Straight'),
+					edge(1, 0, 2, 0, 'Straight'),
+					edge(2, 0, 3, 0, 'Straight'),
+					edge(2, 1, 4, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+
+			expect(result.nodes.find((n) => n.oid === 'inner')).toBeUndefined();
+			expect(result.nodes.find((n) => n.oid === 'outer')).toBeUndefined();
+			expect(result.nodes).toHaveLength(3);
+		});
+
+		it('kept merge with non-merge parent and removed-merge parent retains both edges', () => {
+			const l = layout(
+				[
+					node('d1', 0, 0),
+					node('d2', 1, 1),
+					node('kept', 2, 0, { is_merge: true }),
+					node('directParent', 3, 0),
+					node('removedMerge', 4, 0, { is_merge: true }),
+					node('deepAncestor', 5, 1)
+				],
+				[
+					edge(0, 0, 2, 0, 'Straight'),
+					edge(1, 1, 2, 0, 'Straight'),
+					edge(2, 0, 3, 0, 'Straight'),
+					edge(2, 1, 4, 0, 'Merge'),
+					edge(4, 0, 5, 1, 'Merge')
+				]
+			);
+
+			const result = computeHideMergeLayout(l, true)!;
+
+			const keptNode = result.nodes.find((n) => n.oid === 'kept');
+			expect(keptNode).toBeDefined();
+
+			const directParentRow = result.nodes.findIndex((n) => n.oid === 'directParent');
+			const deepAncestorRow = result.nodes.findIndex((n) => n.oid === 'deepAncestor');
+
+			expect(
+				result.edges.find((e) => e.from_row === keptNode!.row && e.to_row === directParentRow)
+			).toBeDefined();
+			expect(
+				result.edges.find((e) => e.from_row === keptNode!.row && e.to_row === deepAncestorRow)
+			).toBeDefined();
+
+			assertNoNewLeaves(l, result, 'kept merge mixed parents');
 		});
 	});
 });

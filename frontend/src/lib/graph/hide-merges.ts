@@ -25,6 +25,23 @@ export function computeHideMergeLayout(
 	);
 	if (mergeRows.size === 0) return layout;
 
+	const edgesByTo = new Map<number, number[]>();
+	for (const e of layout.edges) {
+		const list = edgesByTo.get(e.to_row) ?? [];
+		list.push(e.from_row);
+		edgesByTo.set(e.to_row, list);
+	}
+
+	for (const row of [...mergeRows].sort((a, b) => a - b)) {
+		const childRows = edgesByTo.get(row) ?? [];
+		const visibleChildren = new Set(childRows.filter((r) => !mergeRows.has(r)));
+		if (visibleChildren.size >= 2) {
+			mergeRows.delete(row);
+		}
+	}
+
+	if (mergeRows.size === 0) return layout;
+
 	const sortedNodes = [...layout.nodes].sort((a, b) => a.row - b.row);
 	const rowMap = new Map<number, number>();
 	let newRow = 0;

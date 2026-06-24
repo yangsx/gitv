@@ -462,9 +462,12 @@
 		return hideMergeLayout;
 	});
 
-	let displayedCommits = $derived(
-		$graphHideMerges ? effectiveCommits.filter((c) => c.parent_oids.length <= 1) : effectiveCommits
-	);
+	let displayedCommits = $derived.by(() => {
+		if (!$graphHideMerges) return effectiveCommits;
+		if (!hideMergeLayout) return effectiveCommits.filter((c) => c.parent_oids.length <= 1);
+		const visibleOids = new Set(hideMergeLayout.nodes.map((n) => n.oid));
+		return effectiveCommits.filter((c) => visibleOids.has(c.oid));
+	});
 
 	let commitCount = $derived(displayedCommits.length);
 
