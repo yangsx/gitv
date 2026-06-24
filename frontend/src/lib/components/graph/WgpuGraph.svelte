@@ -21,7 +21,8 @@
 		computeVisibleEdgeCoords,
 		edgeHitTest,
 		edgeFarOid,
-		drawEdgeHighlight
+		drawEdgeHighlight,
+		drawEdgeEndpoints
 	} from '$lib/graph/edge-interaction';
 	import {
 		GRAPH_PADDING_LEFT as PADDING_LEFT,
@@ -59,6 +60,7 @@
 	let canvasEl: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D | null = $state(null);
 	let dpr = $state(1);
+	let baseImageData: ImageData | null = null;
 
 	let containerWidth = $derived(Math.round(layout.total_columns * laneWidth + PADDING_LEFT + 10));
 	let containerHeight = $derived(Math.round((visibleEnd - visibleStart) * rowHeight));
@@ -180,7 +182,7 @@
 			padding_left: PADDING_LEFT,
 			node_radius: nodeRadius,
 			nodes: buildNodes(visibleStart, visibleEnd),
-			edges: buildEdges(visibleStart, visibleEnd, selectedEdgeIdx, hoveredEdgeIdx)
+			edges: buildEdges(visibleStart, visibleEnd)
 		};
 
 		try {
@@ -200,6 +202,7 @@
 			const len = Math.min(src.length, data.length);
 			data.set(src.subarray(0, len));
 			ctx.putImageData(imageData, 0, 0);
+			baseImageData = imageData;
 
 			overdrawEdgeHighlights();
 		} catch (err) {
@@ -213,8 +216,10 @@
 		for (const { edge, idx, coords } of visibleEdgeData) {
 			if (idx === selectedEdgeIdx) {
 				drawEdgeHighlight(ctx, coords, colorToCSS(edge.color), 3.5);
+				drawEdgeEndpoints(ctx, coords, colorToCSS(edge.color), nodeRadius);
 			} else if (idx === hoveredEdgeIdx) {
 				drawEdgeHighlight(ctx, coords, colorToCSS(edge.color), 2.5);
+				drawEdgeEndpoints(ctx, coords, colorToCSS(edge.color), nodeRadius);
 			}
 		}
 	}
@@ -225,12 +230,20 @@
 		void layout;
 		void selectedOid;
 		void comparisonOid;
-		void hoveredEdgeIdx;
-		void selectedEdgeIdx;
 		void rowHeight;
 		void laneWidth;
 		void nodeRadius;
 		scheduleRender();
+	});
+
+	$effect(() => {
+		void hoveredEdgeIdx;
+		void selectedEdgeIdx;
+		if (!ctx || !baseImageData) return;
+		if (baseImageData.width !== ctx.canvas.width || baseImageData.height !== ctx.canvas.height)
+			return;
+		ctx.putImageData(baseImageData, 0, 0);
+		overdrawEdgeHighlights();
 	});
 
 	$effect(() => {

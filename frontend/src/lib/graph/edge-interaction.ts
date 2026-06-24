@@ -140,10 +140,37 @@ export function drawEdgeHighlight(
 		ctx.moveTo(coords.x1, coords.y1);
 		ctx.lineTo(coords.x2, coords.y2);
 	} else {
-		const midY = (coords.y1 + coords.y2) / 2;
+		const midX = (coords.x1 + coords.x2) / 2;
+		const dy = coords.y2 - coords.y1;
 		ctx.moveTo(coords.x1, coords.y1);
-		ctx.bezierCurveTo(coords.x1, midY, coords.x2, midY, coords.x2, coords.y2);
+		ctx.bezierCurveTo(
+			midX,
+			coords.y1 + dy * 0.25,
+			midX,
+			coords.y2 - dy * 0.25,
+			coords.x2,
+			coords.y2
+		);
 	}
+	ctx.stroke();
+	ctx.globalAlpha = 1.0;
+}
+
+export function drawEdgeEndpoints(
+	ctx: CanvasRenderingContext2D,
+	coords: EdgeCoords,
+	color: string,
+	nodeRadius: number
+) {
+	ctx.beginPath();
+	ctx.globalAlpha = 0.8;
+	ctx.strokeStyle = color;
+	ctx.lineWidth = 1.5;
+	ctx.setLineDash([]);
+	ctx.arc(coords.x1, coords.y1, nodeRadius + 3, 0, Math.PI * 2);
+	ctx.stroke();
+	ctx.beginPath();
+	ctx.arc(coords.x2, coords.y2, nodeRadius + 3, 0, Math.PI * 2);
 	ctx.stroke();
 	ctx.globalAlpha = 1.0;
 }

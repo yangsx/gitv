@@ -96,7 +96,17 @@
 			if (!isEdgeVisible(edge, startRow, endRow)) continue;
 			const isSelected = edgeIdx === selectedEdgeIdx;
 			const isHovered = edgeIdx === hoveredEdgeIdx && !isSelected;
-			drawEdge(ctx, edge, sLaneWidth, sPadding, startRow, rowHeight, isHovered, isSelected);
+			drawEdge(
+				ctx,
+				edge,
+				sLaneWidth,
+				sPadding,
+				startRow,
+				rowHeight,
+				isHovered,
+				isSelected,
+				sNodeRadius
+			);
 		}
 		const stashIdxMap = new Map(l.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
 		for (const node of l.nodes) {
@@ -287,7 +297,8 @@
 		startRow: number,
 		rh: number,
 		isHovered: boolean,
-		isSelected: boolean
+		isSelected: boolean,
+		sNodeRadius: number
 	) {
 		const x1 = columnCenterX(edge.from_col, sLaneWidth, sPadding);
 		const y1 = nodeCenterY(edge.from_row, startRow, rh);
@@ -319,6 +330,18 @@
 
 		ctx.stroke();
 		ctx.setLineDash([]);
+
+		if (isHovered || isSelected) {
+			ctx.globalAlpha = 0.8;
+			ctx.lineWidth = 1.5;
+			ctx.beginPath();
+			ctx.arc(x1, y1, sNodeRadius + 3, 0, Math.PI * 2);
+			ctx.stroke();
+			ctx.beginPath();
+			ctx.arc(x2, y2, sNodeRadius + 3, 0, Math.PI * 2);
+			ctx.stroke();
+		}
+
 		ctx.globalAlpha = 1.0;
 	}
 </script>
