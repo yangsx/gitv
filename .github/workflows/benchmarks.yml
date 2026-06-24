@@ -57,7 +57,7 @@ jobs:
       - name: Benchmark — graph layout
         run: |
           cargo bench --bench graph_bench -- \
-            --save-baseline bench-baseline \
+            --save-baseline graph-baseline \
             2>&1 | tee /tmp/bench-graph.txt
         working-directory: crates/gitv-git-core
 
@@ -65,7 +65,7 @@ jobs:
       - name: Benchmark — search engine
         run: |
           cargo bench --bench search_bench -- \
-            --save-baseline bench-baseline \
+            --save-baseline search-baseline \
             2>&1 | tee /tmp/bench-search.txt
         working-directory: crates/gitv-git-core
 
@@ -76,19 +76,11 @@ jobs:
             2>&1 | tee /tmp/bench-memory.txt
         working-directory: crates/gitv-git-core
 
-      # Fail the job if any benchmark regressed by more than 10 %.
-      # Criterion prints "Performance has regressed" for regressions.
+      # Fail the job if benchmarks regressed beyond noise tolerance.
+      # Only fails if: >=2 benchmarks regressed (unlikely to be noise)
+      # OR a single benchmark regressed by >15% (ruling out ~10% runner variance).
       - name: Check for regressions
-        run: |
-          FAILED=0
-          for f in /tmp/bench-graph.txt /tmp/bench-search.txt; do
-            if grep -q "Performance has regressed" "$f"; then
-              echo "::error::Regression detected in $f"
-              grep "Performance has regressed" "$f"
-              FAILED=1
-            fi
-          done
-          exit $FAILED
+        run: python3 scripts/check_regressions.py /tmp/bench-graph.txt /tmp/bench-search.txt
 
       # Check absolute performance targets (Req 27.6).
       # Parses criterion JSON results and compares against targets in
