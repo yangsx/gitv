@@ -1387,8 +1387,8 @@ mod tests {
                             .map(|n| n.oid);
                         let src_info =
                             src_oid.and_then(|oid| commits.iter().find(|c| c.oid == oid));
-                        let on_chain = src_info
-                            .map_or(false, |si| si.parent_oids.iter().any(|p| *p == node.oid));
+                        let on_chain =
+                            src_info.is_some_and(|si| si.parent_oids.contains(&node.oid));
                         assert!(
                             on_chain,
                             "Same-column edge ({},{})→({},{}) passes through non-chain node {} at ({},{})",
