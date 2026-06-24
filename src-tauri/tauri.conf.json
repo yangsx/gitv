@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
   "productName": "gitv",
-  "version": "0.9.0",
   "identifier": "com.gitv.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
