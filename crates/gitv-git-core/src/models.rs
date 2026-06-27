@@ -191,6 +191,13 @@ pub enum ChangeType {
     SubmoduleUpdated,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileLineStats {
+    pub path: PathBuf,
+    pub additions: usize,
+    pub deletions: usize,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub enum DiffMode {
     #[default]

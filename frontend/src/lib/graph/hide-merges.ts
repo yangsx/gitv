@@ -263,8 +263,8 @@ export function computeHideMergeLayout(
 		if (current <= limit) continue;
 
 		let hasOnlyMergeParents = true;
-		for (const e of edges) {
-			if (e.from_row !== origRow) continue;
+		const outEdges = edgesByFrom.get(origRow) ?? [];
+		for (const e of outEdges) {
 			if (!mergeRows.has(e.to_row)) {
 				hasOnlyMergeParents = false;
 				break;

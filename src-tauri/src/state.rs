@@ -1,5 +1,5 @@
 use gitv_git_core::gix_repo::GixRepository;
-use gitv_git_core::models::Oid;
+use gitv_git_core::models::{CommitInfo, Oid};
 use gitv_git_core::repository::Repository;
 use gitv_git_core::search::{SearchEngine, SearchQuery};
 use std::collections::{HashMap, HashSet};
@@ -14,7 +14,12 @@ pub struct AppState {
     repo_cache: Mutex<HashMap<PathBuf, Arc<GixRepository>>>,
     patch_searches: Mutex<HashMap<u64, Arc<AtomicBool>>>,
     next_patch_search_id: AtomicU64,
+    commit_store: Mutex<HashMap<PathBuf, Arc<Vec<CommitInfo>>>>,
 }
+
+/// Maximum number of repos whose commits are retained in memory.
+/// Exceeding this evicts all entries except the one being stored.
+const MAX_COMMIT_STORE_REPOS: usize = 8;
 
 impl AppState {
     pub fn new() -> Self {
@@ -23,7 +28,31 @@ impl AppState {
             repo_cache: Mutex::new(HashMap::new()),
             patch_searches: Mutex::new(HashMap::new()),
             next_patch_search_id: AtomicU64::new(1),
+            commit_store: Mutex::new(HashMap::new()),
         }
+    }
+
+    pub fn store_commits(&self, repo_path: &Path, commits: Vec<CommitInfo>) {
+        if let Ok(mut store) = self.commit_store.lock() {
+            if store.len() >= MAX_COMMIT_STORE_REPOS {
+                store.retain(|k, _| k == repo_path);
+            }
+            store.insert(repo_path.to_path_buf(), Arc::new(commits));
+        }
+    }
+
+    pub fn get_commit_batch(
+        &self,
+        repo_path: &Path,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<CommitInfo>, String> {
+        let store = self.commit_store.lock().map_err(|e| e.to_string())?;
+        let commits = store
+            .get(repo_path)
+            .ok_or("commits not loaded for this repo")?;
+        let end = offset.saturating_add(limit).min(commits.len());
+        Ok(commits[offset..end].to_vec())
     }
 
     pub fn search(&self, repo_path: &Path, query: &SearchQuery) -> Result<SearchOutcome, String> {

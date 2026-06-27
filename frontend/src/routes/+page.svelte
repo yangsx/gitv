@@ -5,6 +5,8 @@
 	import {
 		getGraphLayout,
 		getCommitDetails,
+		getCommitFileCounts,
+		getCommitsBatch,
 		getDiff,
 		getInitialData,
 		getWorkingChanges,
@@ -101,6 +103,9 @@
 	let autoDialogShown = $state(false);
 	let recentRepos = $state<RecentRepository[]>([]);
 	let commits = $state<CommitInfo[]>([]);
+	let totalCommitCount = $state(0);
+	let loadingMoreCommits = $state(false);
+	const COMMIT_BATCH_SIZE = 1000;
 	let graphLayout = $state<GraphLayout | null>(null);
 	let layoutGeneration = 0;
 	let commitDetails = $state<CommitDetails | null>(null);
@@ -264,6 +269,7 @@
 		comparisonOid.set(null);
 		compareMode = false;
 		commits = [];
+		totalCommitCount = 0;
 		graphLayout = null;
 		allRefs = [];
 		workingChangesDiff = null;
@@ -302,6 +308,7 @@
 				onSelectCommit(data.repo_info.head_commit);
 			}
 			commits = data.commits;
+			totalCommitCount = data.total_commit_count;
 			graphLayout = data.graph_layout;
 			allRefs = data.refs;
 			workingChangesDiff = data.working_changes;
@@ -344,6 +351,22 @@
 				'#commit-list-container [tabindex="0"]'
 			);
 			commitListEl?.focus();
+		}
+	}
+
+	async function loadMoreCommits() {
+		if (loadingMoreCommits || !repoPath) return;
+		if (commits.length >= totalCommitCount) return;
+		loadingMoreCommits = true;
+		try {
+			const batch = await getCommitsBatch(repoPath, commits.length, COMMIT_BATCH_SIZE);
+			if (batch.length > 0) {
+				commits = [...commits, ...batch];
+			}
+		} catch {
+			// silent — next scroll event will retry
+		} finally {
+			loadingMoreCommits = false;
 		}
 	}
 
@@ -625,11 +648,29 @@
 				commitDetails = null;
 				return;
 			}
+			void loadFileCounts(oid);
 		} catch {
 			commitDetails = null;
 		} finally {
 			detailsLoading = false;
 			if ($operationState === 'LoadingDetails') operationState.set('Idle');
+		}
+	}
+
+	async function loadFileCounts(oid: string) {
+		try {
+			const counts = await getCommitFileCounts(repoPath, oid);
+			if (oid !== $selectedOid || !commitDetails) return;
+			const map = new Map(counts.map((c) => [c.path, c]));
+			commitDetails = {
+				...commitDetails,
+				changed_files: commitDetails.changed_files.map((f) => {
+					const c = map.get(f.path);
+					return c ? { ...f, additions: c.additions, deletions: c.deletions } : f;
+				})
+			};
+		} catch {
+			// counts are optional — file list already displayed
 		}
 	}
 
@@ -1483,6 +1524,8 @@
 								onContextMenu={handleCommitContextMenu}
 								graphWidth={savedLayout?.graphWidth ?? 200}
 								{rowHeight}
+								onLoadMore={loadMoreCommits}
+								loadedCommitCount={commits.length}
 							/>
 						{/key}
 					{:else if $operationState === 'LoadingRepo'}

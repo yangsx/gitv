@@ -8,6 +8,7 @@ import type {
 	CommitDetails,
 	DiffSummary,
 	FileDiff,
+	FileLineStats,
 	FileTreeNode,
 	FileHistoryEntry,
 	SearchQuery,
@@ -108,6 +109,18 @@ export async function cancelPatchSearch(searchId: number): Promise<void> {
 
 export async function getCommitDetails(path: string, oid: string): Promise<CommitDetails> {
 	return timedInvoke<CommitDetails>('get_commit_details', { path, oid });
+}
+
+export async function getCommitFileCounts(path: string, oid: string): Promise<FileLineStats[]> {
+	return timedInvoke<FileLineStats[]>('get_commit_file_counts', { path, oid });
+}
+
+export async function getCommitsBatch(
+	path: string,
+	offset: number,
+	limit: number
+): Promise<CommitInfo[]> {
+	return timedInvoke<CommitInfo[]>('get_commits_batch', { path, offset, limit });
 }
 
 export async function getDiff(

@@ -80,8 +80,10 @@ pub fn get_refs(
 
 #[tauri::command]
 #[instrument(fields(command = "get_recent_repositories"))]
-pub fn get_recent_repositories() -> Result<Vec<RecentRepository>, String> {
-    load_recent_repos()
+pub async fn get_recent_repositories() -> Result<Vec<RecentRepository>, String> {
+    tauri::async_runtime::spawn_blocking(load_recent_repos)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -103,27 +105,31 @@ pub fn quit_app(app: AppHandle) {
 
 #[tauri::command]
 #[instrument(fields(command = "save_recent_repository"))]
-pub fn save_recent_repository(path: String) -> Result<(), String> {
-    let _guard = RECENT_REPOS_LOCK.lock().map_err(|e| e.to_string())?;
+pub async fn save_recent_repository(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = RECENT_REPOS_LOCK.lock().map_err(|e| e.to_string())?;
 
-    let repo_path = PathBuf::from(&path);
-    let canonical = repo_path.canonicalize().unwrap_or(repo_path);
-    let name = canonical
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| canonical.to_string_lossy().to_string());
-    let now = chrono::Utc::now();
+        let repo_path = PathBuf::from(&path);
+        let canonical = repo_path.canonicalize().unwrap_or(repo_path);
+        let name = canonical
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| canonical.to_string_lossy().to_string());
+        let now = chrono::Utc::now();
 
-    let mut repos = load_recent_repos()?;
-    repos.retain(|r| r.path != canonical);
-    repos.insert(
-        0,
-        RecentRepository {
-            path: canonical,
-            name,
-            last_opened: now,
-        },
-    );
-    repos.truncate(MAX_RECENT_REPOS);
-    save_recent_repos(&repos)
+        let mut repos = load_recent_repos()?;
+        repos.retain(|r| r.path != canonical);
+        repos.insert(
+            0,
+            RecentRepository {
+                path: canonical,
+                name,
+                last_opened: now,
+            },
+        );
+        repos.truncate(MAX_RECENT_REPOS);
+        save_recent_repos(&repos)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

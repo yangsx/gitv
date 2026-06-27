@@ -18,6 +18,8 @@
 		rowHeight?: number;
 		graphWidth?: number;
 		onEdgeNavigate?: (_oid: string) => void;
+		onLoadMore?: () => void;
+		loadedCommitCount?: number;
 	}
 
 	let {
@@ -30,6 +32,8 @@
 		onContextMenu,
 		rowHeight = 28,
 		graphWidth = 200,
+		onLoadMore,
+		loadedCommitCount,
 		onEdgeNavigate
 	}: Props = $props();
 
@@ -46,29 +50,33 @@
 
 	let commitsByOid = $derived(new Map(commits.map((c) => [c.oid, c])));
 
+	let sortedLayoutNodes = $derived(layout ? [...layout.nodes].sort((a, b) => a.row - b.row) : null);
+
 	let orderedCommits = $derived(
-		layout
-			? (() => {
-					const mapped = [...layout.nodes]
-						.sort((a, b) => a.row - b.row)
-						.map((n) => commitsByOid.get(n.oid));
-					if (import.meta.env.DEV) {
-						const missing = mapped.filter((c) => c === undefined).length;
-						if (missing > 0) {
-							console.warn(`orderedCommits: ${missing} layout nodes not found in commitsByOid`);
-						}
-					}
-					return mapped.filter((c): c is CommitInfo => c !== undefined);
-				})()
-			: commits
+		sortedLayoutNodes
+			? (sortedLayoutNodes.map((n) => commitsByOid.get(n.oid) ?? null) as (CommitInfo | null)[])
+			: (commits as (CommitInfo | null)[])
 	);
+
+	let effectiveTotalRows = $derived(orderedCommits.length);
 
 	let visibleStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - BUFFER));
 	let visibleEnd = $derived(
-		Math.min(orderedCommits.length, Math.ceil((scrollTop + containerHeight) / rowHeight) + BUFFER)
+		Math.min(effectiveTotalRows, Math.ceil((scrollTop + containerHeight) / rowHeight) + BUFFER)
 	);
-	let totalHeight = $derived(orderedCommits.length * rowHeight);
+	let totalHeight = $derived(effectiveTotalRows * rowHeight);
 	let visibleCommits = $derived(orderedCommits.slice(visibleStart, visibleEnd));
+
+	const LOAD_MORE_BUFFER = 200;
+
+	$effect(() => {
+		if (!onLoadMore) return;
+		const loaded = loadedCommitCount ?? commits.length;
+		if (loaded >= effectiveTotalRows) return;
+		if (visibleEnd > loaded - LOAD_MORE_BUFFER) {
+			onLoadMore();
+		}
+	});
 
 	let viewportWidth = $state(window.innerWidth);
 
@@ -95,8 +103,8 @@
 	$effect(() => {
 		debug.update((d) => ({
 			...d,
-			totalCommits: orderedCommits.length,
-			visibleCommits: visibleCommits.length
+			totalCommits: effectiveTotalRows,
+			visibleCommits: visibleCommits.filter((c) => c !== null).length
 		}));
 	});
 
@@ -132,20 +140,29 @@
 
 	let selectedIdx = $state(0);
 
+	function findLoadedNeighbor(start: number, direction: 1 | -1): number {
+		let i = start + direction;
+		while (i >= 0 && i < orderedCommits.length) {
+			if (orderedCommits[i] !== null) return i;
+			i += direction;
+		}
+		return -1;
+	}
+
 	$effect(() => {
 		if (!orderedCommits.length) return;
 		if (!selectedOid) {
 			selectedIdx = 0;
 			return;
 		}
-		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+		const idx = orderedCommits.findIndex((c) => c?.oid === selectedOid);
 		if (idx >= 0) selectedIdx = idx;
 		else selectedIdx = 0;
 	});
 
 	$effect(() => {
 		if (!containerEl || !selectedOid || !orderedCommits.length) return;
-		const idx = orderedCommits.findIndex((c) => c.oid === selectedOid);
+		const idx = orderedCommits.findIndex((c) => c?.oid === selectedOid);
 		if (idx < 0) return;
 		const targetTop = idx * rowHeight;
 		const viewTop = containerEl.scrollTop;
@@ -165,41 +182,49 @@
 
 		if (e.key === 'ArrowDown' || e.key === 'j') {
 			e.preventDefault();
-			const next = Math.min(selectedIdx + 1, lastIdx);
-			if (next === selectedIdx) return;
+			const next = findLoadedNeighbor(selectedIdx, 1);
+			if (next < 0 || next === selectedIdx) return;
 			selectedIdx = next;
-			onSelect(orderedCommits[selectedIdx].oid, false);
+			onSelect(orderedCommits[selectedIdx]!.oid, false);
 			scrollToIndex(selectedIdx);
 		} else if (e.key === 'ArrowUp' || e.key === 'k') {
 			e.preventDefault();
-			const prev = Math.max(selectedIdx - 1, 0);
-			if (prev === selectedIdx) return;
+			const prev = findLoadedNeighbor(selectedIdx, -1);
+			if (prev < 0 || prev === selectedIdx) return;
 			selectedIdx = prev;
-			onSelect(orderedCommits[selectedIdx].oid, false);
+			onSelect(orderedCommits[selectedIdx]!.oid, false);
 			scrollToIndex(selectedIdx);
 		} else if (e.key === 'PageDown') {
 			e.preventDefault();
-			const next = Math.min(selectedIdx + pageSize, lastIdx);
-			if (next === selectedIdx) return;
-			selectedIdx = next;
-			onSelect(orderedCommits[selectedIdx].oid, false);
+			let target = Math.min(selectedIdx + pageSize, lastIdx);
+			while (target < lastIdx && orderedCommits[target] === null) target++;
+			if (orderedCommits[target] === null) return;
+			selectedIdx = target;
+			onSelect(orderedCommits[selectedIdx]!.oid, false);
 			scrollToIndex(selectedIdx);
 		} else if (e.key === 'PageUp') {
 			e.preventDefault();
-			const prev = Math.max(selectedIdx - pageSize, 0);
-			if (prev === selectedIdx) return;
-			selectedIdx = prev;
-			onSelect(orderedCommits[selectedIdx].oid, false);
+			let target = Math.max(selectedIdx - pageSize, 0);
+			while (target > 0 && orderedCommits[target] === null) target--;
+			if (orderedCommits[target] === null) return;
+			selectedIdx = target;
+			onSelect(orderedCommits[selectedIdx]!.oid, false);
 			scrollToIndex(selectedIdx);
 		} else if (e.key === 'Home') {
 			e.preventDefault();
-			selectedIdx = 0;
-			onSelect(orderedCommits[0].oid, false);
+			let first = 0;
+			while (first < lastIdx && orderedCommits[first] === null) first++;
+			if (orderedCommits[first] === null) return;
+			selectedIdx = first;
+			onSelect(orderedCommits[first]!.oid, false);
 			containerEl.scrollTop = 0;
 		} else if (e.key === 'End') {
 			e.preventDefault();
-			selectedIdx = lastIdx;
-			onSelect(orderedCommits[lastIdx].oid, false);
+			let last = lastIdx;
+			while (last > 0 && orderedCommits[last] === null) last--;
+			if (orderedCommits[last] === null) return;
+			selectedIdx = last;
+			onSelect(orderedCommits[last]!.oid, false);
 			containerEl.scrollTop = containerEl.scrollHeight - containerEl.clientHeight;
 		}
 	}
@@ -220,7 +245,7 @@
 	}
 
 	function handleEdgeNavigate(oid: string) {
-		const idx = orderedCommits.findIndex((c) => c.oid === oid);
+		const idx = orderedCommits.findIndex((c) => c?.oid === oid);
 		if (idx >= 0) scrollToIndex(idx, true);
 	}
 </script>
@@ -258,19 +283,26 @@
 					</div>
 				{/if}
 				<div class="flex-1 min-w-0">
-					{#each visibleCommits as commit (commit.oid)}
-						<CommitRow
-							id="commit-{commit.oid}"
-							{commit}
-							isSelected={commit.oid === selectedOid}
-							isComparison={commit.oid === comparisonOid}
-							isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
-							highlights={highlightsByOid.get(commit.oid)}
-							matchType={matchTypeByOid.get(commit.oid)}
-							onclick={onSelect}
-							oncontextmenu={onContextMenu}
-							{rowHeight}
-						/>
+					{#each visibleCommits as commit, i (commit?.oid ?? `placeholder-${visibleStart + i}`)}
+						{#if commit}
+							<CommitRow
+								id="commit-{commit.oid}"
+								{commit}
+								isSelected={commit.oid === selectedOid}
+								isComparison={commit.oid === comparisonOid}
+								isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
+								highlights={highlightsByOid.get(commit.oid)}
+								matchType={matchTypeByOid.get(commit.oid)}
+								onclick={onSelect}
+								oncontextmenu={onContextMenu}
+								{rowHeight}
+							/>
+						{:else}
+							<div
+								class="flex items-center px-2 text-xs text-gray-700"
+								style="height: {rowHeight}px;"
+							></div>
+						{/if}
 					{/each}
 				</div>
 			</div>

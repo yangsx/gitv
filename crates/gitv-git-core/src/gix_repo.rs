@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{TimeZone, Utc};
-use rayon::prelude::*;
 
 use crate::error::{DiffError, GitError};
 use crate::models::*;
@@ -59,6 +58,51 @@ impl GixRepository {
         let mut repo = self.inner.to_thread_local();
         repo.object_cache_size(crate::OBJECT_CACHE_SIZE);
         repo
+    }
+
+    /// Enumerate all refs and categorize them using a precomputed HEAD
+    /// ancestor set (for `is_merged` on branches).
+    fn enumerate_refs(&self, head_ancestors: &HashSet<Oid>) -> Result<Vec<Ref>, GitError> {
+        let repo = self.thread_local();
+        let head_id = repo.head_id().ok();
+        let mut result = Vec::new();
+
+        let platform = repo
+            .references()
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let iter = platform.all().map_err(|e| GitError::Gix(e.to_string()))?;
+        for reference in iter {
+            let mut reference = reference.map_err(|e| GitError::Gix(e.to_string()))?;
+            let name = reference.name();
+            let category = name.category().map(|c| c.prefix().to_string());
+            let name_str = name.shorten().to_string();
+            let target_id = match reference.peel_to_id() {
+                Ok(id) => id,
+                _ => continue,
+            };
+            let oid = gix_id_to_oid(&target_id);
+            let is_head = head_id
+                .as_ref()
+                .map(|hid| *hid == target_id)
+                .unwrap_or(false);
+            let annotation = if category.as_deref() == Some("refs/tags/") {
+                read_tag_annotation(&repo, &mut reference)
+            } else {
+                None
+            };
+            if let Some(r#ref) = categorize_ref_from_parts(
+                category.as_deref(),
+                name_str,
+                oid,
+                annotation,
+                is_head,
+                head_ancestors,
+            ) {
+                result.push(r#ref);
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -177,29 +221,16 @@ impl Repository for GixRepository {
 
         let _line_span = tracing::debug_span!("build_file_list", count = change_count).entered();
         let changed_files: Vec<FileChange> = gix_changes
-            .par_iter()
+            .iter()
             .filter_map(|change| {
                 let (path, old_path, change_type, is_binary, is_submodule) =
                     change_to_file_change_parts(change)?;
-                if is_binary || is_submodule {
-                    return Some(FileChange {
-                        path,
-                        old_path,
-                        change_type,
-                        additions: 0,
-                        deletions: 0,
-                        is_binary,
-                        is_submodule,
-                    });
-                }
-                let repo = self.thread_local();
-                let (additions, deletions) = count_lines_for_change(&repo, change);
                 Some(FileChange {
                     path,
                     old_path,
                     change_type,
-                    additions,
-                    deletions,
+                    additions: 0,
+                    deletions: 0,
                     is_binary,
                     is_submodule,
                 })
@@ -216,10 +247,54 @@ impl Repository for GixRepository {
         })
     }
 
+    fn commit_file_counts(&self, oid: Oid) -> Result<Vec<FileLineStats>, GitError> {
+        let repo = self.thread_local();
+        let gix_oid = oid_to_gix_object_id(&oid);
+        let obj = repo
+            .find_object(gix_oid)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let commit = obj
+            .try_into_commit()
+            .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+        let info = commit_to_commit_info(&oid, &commit, Vec::new());
+
+        let to_tree = tree_for_oid(&repo, oid).map_err(|e| GitError::Gix(e.to_string()))?;
+        let parent_oid = info.parent_oids.first().copied();
+        let from_tree = parent_oid
+            .map(|p| tree_for_oid(&repo, p).map_err(|e| GitError::Gix(e.to_string())))
+            .transpose()?;
+
+        let gix_changes = repo
+            .diff_tree_to_tree(from_tree.as_ref(), Some(&to_tree), None)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let stats: Vec<FileLineStats> = gix_changes
+            .iter()
+            .filter_map(|change| {
+                let (path, _old_path, _change_type, is_binary, is_submodule) =
+                    change_to_file_change_parts(change)?;
+                if is_binary || is_submodule {
+                    return Some(FileLineStats {
+                        path,
+                        additions: 0,
+                        deletions: 0,
+                    });
+                }
+                let (additions, deletions) = count_lines_for_change(&repo, change);
+                Some(FileLineStats {
+                    path,
+                    additions,
+                    deletions,
+                })
+            })
+            .collect();
+
+        Ok(stats)
+    }
+
     fn refs(&self) -> Result<Vec<Ref>, GitError> {
         let repo = self.thread_local();
         let head_id = repo.head_id().ok();
-        let mut result = Vec::new();
 
         let head_ancestors: HashSet<Oid> = head_id
             .and_then(|hid| {
@@ -236,42 +311,43 @@ impl Repository for GixRepository {
             })
             .unwrap_or_default();
 
+        self.enumerate_refs(&head_ancestors)
+    }
+
+    fn ref_snapshot(&self) -> Result<HashMap<String, Oid>, GitError> {
+        let repo = self.thread_local();
         let platform = repo
             .references()
             .map_err(|e| GitError::Gix(e.to_string()))?;
         let iter = platform.all().map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let mut snapshot: HashMap<String, Oid> = HashMap::new();
         for reference in iter {
             let mut reference = reference.map_err(|e| GitError::Gix(e.to_string()))?;
-            let name = reference.name();
-            let category = name.category().map(|c| c.prefix().to_string());
-            let name_str = name.shorten().to_string();
             let target_id = match reference.peel_to_id() {
                 Ok(id) => id,
                 _ => continue,
             };
             let oid = gix_id_to_oid(&target_id);
-            let is_head = head_id
-                .as_ref()
-                .map(|hid| *hid == target_id)
-                .unwrap_or(false);
-            let annotation = if category.as_deref() == Some("refs/tags/") {
-                read_tag_annotation(&repo, &mut reference)
-            } else {
-                None
-            };
-            if let Some(r#ref) = categorize_ref_from_parts(
-                category.as_deref(),
-                name_str,
-                oid,
-                annotation,
-                is_head,
-                &head_ancestors,
-            ) {
-                result.push(r#ref);
+            let name = reference.name();
+            let full_name = name
+                .category()
+                .map(|c| format!("{}{}", c.prefix(), name.shorten()))
+                .unwrap_or_else(|| name.shorten().to_string());
+            snapshot.insert(full_name, oid);
+        }
+
+        if let Ok(stashes) = self.stash_list() {
+            for (i, stash) in stashes.iter().enumerate() {
+                snapshot.insert(format!("stash@{{{i}}}"), stash.oid);
             }
         }
 
-        Ok(result)
+        Ok(snapshot)
+    }
+
+    fn refs_with_ancestors(&self, head_ancestors: &HashSet<Oid>) -> Result<Vec<Ref>, GitError> {
+        self.enumerate_refs(head_ancestors)
     }
 
     fn stash_list(&self) -> Result<Vec<StashEntry>, GitError> {

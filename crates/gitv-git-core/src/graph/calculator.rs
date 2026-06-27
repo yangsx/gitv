@@ -265,6 +265,12 @@ impl GraphCalculator {
         }
     }
 
+    /// Consume the calculator and return the owned commits, avoiding a clone.
+    #[must_use]
+    pub fn into_commits(self) -> Vec<CommitInfo> {
+        self.commits
+    }
+
     #[must_use]
     pub fn calculate_layout(&self) -> GraphLayout {
         let commits = if self.options.hide_merges {

@@ -194,6 +194,12 @@ export interface FileChange {
 	is_submodule: boolean;
 }
 
+export interface FileLineStats {
+	path: string;
+	additions: number;
+	deletions: number;
+}
+
 export type ChangeType =
 	| 'Added'
 	| 'Deleted'
@@ -338,6 +344,7 @@ export interface LoadTiming {
 export interface InitialData {
 	repo_info: RepositoryInfo;
 	commits: CommitInfo[];
+	total_commit_count: number;
 	graph_layout: GraphLayout;
 	refs: Ref[];
 	working_changes: WorkingChangesDiff | null;

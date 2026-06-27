@@ -11,7 +11,23 @@ pub trait Repository {
         extra_tips: &[Oid],
     ) -> Result<Vec<CommitInfo>, GitError>;
     fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError>;
+
+    /// Compute per-file line counts (additions/deletions) for a commit.
+    /// This reads blob contents and is expensive — call lazily.
+    fn commit_file_counts(&self, oid: Oid) -> Result<Vec<FileLineStats>, GitError>;
     fn refs(&self) -> Result<Vec<Ref>, GitError>;
+
+    /// Lightweight ref enumeration — returns ref name → OID mapping without
+    /// computing `is_merged` (no HEAD ancestor walk).  Use this for cache
+    /// validation snapshots.
+    fn ref_snapshot(&self) -> Result<std::collections::HashMap<String, Oid>, GitError>;
+
+    /// Same as [`refs`](Self::refs) but accepts a precomputed HEAD ancestor
+    /// set, skipping the expensive internal walk.
+    fn refs_with_ancestors(
+        &self,
+        head_ancestors: &std::collections::HashSet<Oid>,
+    ) -> Result<Vec<Ref>, GitError>;
     fn stash_list(&self) -> Result<Vec<StashEntry>, GitError>;
     fn stash_diff(&self, stash_index: usize) -> Result<FileDiff, DiffError>;
     fn stash_split_diff(&self, stash_index: usize) -> Result<StashSplitDiff, DiffError>;

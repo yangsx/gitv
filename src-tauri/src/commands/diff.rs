@@ -7,7 +7,7 @@ use tracing::instrument;
 
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_commit_details"))]
-pub fn get_commit_details(
+pub async fn get_commit_details(
     state: State<'_, AppState>,
     path: String,
     oid: String,
@@ -15,7 +15,27 @@ pub fn get_commit_details(
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
-    repo.commit(commit_oid).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || repo.commit(commit_oid).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[instrument(skip(state, path), fields(command = "get_commit_file_counts"))]
+pub async fn get_commit_file_counts(
+    state: State<'_, AppState>,
+    path: String,
+    oid: String,
+) -> Result<Vec<gitv_git_core::models::FileLineStats>, String> {
+    let repo_path = PathBuf::from(&path);
+    let repo = state.get_repo(&repo_path)?;
+    let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.commit_file_counts(commit_oid)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -149,13 +169,17 @@ fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
 
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_working_changes"))]
-pub fn get_working_changes(
+pub async fn get_working_changes(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<gitv_git_core::models::WorkingChangesDiff, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
-    repo.working_changes_diff().map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.working_changes_diff().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
