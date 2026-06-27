@@ -67,6 +67,7 @@ export async function getInitialData(
 		hide_merges?: boolean;
 		orientation?: string;
 		color_mode?: string;
+		arrow_gap_threshold?: number;
 		palette?: string;
 	}
 ): Promise<InitialData> {
@@ -75,6 +76,7 @@ export async function getInitialData(
 		hide_merges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
 		color_mode: options?.color_mode ?? 'by-branch',
+		arrow_gap_threshold: options?.arrow_gap_threshold ?? null,
 		palette: options?.palette ?? null
 	});
 }
@@ -86,6 +88,7 @@ export async function getGraphLayout(
 		orientation?: string;
 		color_mode?: string;
 		palette?: string;
+		arrow_gap_threshold?: number;
 		focus_branch_oid?: string | null;
 	}
 ): Promise<GraphLayout> {
@@ -95,6 +98,7 @@ export async function getGraphLayout(
 		orientation: options?.orientation ?? 'top-to-bottom',
 		color_mode: options?.color_mode ?? 'by-branch',
 		palette: options?.palette ?? null,
+		arrow_gap_threshold: options?.arrow_gap_threshold ?? null,
 		focus_branch_oid: options?.focus_branch_oid ?? null
 	});
 }

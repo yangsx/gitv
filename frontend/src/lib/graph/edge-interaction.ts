@@ -127,7 +127,8 @@ export function computeVisibleEdgeCoords(
 	endRow: number,
 	rowHeight: number,
 	laneWidth: number,
-	paddingLeft: number
+	paddingLeft: number,
+	arrowGapThreshold: number
 ): VisibleEdgeSegment[] {
 	const result: VisibleEdgeSegment[] = [];
 	for (let i = 0; i < layout.edges.length; i++) {
@@ -136,7 +137,7 @@ export function computeVisibleEdgeCoords(
 		const maxRow = Math.max(edge.from_row, edge.to_row);
 		if (minRow > endRow || maxRow < startRow) continue;
 
-		if (hasArrowGap(edge)) {
+		if (hasArrowGap(edge, arrowGapThreshold)) {
 			const dir = edge.to_row > edge.from_row ? 1 : -1;
 			const seg1EndRow = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
 			const seg1Lo = Math.min(edge.from_row, seg1EndRow);

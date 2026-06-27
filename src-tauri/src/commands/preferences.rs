@@ -116,6 +116,8 @@ pub struct AppPreferences {
     pub high_contrast: bool,
     #[serde(default)]
     pub language: Language,
+    #[serde(default = "default_arrow_gap_threshold")]
+    pub arrow_gap_threshold: usize,
 }
 
 fn default_renderer() -> String {
@@ -124,6 +126,10 @@ fn default_renderer() -> String {
 
 fn default_font_size() -> f64 {
     13.0
+}
+
+fn default_arrow_gap_threshold() -> usize {
+    100
 }
 
 impl Default for AppPreferences {
@@ -141,6 +147,7 @@ impl Default for AppPreferences {
             font_size: default_font_size(),
             high_contrast: false,
             language: Language::En,
+            arrow_gap_threshold: default_arrow_gap_threshold(),
         }
     }
 }

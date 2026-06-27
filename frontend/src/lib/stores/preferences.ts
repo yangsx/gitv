@@ -1,7 +1,13 @@
 import { writable, get, derived } from 'svelte/store';
 import { getPreferences, setPreferences } from '$lib/bindings/commands';
 import type { AppPreferences } from '$lib/bindings/types';
-import { graphColorMode, graphHideMerges, graphOrientation, graphPalette } from './repository';
+import {
+	graphColorMode,
+	graphHideMerges,
+	graphOrientation,
+	graphPalette,
+	arrowGapThreshold
+} from './repository';
 import { locale, initLocale, setLocale, SUPPORTED_LOCALES, DEFAULT_LOCALE } from './locale';
 
 export const FONT_SIZE_MIN = 10;
@@ -20,6 +26,7 @@ const DEFAULTS: AppPreferences = {
 	theme: 'auto',
 	font_size: FONT_SIZE_DEFAULT,
 	high_contrast: false,
+	arrow_gap_threshold: 100,
 	language: 'en'
 };
 
@@ -100,6 +107,7 @@ function toPreferences(): AppPreferences {
 		theme: get(theme),
 		font_size: get(fontSize),
 		high_contrast: get(highContrast),
+		arrow_gap_threshold: get(arrowGapThreshold),
 		language: get(locale)
 	};
 }
@@ -137,6 +145,9 @@ function updateFromPreferences(p: AppPreferences) {
 		setLocale(p.language);
 	} else {
 		setLocale(DEFAULT_LOCALE);
+	}
+	if (typeof p.arrow_gap_threshold === 'number' && p.arrow_gap_threshold >= 30) {
+		arrowGapThreshold.set(p.arrow_gap_threshold);
 	}
 }
 

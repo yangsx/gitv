@@ -93,6 +93,7 @@ fn parse_graph_options(
     orientation: Option<String>,
     color_mode: Option<String>,
     palette: Option<String>,
+    arrow_gap_threshold: Option<usize>,
 ) -> GraphOptions {
     let orientation = match orientation.as_deref() {
         Some("bottom-to-top") => GraphOrientation::BottomToTop,
@@ -113,6 +114,7 @@ fn parse_graph_options(
         orientation,
         color_mode,
         palette: graph_palette,
+        arrow_gap_threshold: arrow_gap_threshold.unwrap_or(100),
     }
 }
 
@@ -153,6 +155,7 @@ struct InitialDataWork {
     warnings: Vec<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_initial_data"))]
 pub async fn get_initial_data(
@@ -162,12 +165,19 @@ pub async fn get_initial_data(
     orientation: Option<String>,
     color_mode: Option<String>,
     palette: Option<String>,
+    arrow_gap_threshold: Option<usize>,
 ) -> Result<InitialData, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
     let repo_for_blocking = Arc::clone(&repo);
     let repo_path_for_blocking = repo_path.clone();
-    let options = parse_graph_options(hide_merges, orientation, color_mode, palette);
+    let options = parse_graph_options(
+        hide_merges,
+        orientation,
+        color_mode,
+        palette,
+        arrow_gap_threshold,
+    );
 
     let work = tauri::async_runtime::spawn_blocking(move || -> Result<InitialDataWork, String> {
         let start = Instant::now();
@@ -279,6 +289,7 @@ pub fn get_commits_batch(
     state.get_commit_batch(&repo_path, offset, limit)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_graph_layout"))]
 pub async fn get_graph_layout(
@@ -288,13 +299,20 @@ pub async fn get_graph_layout(
     orientation: Option<String>,
     color_mode: Option<String>,
     palette: Option<String>,
+    arrow_gap_threshold: Option<usize>,
     focus_branch_oid: Option<String>,
 ) -> Result<gitv_git_core::graph::GraphLayout, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
     let repo_for_blocking = Arc::clone(&repo);
     let repo_path_for_blocking = repo_path.clone();
-    let options = parse_graph_options(hide_merges, orientation, color_mode, palette);
+    let options = parse_graph_options(
+        hide_merges,
+        orientation,
+        color_mode,
+        palette,
+        arrow_gap_threshold,
+    );
 
     let (layout, all_commits) = tauri::async_runtime::spawn_blocking(
         move || -> Result<(gitv_git_core::graph::GraphLayout, Vec<CommitInfo>), String> {

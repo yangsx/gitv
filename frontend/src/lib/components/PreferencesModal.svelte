@@ -3,6 +3,7 @@
 		graphColorMode,
 		graphHideMerges,
 		graphOrientation,
+		arrowGapThreshold,
 		graphPalette
 	} from '$lib/stores/repository';
 	import {
@@ -163,6 +164,14 @@
 
 	function setPalette(palette: 'default' | 'deuteranopia' | 'protanopia' | 'tritanopia') {
 		graphPalette.set(palette);
+		savePreferences();
+	}
+
+	function setArrowGapThreshold(e: Event) {
+		const target = e.target as HTMLInputElement;
+		const val = Math.max(30, Math.min(200, parseInt(target.value, 10) || 100));
+		arrowGapThreshold.set(val);
+		target.value = String(val);
 		savePreferences();
 	}
 
@@ -363,6 +372,19 @@
 									: 'translate-x-0'}"
 							></span>
 						</button>
+					</div>
+
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.arrow_gap_threshold')}</span>
+						<input
+							type="number"
+							class="w-20 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 text-right"
+							value={$arrowGapThreshold}
+							onchange={setArrowGapThreshold}
+							min="30"
+							max="200"
+							aria-label={$t('preferences.arrow_gap_threshold_aria')}
+						/>
 					</div>
 
 					<div class="flex items-center justify-between">

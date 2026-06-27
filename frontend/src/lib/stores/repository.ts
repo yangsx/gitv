@@ -23,6 +23,7 @@ export const graphOrientation = writable<'top-to-bottom' | 'bottom-to-top'>('top
 export const graphPalette = writable<'default' | 'deuteranopia' | 'protanopia' | 'tritanopia'>(
 	'default'
 );
+export const arrowGapThreshold = writable(100);
 export const sortBy = writable<'date' | 'author' | 'sha'>('date');
 export const sortAsc = writable(false);
 export const searchShowMode = writable<'insitu' | 'hide-nonhits'>('hide-nonhits');

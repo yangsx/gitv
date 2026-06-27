@@ -38,6 +38,7 @@ pub struct GraphOptions {
     pub orientation: GraphOrientation,
     pub color_mode: GraphColorMode,
     pub palette: GraphPalette,
+    pub arrow_gap_threshold: usize,
 }
 
 impl Default for GraphOptions {
@@ -47,6 +48,7 @@ impl Default for GraphOptions {
             orientation: GraphOrientation::TopToBottom,
             color_mode: GraphColorMode::ByBranch,
             palette: GraphPalette::Default,
+            arrow_gap_threshold: 100,
         }
     }
 }

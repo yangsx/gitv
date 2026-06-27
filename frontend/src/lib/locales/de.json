@@ -39,6 +39,8 @@
 		"palette_aria": "Farbpalette",
 		"hide_merges": "Merge-Commits ausblenden",
 		"hide_merges_aria": "Merge-Commits ausblenden umschalten",
+		"arrow_gap_threshold": "Pfeil-Lückenschwelle",
+		"arrow_gap_threshold_aria": "Pfeil-Lückenschwelle (30-200)",
 		"renderer": "Grafik-Renderer",
 		"renderer_wgpu": "GPU (wgpu)",
 		"renderer_canvas2d": "Canvas 2D",

@@ -370,6 +370,7 @@ export interface AppPreferences {
 	font_size: number;
 	high_contrast: boolean;
 	language: string;
+	arrow_gap_threshold: number;
 }
 
 export interface RenderNode {

@@ -12,6 +12,8 @@
 		nodeCenterY,
 		nodeHitTest,
 		colorToCSS,
+		hasArrowGap,
+		ARROW_SEGMENT_LENGTH,
 		SELECT_RGB,
 		COMPARISON_RGB
 	} from '$lib/graph/graph-math';
@@ -23,11 +25,11 @@
 		drawArrowHead,
 		type VisibleEdgeSegment
 	} from '$lib/graph/edge-interaction';
-	import { hasArrowGap, ARROW_SEGMENT_LENGTH } from '$lib/graph/graph-math';
 	import {
 		GRAPH_PADDING_LEFT as PADDING_LEFT,
 		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE
 	} from '$lib/constants';
+	import { arrowGapThreshold } from '$lib/stores/repository';
 
 	const EDGE_BUCKET_SIZE = 64;
 
@@ -91,9 +93,10 @@
 		const totalRows = layout.nodes.length;
 		const numBuckets = Math.max(1, Math.ceil(totalRows / EDGE_BUCKET_SIZE));
 		const buckets: BucketEntry[][] = Array.from({ length: numBuckets }, () => []);
+		const threshold = $arrowGapThreshold;
 		for (let i = 0; i < layout.edges.length; i++) {
 			const edge = layout.edges[i];
-			if (hasArrowGap(edge)) {
+			if (hasArrowGap(edge, threshold)) {
 				const dir = edge.to_row > edge.from_row ? 1 : -1;
 				const seg1End = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
 				const seg2Start = edge.to_row - dir * ARROW_SEGMENT_LENGTH;

@@ -37,6 +37,7 @@
 		graphHideMerges,
 		graphOrientation,
 		graphPalette,
+		arrowGapThreshold,
 		operationState,
 		sortBy,
 		sortAsc,
@@ -298,6 +299,7 @@
 			const data = await getInitialData(path, {
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
+				arrow_gap_threshold: $arrowGapThreshold,
 				palette: $graphPalette
 			});
 			const repoRoot = data.repo_info.path;
@@ -406,6 +408,7 @@
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
 				palette: $graphPalette,
+				arrow_gap_threshold: $arrowGapThreshold,
 				focus_branch_oid: focusBranchOid
 			});
 			if (gen !== layoutGeneration) return;
@@ -498,6 +501,7 @@
 		void $graphColorMode;
 		void $graphOrientation;
 		void $graphPalette;
+		void $arrowGapThreshold;
 		untrack(() => {
 			if (get(repoInfo)) {
 				reloadLayout();

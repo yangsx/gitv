@@ -226,7 +226,6 @@ const STASH_COLOR: Color = Color {
     a: 255,
 };
 
-const MINGAPLEN: usize = 100;
 const ARROW_SEG_LEN: usize = 3;
 
 fn palette_for(mode: GraphPalette) -> &'static [Color] {
@@ -417,7 +416,7 @@ impl GraphCalculator {
             }
         }
 
-        Self::compact_columns(&mut graph_data, &commits);
+        Self::compact_columns(&mut graph_data, &commits, self.options.arrow_gap_threshold);
 
         let total_columns = graph_data
             .values()
@@ -912,7 +911,11 @@ impl GraphCalculator {
     /// hundreds of rows. This post-processing pass identifies idle stretches
     /// (where long edges only occupy arrow-gap segments at the endpoints)
     /// and merges non-overlapping columns together.
-    fn compact_columns(graph_data: &mut HashMap<Oid, CommitGraphData>, commits: &[CommitInfo]) {
+    fn compact_columns(
+        graph_data: &mut HashMap<Oid, CommitGraphData>,
+        commits: &[CommitInfo],
+        arrow_gap_threshold: usize,
+    ) {
         let max_col = graph_data.values().map(|gd| gd.column).max().unwrap_or(0);
         let num_cols = max_col + 1;
         if num_cols <= 1 {
@@ -948,19 +951,19 @@ impl GraphCalculator {
 
                 if c_gd.column == p_gd.column {
                     // Same-column edge: full span (or arrow-gap segments for long edges)
-                    if span > MINGAPLEN {
+                    if span > arrow_gap_threshold {
                         column_ranges[c_gd.column].push((r_min, r_min + ARROW_SEG_LEN));
                         column_ranges[c_gd.column].push((r_max - ARROW_SEG_LEN, r_max));
                     } else {
                         column_ranges[c_gd.column].push((r_min, r_max));
                     }
-                } else if span <= MINGAPLEN && span > 1 {
+                } else if span <= arrow_gap_threshold && span > 1 {
                     // Cross-column short edge: after merging this becomes a
                     // visible same-column line, so reserve the interior to
                     // prevent lines passing through unrelated nodes.
                     column_ranges[c_gd.column].push((r_min + 1, r_max - 1));
                 }
-                // Cross-column long edges (> MINGAPLEN): no interior needed.
+                // Cross-column long edges (> arrow_gap_threshold): no interior needed.
                 // After merging they become arrow-gap edges with only small
                 // segments at the endpoints — the large gap is invisible.
             }
@@ -1754,6 +1757,7 @@ mod tests {
 
     #[test]
     fn property_compaction_preserves_layout_validity() {
+        const DEFAULT_THRESHOLD: usize = 100;
         let test_cases = vec![
             // Simple branch + merge
             vec![
@@ -1813,7 +1817,7 @@ mod tests {
                 let span = r_max - r_min;
 
                 // Determine effective occupied ranges
-                let occupied: Vec<(usize, usize)> = if span > MINGAPLEN {
+                let occupied: Vec<(usize, usize)> = if span > DEFAULT_THRESHOLD {
                     vec![
                         (r_min, r_min + ARROW_SEG_LEN),
                         (r_max - ARROW_SEG_LEN, r_max),

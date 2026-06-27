@@ -39,6 +39,8 @@
 		"palette_aria": "调色板",
 		"hide_merges": "隐藏合并提交",
 		"hide_merges_aria": "切换隐藏合并提交",
+		"arrow_gap_threshold": "箭头间隙阈值",
+		"arrow_gap_threshold_aria": "箭头间隙阈值 (30-200)",
 		"renderer": "图形渲染器",
 		"renderer_wgpu": "GPU (wgpu)",
 		"renderer_canvas2d": "Canvas 2D",
