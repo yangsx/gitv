@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { renderer } from '$lib/stores/preferences';
 	import type { GraphLayout, CommitInfo } from '$lib/bindings/types';
+	import { GRAPH_PADDING_LEFT, WGPU_MAX_TEXTURE_DIMENSION } from '$lib/constants';
 	import CommitGraph from '../CommitGraph.svelte';
 	import WgpuGraph from './WgpuGraph.svelte';
 
@@ -33,9 +34,15 @@
 	}: Props = $props();
 
 	let useWgpu = $derived($renderer === 'wgpu');
+	let canUseWgpu = $derived.by(() => {
+		if (!useWgpu) return false;
+		const dpr = window.devicePixelRatio || 1;
+		const physW = Math.round(layout.total_columns * laneWidth + GRAPH_PADDING_LEFT + 10) * dpr;
+		return physW <= WGPU_MAX_TEXTURE_DIMENSION;
+	});
 </script>
 
-{#if useWgpu}
+{#if canUseWgpu}
 	<WgpuGraph
 		{layout}
 		{commits}

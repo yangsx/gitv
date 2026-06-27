@@ -193,6 +193,14 @@ fn tessellate_edge(
 /// so they become `Err(String)` instead of aborting the process under
 /// `panic = "abort"`.
 fn render_inner(wgpu_state: &WgpuState, input: &RenderGraphInput) -> Result<Vec<u8>, String> {
+    const MAX_TEXTURE_DIM: u32 = 8192;
+    if input.width > MAX_TEXTURE_DIM || input.height > MAX_TEXTURE_DIM {
+        return Err(format!(
+            "graph dimensions {}x{} exceed GPU texture limit {}px \
+             — too many parallel branches for wgpu renderer, use Canvas 2D",
+            input.width, input.height, MAX_TEXTURE_DIM
+        ));
+    }
     wgpu_state.ensure_init(input.width, input.height)?;
 
     let mut guard = wgpu_state.renderer.lock().map_err(|e| e.to_string())?;

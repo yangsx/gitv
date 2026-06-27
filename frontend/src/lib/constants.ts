@@ -25,6 +25,9 @@ export const GRAPH_LANE_WIDTH = 24;
 export const GRAPH_MAX_VIEWPORT_RATIO = 0.5;
 export const GRAPH_EDGE_HIT_TOLERANCE = 6;
 
+// ── wgpu limits ───────────────────────────────────────────────
+export const WGPU_MAX_TEXTURE_DIMENSION = 8192;
+
 // ── Diff loading ──────────────────────────────────────────────
 export const DIFF_FILE_LIMIT = 100;
 export const DIFF_CONCURRENCY = 4;
