@@ -5,7 +5,8 @@
 		RenderGraphInput,
 		RenderNode,
 		RenderEdge,
-		CommitInfo
+		CommitInfo,
+		Edge
 	} from '$lib/bindings/types';
 	import {
 		columnCenterX,
@@ -13,6 +14,7 @@
 		nodeHitTest,
 		colorToCSS,
 		hasArrowGap,
+		isCrossColumn,
 		ARROW_SEGMENT_LENGTH,
 		SELECT_RGB,
 		COMPARISON_RGB
@@ -32,6 +34,35 @@
 	import { arrowGapThreshold } from '$lib/stores/repository';
 
 	const EDGE_BUCKET_SIZE = 64;
+
+	function makeSeg(
+		edge: Edge,
+		idx: number,
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		arrow: 'down' | 'up' | null,
+		fromRow: number,
+		fromCol: number,
+		toRow: number,
+		toCol: number,
+		isEdgeStart: boolean,
+		isEdgeEnd: boolean
+	): VisibleEdgeSegment {
+		return {
+			edge,
+			idx,
+			coords: { x1, y1, x2, y2, sameColumn: fromCol === toCol },
+			arrow,
+			fromRow,
+			fromCol,
+			toRow,
+			toCol,
+			isEdgeStart,
+			isEdgeEnd
+		};
+	}
 
 	interface Props {
 		layout: GraphLayout;
@@ -86,7 +117,11 @@
 		edgeIdx: number;
 		fromRow: number;
 		toRow: number;
+		fromCol: number;
+		toCol: number;
 		arrow: 'down' | 'up' | null;
+		isEdgeStart: boolean;
+		isEdgeEnd: boolean;
 	};
 
 	let edgeBuckets = $derived.by<BucketEntry[][]>(() => {
@@ -96,45 +131,153 @@
 		const threshold = $arrowGapThreshold;
 		for (let i = 0; i < layout.edges.length; i++) {
 			const edge = layout.edges[i];
-			if (hasArrowGap(edge, threshold)) {
-				const dir = edge.to_row > edge.from_row ? 1 : -1;
-				const seg1End = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
-				const seg2Start = edge.to_row - dir * ARROW_SEGMENT_LENGTH;
-				const e1Min = Math.min(edge.from_row, seg1End);
-				const e1Max = Math.max(edge.from_row, seg1End);
-				const e2Min = Math.min(seg2Start, edge.to_row);
-				const e2Max = Math.max(seg2Start, edge.to_row);
-				for (
-					let b = Math.floor(e1Min / EDGE_BUCKET_SIZE);
-					b <= Math.floor(e1Max / EDGE_BUCKET_SIZE) && b < numBuckets;
-					b++
-				) {
-					if (b >= 0)
-						buckets[b].push({ edgeIdx: i, fromRow: edge.from_row, toRow: seg1End, arrow: 'down' });
-				}
-				for (
-					let b = Math.floor(e2Min / EDGE_BUCKET_SIZE);
-					b <= Math.floor(e2Max / EDGE_BUCKET_SIZE) && b < numBuckets;
-					b++
-				) {
-					if (b >= 0)
-						buckets[b].push({ edgeIdx: i, fromRow: seg2Start, toRow: edge.to_row, arrow: 'up' });
+			if (!isCrossColumn(edge)) {
+				// Same-column edge
+				if (hasArrowGap(edge, threshold)) {
+					const dir = edge.to_row > edge.from_row ? 1 : -1;
+					const seg1End = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
+					const seg2Start = edge.to_row - dir * ARROW_SEGMENT_LENGTH;
+					const e1Min = Math.min(edge.from_row, seg1End);
+					const e1Max = Math.max(edge.from_row, seg1End);
+					const e2Min = Math.min(seg2Start, edge.to_row);
+					const e2Max = Math.max(seg2Start, edge.to_row);
+					for (
+						let b = Math.floor(e1Min / EDGE_BUCKET_SIZE);
+						b <= Math.floor(e1Max / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: edge.from_row,
+								toRow: seg1End,
+								fromCol: edge.from_col,
+								toCol: edge.from_col,
+								arrow: 'down',
+								isEdgeStart: true,
+								isEdgeEnd: false
+							});
+					}
+					for (
+						let b = Math.floor(e2Min / EDGE_BUCKET_SIZE);
+						b <= Math.floor(e2Max / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: seg2Start,
+								toRow: edge.to_row,
+								fromCol: edge.to_col,
+								toCol: edge.to_col,
+								arrow: 'up',
+								isEdgeStart: false,
+								isEdgeEnd: true
+							});
+					}
+				} else {
+					const eMin = Math.min(edge.from_row, edge.to_row);
+					const eMax = Math.max(edge.from_row, edge.to_row);
+					for (
+						let b = Math.floor(eMin / EDGE_BUCKET_SIZE);
+						b <= Math.floor(eMax / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: edge.from_row,
+								toRow: edge.to_row,
+								fromCol: edge.from_col,
+								toCol: edge.to_col,
+								arrow: null,
+								isEdgeStart: true,
+								isEdgeEnd: true
+							});
+					}
 				}
 			} else {
-				const eMin = Math.min(edge.from_row, edge.to_row);
-				const eMax = Math.max(edge.from_row, edge.to_row);
-				for (
-					let b = Math.floor(eMin / EDGE_BUCKET_SIZE);
-					b <= Math.floor(eMax / EDGE_BUCKET_SIZE) && b < numBuckets;
-					b++
-				) {
-					if (b >= 0)
-						buckets[b].push({
-							edgeIdx: i,
-							fromRow: edge.from_row,
-							toRow: edge.to_row,
-							arrow: null
-						});
+				// Cross-column edge: orthogonal path — two segments
+				if (edge.edge_type === 'Branch') {
+					// Vertical segment in child's column
+					const vMin = Math.min(edge.from_row, edge.to_row);
+					const vMax = Math.max(edge.from_row, edge.to_row);
+					for (
+						let b = Math.floor(vMin / EDGE_BUCKET_SIZE);
+						b <= Math.floor(vMax / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: edge.from_row,
+								toRow: edge.to_row,
+								fromCol: edge.from_col,
+								toCol: edge.from_col,
+								arrow: null,
+								isEdgeStart: false,
+								isEdgeEnd: false
+							});
+					}
+					// Horizontal segment at parent's row
+					const hRow = edge.to_row;
+					for (
+						let b = Math.floor(hRow / EDGE_BUCKET_SIZE);
+						b <= Math.floor(hRow / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: hRow,
+								toRow: hRow,
+								fromCol: edge.from_col,
+								toCol: edge.to_col,
+								arrow: null,
+								isEdgeStart: false,
+								isEdgeEnd: false
+							});
+					}
+				} else {
+					// Horizontal segment at child's row
+					const hRow = edge.from_row;
+					for (
+						let b = Math.floor(hRow / EDGE_BUCKET_SIZE);
+						b <= Math.floor(hRow / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: hRow,
+								toRow: hRow,
+								fromCol: edge.from_col,
+								toCol: edge.to_col,
+								arrow: null,
+								isEdgeStart: false,
+								isEdgeEnd: false
+							});
+					}
+					// Vertical segment in parent's column
+					const vMin = Math.min(edge.from_row, edge.to_row);
+					const vMax = Math.max(edge.from_row, edge.to_row);
+					for (
+						let b = Math.floor(vMin / EDGE_BUCKET_SIZE);
+						b <= Math.floor(vMax / EDGE_BUCKET_SIZE) && b < numBuckets;
+						b++
+					) {
+						if (b >= 0)
+							buckets[b].push({
+								edgeIdx: i,
+								fromRow: edge.from_row,
+								toRow: edge.to_row,
+								fromCol: edge.to_col,
+								toCol: edge.to_col,
+								arrow: null,
+								isEdgeStart: false,
+								isEdgeEnd: false
+							});
+					}
 				}
 			}
 		}
@@ -148,32 +291,350 @@
 		const startB = Math.max(0, Math.floor(visibleStart / EDGE_BUCKET_SIZE));
 		const endB = Math.min(edgeBuckets.length - 1, Math.floor(visibleEnd / EDGE_BUCKET_SIZE));
 		const seen: Record<string, true> = {};
+		const crossColumnDone: Record<number, true> = {};
 		const result: VisibleEdgeSegment[] = [];
+		const chamfer = laneWidth * 0.5;
 		for (let b = startB; b <= endB; b++) {
 			for (const entry of edgeBuckets[b]) {
-				const key = `${entry.edgeIdx}:${entry.arrow}`;
+				const key = `${entry.edgeIdx}:${entry.fromRow}:${entry.toRow}:${entry.fromCol}:${entry.toCol}`;
 				if (seen[key]) continue;
 				seen[key] = true;
 				const edge = layout.edges[entry.edgeIdx];
 				const minR = Math.min(entry.fromRow, entry.toRow);
 				const maxR = Math.max(entry.fromRow, entry.toRow);
 				if (minR > visibleEnd || maxR < visibleStart) continue;
-				result.push({
-					edge,
-					idx: entry.edgeIdx,
-					coords: {
-						x1: columnCenterX(edge.from_col, laneWidth, PADDING_LEFT),
-						y1: nodeCenterY(entry.fromRow, visibleStart, rowHeight),
-						x2: columnCenterX(edge.to_col, laneWidth, PADDING_LEFT),
-						y2: nodeCenterY(entry.toRow, visibleStart, rowHeight),
-						sameColumn: edge.from_col === edge.to_col
-					},
-					arrow: entry.arrow,
-					fromRow: entry.fromRow,
-					fromCol: edge.from_col,
-					toRow: entry.toRow,
-					toCol: edge.to_col
-				});
+				if (isCrossColumn(edge)) {
+					if (crossColumnDone[entry.edgeIdx]) continue;
+					crossColumnDone[entry.edgeIdx] = true;
+					const cX = columnCenterX(edge.from_col, laneWidth, PADDING_LEFT);
+					const pX = columnCenterX(edge.to_col, laneWidth, PADDING_LEFT);
+					const cY = nodeCenterY(edge.from_row, visibleStart, rowHeight);
+					const pY = nodeCenterY(edge.to_row, visibleStart, rowHeight);
+
+					if (hasArrowGap(edge, $arrowGapThreshold)) {
+						// Long cross-column edge: orthogonal routing with arrow gaps
+						const dir = edge.to_row > edge.from_row ? 1 : -1;
+						const dxSign = edge.to_col > edge.from_col ? 1 : -1;
+						const seg1EndRow = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
+						const seg2StartRow = edge.to_row - dir * ARROW_SEGMENT_LENGTH;
+						const seg1Y = nodeCenterY(seg1EndRow, visibleStart, rowHeight);
+						const seg2Y = nodeCenterY(seg2StartRow, visibleStart, rowHeight);
+						const chamfer = laneWidth * 0.5;
+
+						if (edge.edge_type === 'Branch') {
+							// 1. 'down' at child's column
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									cY,
+									cX,
+									seg1Y,
+									'down',
+									edge.from_row,
+									edge.from_col,
+									seg1EndRow,
+									edge.from_col,
+									true,
+									false
+								)
+							);
+							// 2. vertical in child's column
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									seg1Y,
+									cX,
+									seg2Y - dir * chamfer,
+									null,
+									seg1EndRow,
+									edge.from_col,
+									seg2StartRow,
+									edge.from_col,
+									false,
+									false
+								)
+							);
+							// 3. diagonal chamfer at corner
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									seg2Y - dir * chamfer,
+									cX + dxSign * chamfer,
+									seg2Y,
+									null,
+									seg2StartRow,
+									edge.from_col,
+									seg2StartRow,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							// 4. horizontal at parent-3 row
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX + dxSign * chamfer,
+									seg2Y,
+									pX,
+									seg2Y,
+									null,
+									seg2StartRow,
+									edge.from_col,
+									seg2StartRow,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							// 5. 'up' at parent's column
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									pX,
+									seg2Y,
+									pX,
+									pY,
+									'up',
+									seg2StartRow,
+									edge.to_col,
+									edge.to_row,
+									edge.to_col,
+									false,
+									true
+								)
+							);
+						} else {
+							// 1. 'down' at child's column
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									cY,
+									cX,
+									seg1Y,
+									'down',
+									edge.from_row,
+									edge.from_col,
+									seg1EndRow,
+									edge.from_col,
+									true,
+									false
+								)
+							);
+							// 2. horizontal at child+3 row
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									seg1Y,
+									pX - dxSign * chamfer,
+									seg1Y,
+									null,
+									seg1EndRow,
+									edge.from_col,
+									seg1EndRow,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							// 3. diagonal chamfer at corner
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									pX - dxSign * chamfer,
+									seg1Y,
+									pX,
+									seg1Y + dir * chamfer,
+									null,
+									seg1EndRow,
+									edge.from_col,
+									seg1EndRow,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							// 4. vertical in parent's column
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									pX,
+									seg1Y + dir * chamfer,
+									pX,
+									seg2Y,
+									null,
+									seg1EndRow,
+									edge.to_col,
+									seg2StartRow,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							// 5. 'up' at parent's column
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									pX,
+									seg2Y,
+									pX,
+									pY,
+									'up',
+									seg2StartRow,
+									edge.to_col,
+									edge.to_row,
+									edge.to_col,
+									false,
+									true
+								)
+							);
+						}
+					} else {
+						// Short cross-column edge: chamfered orthogonal path
+						const dxSign = edge.to_col > edge.from_col ? 1 : -1;
+						const drSign = edge.to_row > edge.from_row ? 1 : -1;
+						if (edge.edge_type === 'Branch') {
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									cY,
+									cX,
+									pY - drSign * chamfer,
+									null,
+									edge.from_row,
+									edge.from_col,
+									edge.to_row,
+									edge.from_col,
+									true,
+									false
+								)
+							);
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									pY - drSign * chamfer,
+									cX + dxSign * chamfer,
+									pY,
+									null,
+									edge.to_row,
+									edge.from_col,
+									edge.to_row,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX + dxSign * chamfer,
+									pY,
+									pX,
+									pY,
+									null,
+									edge.to_row,
+									edge.from_col,
+									edge.to_row,
+									edge.to_col,
+									false,
+									true
+								)
+							);
+						} else {
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									cX,
+									cY,
+									pX - dxSign * chamfer,
+									cY,
+									null,
+									edge.from_row,
+									edge.from_col,
+									edge.from_row,
+									edge.to_col,
+									true,
+									false
+								)
+							);
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									pX - dxSign * chamfer,
+									cY,
+									pX,
+									cY + drSign * chamfer,
+									null,
+									edge.from_row,
+									edge.to_col,
+									edge.to_row,
+									edge.to_col,
+									false,
+									false
+								)
+							);
+							result.push(
+								makeSeg(
+									edge,
+									entry.edgeIdx,
+									pX,
+									cY + drSign * chamfer,
+									pX,
+									pY,
+									null,
+									edge.from_row,
+									edge.to_col,
+									edge.to_row,
+									edge.to_col,
+									false,
+									true
+								)
+							);
+						}
+					}
+				} else {
+					const sameCol = entry.fromCol === entry.toCol;
+					result.push({
+						edge,
+						idx: entry.edgeIdx,
+						coords: {
+							x1: columnCenterX(entry.fromCol, laneWidth, PADDING_LEFT),
+							y1: nodeCenterY(entry.fromRow, visibleStart, rowHeight),
+							x2: columnCenterX(entry.toCol, laneWidth, PADDING_LEFT),
+							y2: nodeCenterY(entry.toRow, visibleStart, rowHeight),
+							sameColumn: sameCol
+						},
+						arrow: entry.arrow,
+						fromRow: entry.fromRow,
+						fromCol: entry.fromCol,
+						toRow: entry.toRow,
+						toCol: entry.toCol,
+						isEdgeStart: entry.isEdgeStart,
+						isEdgeEnd: entry.isEdgeEnd
+					});
+				}
 			}
 		}
 		return result;
@@ -232,21 +693,23 @@
 	}
 
 	function buildEdges(segments: VisibleEdgeSegment[]): RenderEdge[] {
-		return segments.map((seg) => {
-			const e = seg.edge;
-			return {
-				from_row: seg.fromRow,
-				from_col: seg.fromCol,
-				to_row: seg.toRow,
-				to_col: seg.toCol,
-				color_r: e.color.r,
-				color_g: e.color.g,
-				color_b: e.color.b,
-				is_dimmed: e.is_dimmed,
-				edge_type: seg.arrow !== null ? ('Straight' as const) : e.edge_type,
-				edge_style: e.edge_style
-			};
-		});
+		return segments
+			.filter((seg) => !isCrossColumn(seg.edge))
+			.map((seg) => {
+				const e = seg.edge;
+				return {
+					from_row: seg.fromRow,
+					from_col: seg.fromCol,
+					to_row: seg.toRow,
+					to_col: seg.toCol,
+					color_r: e.color.r,
+					color_g: e.color.g,
+					color_b: e.color.b,
+					is_dimmed: e.is_dimmed,
+					edge_type: 'Straight' as const,
+					edge_style: e.edge_style
+				};
+			});
 	}
 
 	let pendingRender = 0;
@@ -339,9 +802,20 @@
 	function overdrawOverlay() {
 		if (!ctx) return;
 		ctx.setTransform(dpr, 0, 0, dpr, -hScrollLeft * dpr, 0);
-		for (const { edge, idx, coords, arrow } of visibleEdgeData) {
+		for (const seg of visibleEdgeData) {
+			const { edge, idx, coords, arrow, isEdgeStart, isEdgeEnd } = seg;
 			const color = colorToCSS(edge.color);
 			const alpha = edge.is_dimmed ? 0.35 : 0.8;
+
+			if (isCrossColumn(edge)) {
+				ctx.globalAlpha = alpha;
+				ctx.strokeStyle = color;
+				ctx.lineWidth = 1.5;
+				ctx.beginPath();
+				ctx.moveTo(coords.x1, coords.y1);
+				ctx.lineTo(coords.x2, coords.y2);
+				ctx.stroke();
+			}
 
 			if (arrow === 'down') {
 				const headDir = coords.y2 > coords.y1 ? 'down' : 'up';
@@ -353,10 +827,10 @@
 
 			if (idx === selectedEdgeIdx) {
 				drawEdgeHighlight(ctx, coords, color, 3.5);
-				drawEdgeEndpoints(ctx, coords, color, nodeRadius, arrow);
+				drawEdgeEndpoints(ctx, coords, color, nodeRadius, arrow, isEdgeStart, isEdgeEnd);
 			} else if (idx === hoveredEdgeIdx) {
 				drawEdgeHighlight(ctx, coords, color, 2.5);
-				drawEdgeEndpoints(ctx, coords, color, nodeRadius, arrow);
+				drawEdgeEndpoints(ctx, coords, color, nodeRadius, arrow, isEdgeStart, isEdgeEnd);
 			}
 		}
 	}

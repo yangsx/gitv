@@ -1,4 +1,4 @@
-import type { Color, Edge } from '$lib/bindings/types';
+import type { Color, Edge, EdgeType } from '$lib/bindings/types';
 
 // Selection highlight colors (as hex RGB tuples)
 export const SELECT_RGB: [number, number, number] = [0x60, 0xa5, 0xfa];
@@ -30,6 +30,12 @@ export const ARROW_SEGMENT_LENGTH = 3;
 export function hasArrowGap(edge: Edge, threshold: number): boolean {
 	return Math.abs(edge.to_row - edge.from_row) > threshold;
 }
+
+export function isCrossColumn(edge: Edge): boolean {
+	return edge.from_col !== edge.to_col;
+}
+
+export type { EdgeType };
 
 export function nodeHitTest(
 	mx: number,

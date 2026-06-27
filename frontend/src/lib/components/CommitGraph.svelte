@@ -345,15 +345,8 @@
 			ctx.setLineDash([]);
 		}
 
-		if (coords.sameColumn) {
-			ctx.moveTo(x1, y1);
-			ctx.lineTo(x2, y2);
-		} else {
-			const midX = (x1 + x2) / 2;
-			const dy = y2 - y1;
-			ctx.moveTo(x1, y1);
-			ctx.bezierCurveTo(midX, y1 + dy * 0.25, midX, y2 - dy * 0.25, x2, y2);
-		}
+		ctx.moveTo(x1, y1);
+		ctx.lineTo(x2, y2);
 
 		ctx.stroke();
 		ctx.setLineDash([]);
@@ -369,12 +362,12 @@
 		if (isHovered || isSelected) {
 			ctx.globalAlpha = 0.8;
 			ctx.lineWidth = 1.5;
-			if (arrow === null || arrow === 'down') {
+			if (seg.isEdgeStart) {
 				ctx.beginPath();
 				ctx.arc(x1, y1, sNodeRadius + 3, 0, Math.PI * 2);
 				ctx.stroke();
 			}
-			if (arrow === null || arrow === 'up') {
+			if (seg.isEdgeEnd) {
 				ctx.beginPath();
 				ctx.arc(x2, y2, sNodeRadius + 3, 0, Math.PI * 2);
 				ctx.stroke();

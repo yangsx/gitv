@@ -923,12 +923,11 @@ impl GraphCalculator {
         }
 
         // Step 1: Build effective occupied ranges per column.
-        // Only nodes and same-column edges contribute to occupied ranges.
-        // Cross-column edges are rendered as bezier curves and do not
-        // block the source column for their full span — after merging,
-        // they become same-column edges, which is visually acceptable
-        // (lines passing through nodes of other branches is normal in
-        // dense graphs, same as gitk).
+        // Nodes and edges occupy space in their column. With orthogonal
+        // edge routing, cross-column edges draw a vertical segment in the
+        // child's column from the child up to the parent's row before
+        // turning horizontal, so we must register the full vertical span
+        // to prevent unrelated nodes from being placed there.
         let mut column_ranges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); num_cols];
 
         for gd in graph_data.values() {
@@ -940,7 +939,7 @@ impl GraphCalculator {
                 Some(gd) => gd,
                 None => continue,
             };
-            for &p_oid in &c.parent_oids {
+            for (pi, &p_oid) in c.parent_oids.iter().enumerate() {
                 let p_gd = match graph_data.get(&p_oid) {
                     Some(gd) => gd,
                     None => continue,
@@ -957,15 +956,25 @@ impl GraphCalculator {
                     } else {
                         column_ranges[c_gd.column].push((r_min, r_max));
                     }
-                } else if span <= arrow_gap_threshold && span > 1 {
-                    // Cross-column short edge: after merging this becomes a
-                    // visible same-column line, so reserve the interior to
-                    // prevent lines passing through unrelated nodes.
-                    column_ranges[c_gd.column].push((r_min + 1, r_max - 1));
+                } else {
+                    // Cross-column edge
+                    if span > arrow_gap_threshold {
+                        // Long edge: arrow-gap with orthogonal routing.
+                        // 'down' in child's column, 'up' in parent's column.
+                        // Middle vertical in the routing column (Branch=child, Merge=parent).
+                        column_ranges[c_gd.column].push((r_min, r_min + ARROW_SEG_LEN));
+                        column_ranges[p_gd.column].push((r_max - ARROW_SEG_LEN, r_max));
+                        let vert_col = if pi == 0 { c_gd.column } else { p_gd.column };
+                        column_ranges[vert_col]
+                            .push((r_min + ARROW_SEG_LEN, r_max - ARROW_SEG_LEN));
+                    } else {
+                        // Short edge: orthogonal chamfered routing.
+                        // Vertical runs in child's column for Branch,
+                        // in parent's column for Merge.
+                        let vert_col = if pi == 0 { c_gd.column } else { p_gd.column };
+                        column_ranges[vert_col].push((r_min, r_max));
+                    }
                 }
-                // Cross-column long edges (> arrow_gap_threshold): no interior needed.
-                // After merging they become arrow-gap edges with only small
-                // segments at the endpoints — the large gap is invisible.
             }
         }
 
