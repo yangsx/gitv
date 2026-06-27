@@ -96,7 +96,14 @@
 		}
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, -hScrollLeft * devicePixelRatio, 0);
+		ctx.setTransform(
+			devicePixelRatio,
+			0,
+			0,
+			devicePixelRatio,
+			-hScrollLeft * sc * devicePixelRatio,
+			0
+		);
 
 		const startRow = visibleStart;
 		const endRow = visibleEnd;
@@ -152,37 +159,41 @@
 
 	function handleClick(e: MouseEvent) {
 		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left + hScrollLeft;
-		const my = e.clientY - rect.top;
+		const mouseCSS = e.clientX - rect.left;
 		const sc = scale;
 		const sLaneWidth = laneWidth * sc;
 		const sNodeRadius = nodeRadius * sc;
 		const sPadding = PADDING_LEFT * sc;
 		const hitRadius = sNodeRadius + 4 * sc;
+		const mxScaled = mouseCSS + hScrollLeft * sc;
+		const mxUnscaled = mouseCSS + hScrollLeft;
+		const my = e.clientY - rect.top;
 
 		for (const node of layout.nodes) {
 			if (node.row < visibleStart || node.row > visibleEnd) continue;
 			const nx = columnCenterX(node.column, sLaneWidth, sPadding);
 			const ny = nodeCenterY(node.row, visibleStart, rowHeight);
-			if (Math.abs(mx - nx) < hitRadius && Math.abs(my - ny) < hitRadius) {
+			if (Math.abs(mxScaled - nx) < hitRadius && Math.abs(my - ny) < hitRadius) {
 				selectedEdgeIdx = null;
 				onSelect?.(node.oid, e.ctrlKey || e.metaKey);
 				return;
 			}
 		}
 
-		if (!handleEdgeClick(mx, my)) {
+		if (!handleEdgeClick(mxUnscaled, my)) {
 			selectedEdgeIdx = null;
 		}
 	}
 
 	function handleMouseMove(e: MouseEvent) {
 		const rect = canvas.getBoundingClientRect();
+		const mouseCSS = e.clientX - rect.left;
 		const sc = scale;
 		const sLaneWidth = laneWidth * sc;
 		const sNodeRadius = nodeRadius * sc;
 		const sPadding = PADDING_LEFT * sc;
-		const x = e.clientX - rect.left + hScrollLeft;
+		const xScaled = mouseCSS + hScrollLeft * sc;
+		const xUnscaled = mouseCSS + hScrollLeft;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
 		const hitRadius = sNodeRadius + 4 * sc;
@@ -191,7 +202,7 @@
 			if (node.row === row) {
 				const nx = columnCenterX(node.column, sLaneWidth, sPadding);
 				const ny = nodeCenterY(node.row, visibleStart, rowHeight);
-				if (Math.abs(x - nx) < hitRadius && Math.abs(y - ny) < hitRadius) {
+				if (Math.abs(xScaled - nx) < hitRadius && Math.abs(y - ny) < hitRadius) {
 					if (node.is_stash) {
 						const stash = layout.stash_markers.find((s) => s.stash_oid === node.oid);
 						tooltip = {
@@ -217,7 +228,7 @@
 
 		let newHovered: number | null = null;
 		for (const { idx, coords } of visibleEdgeData) {
-			if (edgeHitTest(x, y, coords, EDGE_HIT_TOLERANCE)) {
+			if (edgeHitTest(xUnscaled, y, coords, EDGE_HIT_TOLERANCE)) {
 				newHovered = idx;
 				break;
 			}
