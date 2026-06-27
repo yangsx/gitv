@@ -1,17 +1,22 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
-	import type { GraphLayout, NodePosition, Edge, CommitInfo } from '$lib/bindings/types';
+	import type { GraphLayout, NodePosition, CommitInfo } from '$lib/bindings/types';
 	import { updateGraphDrawTime } from '$lib/stores/debug';
 	import {
 		colorToCSS,
 		columnCenterX,
 		nodeCenterY,
-		isEdgeVisible,
 		SELECTED_COLOR,
 		COMPARISON_COLOR,
 		STASH_COLOR
 	} from '$lib/graph/graph-math';
-	import { computeVisibleEdgeCoords, edgeHitTest, edgeFarOid } from '$lib/graph/edge-interaction';
+	import {
+		computeVisibleEdgeCoords,
+		edgeHitTest,
+		edgeFarOid,
+		drawArrowHead,
+		type VisibleEdgeSegment
+	} from '$lib/graph/edge-interaction';
 
 	import {
 		GRAPH_PADDING_LEFT as PADDING_LEFT,
@@ -30,6 +35,8 @@
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onEdgeNavigate?: (_oid: string) => void;
+		hScrollLeft?: number;
+		visibleWidth?: number;
 	}
 
 	let {
@@ -43,7 +50,9 @@
 		selectedOid,
 		comparisonOid = null,
 		onSelect,
-		onEdgeNavigate
+		onEdgeNavigate,
+		hScrollLeft = 0,
+		visibleWidth = 200
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -72,7 +81,7 @@
 		const sPadding = PADDING_LEFT * sc;
 
 		const height = (visibleEnd - visibleStart) * rowHeight;
-		const width = l.total_columns * sLaneWidth + sPadding * 2;
+		const width = visibleWidth;
 		if (width <= 0 || height <= 0) return;
 
 		const cssW = `${width}px`;
@@ -85,28 +94,24 @@
 			prevCanvasW = width;
 			prevCanvasH = height;
 		}
-		ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-		ctx.clearRect(0, 0, width, height);
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, -hScrollLeft * devicePixelRatio, 0);
 
 		const startRow = visibleStart;
 		const endRow = visibleEnd;
 
-		for (let edgeIdx = 0; edgeIdx < l.edges.length; edgeIdx++) {
-			const edge = l.edges[edgeIdx];
-			if (!isEdgeVisible(edge, startRow, endRow)) continue;
-			const isSelected = edgeIdx === selectedEdgeIdx;
-			const isHovered = edgeIdx === hoveredEdgeIdx && !isSelected;
-			drawEdge(
-				ctx,
-				edge,
-				sLaneWidth,
-				sPadding,
-				startRow,
-				rowHeight,
-				isHovered,
-				isSelected,
-				sNodeRadius
-			);
+		for (const seg of visibleEdgeData) {
+			if (seg.arrow !== null) continue;
+			const isSelected = seg.idx === selectedEdgeIdx;
+			const isHovered = seg.idx === hoveredEdgeIdx && !isSelected;
+			drawSegment(ctx, seg, sc, isHovered, isSelected, sNodeRadius);
+		}
+		for (const seg of visibleEdgeData) {
+			if (seg.arrow === null) continue;
+			const isSelected = seg.idx === selectedEdgeIdx;
+			const isHovered = seg.idx === hoveredEdgeIdx && !isSelected;
+			drawSegment(ctx, seg, sc, isHovered, isSelected, sNodeRadius);
 		}
 		const stashIdxMap = new Map(l.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
 		for (const node of l.nodes) {
@@ -121,14 +126,16 @@
 		void visibleEnd;
 		void hoveredEdgeIdx;
 		void selectedEdgeIdx;
+		void hScrollLeft;
+		void visibleWidth;
 		draw(layout);
 	});
 
 	function handleEdgeClick(mx: number, my: number): boolean {
-		for (const { edge, idx, coords } of visibleEdgeData) {
+		for (const { edge, idx, coords, arrow } of visibleEdgeData) {
 			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {
 				if (selectedEdgeIdx === idx) {
-					const farOid = edgeFarOid(edge, layout, selectedOid ?? null);
+					const farOid = edgeFarOid(edge, layout, selectedOid ?? null, arrow);
 					if (farOid) {
 						onEdgeNavigate?.(farOid);
 						onSelect?.(farOid, false);
@@ -145,7 +152,7 @@
 
 	function handleClick(e: MouseEvent) {
 		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
+		const mx = e.clientX - rect.left + hScrollLeft;
 		const my = e.clientY - rect.top;
 		const sc = scale;
 		const sLaneWidth = laneWidth * sc;
@@ -175,7 +182,7 @@
 		const sLaneWidth = laneWidth * sc;
 		const sNodeRadius = nodeRadius * sc;
 		const sPadding = PADDING_LEFT * sc;
-		const x = e.clientX - rect.left;
+		const x = e.clientX - rect.left + hScrollLeft;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
 		const hitRadius = sNodeRadius + 4 * sc;
@@ -289,25 +296,25 @@
 		ctx.globalAlpha = 1.0;
 	}
 
-	function drawEdge(
+	function drawSegment(
 		ctx: CanvasRenderingContext2D,
-		edge: Edge,
-		sLaneWidth: number,
-		sPadding: number,
-		startRow: number,
-		rh: number,
+		seg: VisibleEdgeSegment,
+		sc: number,
 		isHovered: boolean,
 		isSelected: boolean,
 		sNodeRadius: number
 	) {
-		const x1 = columnCenterX(edge.from_col, sLaneWidth, sPadding);
-		const y1 = nodeCenterY(edge.from_row, startRow, rh);
-		const x2 = columnCenterX(edge.to_col, sLaneWidth, sPadding);
-		const y2 = nodeCenterY(edge.to_row, startRow, rh);
+		const { edge, coords, arrow } = seg;
+		const x1 = coords.x1 * sc;
+		const x2 = coords.x2 * sc;
+		const y1 = coords.y1;
+		const y2 = coords.y2;
+		const color = colorToCSS(edge.color);
+		const alpha = edge.is_dimmed ? 0.35 : isSelected ? 1.0 : isHovered ? 0.9 : 0.8;
 
 		ctx.beginPath();
-		ctx.globalAlpha = edge.is_dimmed ? 0.35 : isSelected ? 1.0 : isHovered ? 0.9 : 0.8;
-		ctx.strokeStyle = colorToCSS(edge.color);
+		ctx.globalAlpha = alpha;
+		ctx.strokeStyle = color;
 		ctx.lineWidth = isSelected ? 3.5 : isHovered ? 2.5 : 1.5;
 
 		if (edge.edge_style === 'Dashed') {
@@ -318,7 +325,7 @@
 			ctx.setLineDash([]);
 		}
 
-		if (edge.from_col === edge.to_col) {
+		if (coords.sameColumn) {
 			ctx.moveTo(x1, y1);
 			ctx.lineTo(x2, y2);
 		} else {
@@ -331,15 +338,27 @@
 		ctx.stroke();
 		ctx.setLineDash([]);
 
+		if (arrow === 'down') {
+			const headDir = y2 > y1 ? 'down' : 'up';
+			drawArrowHead(ctx, x2, y2, color, headDir, alpha);
+		} else if (arrow === 'up') {
+			const headDir = y2 > y1 ? 'up' : 'down';
+			drawArrowHead(ctx, x1, y1, color, headDir, alpha);
+		}
+
 		if (isHovered || isSelected) {
 			ctx.globalAlpha = 0.8;
 			ctx.lineWidth = 1.5;
-			ctx.beginPath();
-			ctx.arc(x1, y1, sNodeRadius + 3, 0, Math.PI * 2);
-			ctx.stroke();
-			ctx.beginPath();
-			ctx.arc(x2, y2, sNodeRadius + 3, 0, Math.PI * 2);
-			ctx.stroke();
+			if (arrow === null || arrow === 'down') {
+				ctx.beginPath();
+				ctx.arc(x1, y1, sNodeRadius + 3, 0, Math.PI * 2);
+				ctx.stroke();
+			}
+			if (arrow === null || arrow === 'up') {
+				ctx.beginPath();
+				ctx.arc(x2, y2, sNodeRadius + 3, 0, Math.PI * 2);
+				ctx.stroke();
+			}
 		}
 
 		ctx.globalAlpha = 1.0;
@@ -349,6 +368,7 @@
 <canvas
 	bind:this={canvas}
 	class="block cursor-pointer"
+	style="width: {visibleWidth}px;"
 	aria-label={$t('commit_graph.aria')}
 	onclick={handleClick}
 	onmousemove={handleMouseMove}

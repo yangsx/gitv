@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { renderer } from '$lib/stores/preferences';
 	import type { GraphLayout, CommitInfo } from '$lib/bindings/types';
-	import { GRAPH_PADDING_LEFT, WGPU_MAX_TEXTURE_DIMENSION } from '$lib/constants';
+	import { WGPU_MAX_TEXTURE_DIMENSION } from '$lib/constants';
 	import CommitGraph from '../CommitGraph.svelte';
 	import WgpuGraph from './WgpuGraph.svelte';
 
@@ -17,6 +17,8 @@
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onEdgeNavigate?: (_oid: string) => void;
+		hScrollLeft?: number;
+		visibleWidth?: number;
 	}
 
 	let {
@@ -30,14 +32,16 @@
 		selectedOid = null,
 		comparisonOid = null,
 		onSelect,
-		onEdgeNavigate
+		onEdgeNavigate,
+		hScrollLeft = 0,
+		visibleWidth = 200
 	}: Props = $props();
 
 	let useWgpu = $derived($renderer === 'wgpu');
 	let canUseWgpu = $derived.by(() => {
 		if (!useWgpu) return false;
 		const dpr = window.devicePixelRatio || 1;
-		const physW = Math.round(layout.total_columns * laneWidth + GRAPH_PADDING_LEFT + 10) * dpr;
+		const physW = Math.round(visibleWidth * dpr);
 		return physW <= WGPU_MAX_TEXTURE_DIMENSION;
 	});
 </script>
@@ -55,6 +59,8 @@
 		{comparisonOid}
 		{onSelect}
 		{onEdgeNavigate}
+		{hScrollLeft}
+		{visibleWidth}
 	/>
 {:else}
 	<CommitGraph
@@ -69,5 +75,7 @@
 		{comparisonOid}
 		{onSelect}
 		{onEdgeNavigate}
+		{hScrollLeft}
+		{visibleWidth}
 	/>
 {/if}

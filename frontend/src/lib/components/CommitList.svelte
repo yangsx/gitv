@@ -43,6 +43,7 @@
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
 	let containerHeight = $state(800);
+	let hScrollLeft = $state(0);
 	let rafId = 0;
 	let pendingScrollTop = 0;
 
@@ -60,10 +61,9 @@
 
 	let effectiveTotalRows = $derived(orderedCommits.length);
 
+	let viewportRows = $derived(Math.ceil(containerHeight / rowHeight) + 2 * BUFFER);
 	let visibleStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - BUFFER));
-	let visibleEnd = $derived(
-		Math.min(effectiveTotalRows, Math.ceil((scrollTop + containerHeight) / rowHeight) + BUFFER)
-	);
+	let visibleEnd = $derived(Math.min(effectiveTotalRows, visibleStart + viewportRows));
 	let totalHeight = $derived(effectiveTotalRows * rowHeight);
 	let visibleCommits = $derived(orderedCommits.slice(visibleStart, visibleEnd));
 
@@ -100,7 +100,13 @@
 			: graphWidth
 	);
 
+	let lastDebugUpdate = 0;
 	$effect(() => {
+		void effectiveTotalRows;
+		void visibleCommits;
+		const now = performance.now();
+		if (now - lastDebugUpdate < 200) return;
+		lastDebugUpdate = now;
 		debug.update((d) => ({
 			...d,
 			totalCommits: effectiveTotalRows,
@@ -117,6 +123,10 @@
 				rafId = 0;
 			});
 		}
+	}
+
+	function onGraphHScroll(e: Event) {
+		hScrollLeft = (e.target as HTMLDivElement).scrollLeft;
 	}
 
 	function handleResize() {
@@ -265,7 +275,7 @@
 			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
 				{#if layout}
 					<div
-						class="shrink-0 overflow-x-auto overflow-y-hidden relative"
+						class="shrink-0 relative overflow-hidden"
 						style="width: {effectiveGraphWidth}px;"
 						aria-hidden="true"
 					>
@@ -279,7 +289,21 @@
 							{comparisonOid}
 							{onSelect}
 							onEdgeNavigate={onEdgeNavigate ?? handleEdgeNavigate}
+							{hScrollLeft}
+							visibleWidth={effectiveGraphWidth}
 						/>
+						<div
+							class="absolute bottom-0 left-0 right-0 overflow-x-auto overflow-y-hidden"
+							style="height: 12px;"
+							onscroll={onGraphHScroll}
+						>
+							<div
+								style="width: {Math.max(
+									effectiveGraphWidth,
+									layout.total_columns * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT * 2
+								)}px; height: 1px;"
+							></div>
+						</div>
 					</div>
 				{/if}
 				<div class="flex-1 min-w-0">

@@ -226,6 +226,9 @@ const STASH_COLOR: Color = Color {
     a: 255,
 };
 
+const MINGAPLEN: usize = 100;
+const ARROW_SEG_LEN: usize = 3;
+
 fn palette_for(mode: GraphPalette) -> &'static [Color] {
     match mode {
         GraphPalette::Default => BRANCH_PALETTE,
@@ -414,7 +417,14 @@ impl GraphCalculator {
             }
         }
 
-        let total_columns = if lanes.is_empty() { 0 } else { lanes.len() };
+        Self::compact_columns(&mut graph_data, &commits);
+
+        let total_columns = graph_data
+            .values()
+            .map(|gd| gd.column)
+            .max()
+            .map(|c| c + 1)
+            .unwrap_or(0);
 
         self.assign_colors_to_nodes(&commits, &mut graph_data);
         let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
@@ -894,6 +904,138 @@ impl GraphCalculator {
             stash_commits: Vec::new(),
         }
     }
+
+    /// Compact columns by reusing idle lanes.
+    ///
+    /// After the initial column assignment, many lanes are reserved for the
+    /// full lifetime of a branch even when the branch has no commits for
+    /// hundreds of rows. This post-processing pass identifies idle stretches
+    /// (where long edges only occupy arrow-gap segments at the endpoints)
+    /// and merges non-overlapping columns together.
+    fn compact_columns(graph_data: &mut HashMap<Oid, CommitGraphData>, commits: &[CommitInfo]) {
+        let max_col = graph_data.values().map(|gd| gd.column).max().unwrap_or(0);
+        let num_cols = max_col + 1;
+        if num_cols <= 1 {
+            return;
+        }
+
+        // Step 1: Build effective occupied ranges per column.
+        // Only nodes and same-column edges contribute to occupied ranges.
+        // Cross-column edges are rendered as bezier curves and do not
+        // block the source column for their full span — after merging,
+        // they become same-column edges, which is visually acceptable
+        // (lines passing through nodes of other branches is normal in
+        // dense graphs, same as gitk).
+        let mut column_ranges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); num_cols];
+
+        for gd in graph_data.values() {
+            column_ranges[gd.column].push((gd.row, gd.row));
+        }
+
+        for c in commits {
+            let c_gd = match graph_data.get(&c.oid) {
+                Some(gd) => gd,
+                None => continue,
+            };
+            for &p_oid in &c.parent_oids {
+                let p_gd = match graph_data.get(&p_oid) {
+                    Some(gd) => gd,
+                    None => continue,
+                };
+                let r_min = c_gd.row.min(p_gd.row);
+                let r_max = c_gd.row.max(p_gd.row);
+                let span = r_max - r_min;
+
+                if c_gd.column == p_gd.column {
+                    // Same-column edge: full span (or arrow-gap segments for long edges)
+                    if span > MINGAPLEN {
+                        column_ranges[c_gd.column].push((r_min, r_min + ARROW_SEG_LEN));
+                        column_ranges[c_gd.column].push((r_max - ARROW_SEG_LEN, r_max));
+                    } else {
+                        column_ranges[c_gd.column].push((r_min, r_max));
+                    }
+                } else if span <= MINGAPLEN && span > 1 {
+                    // Cross-column short edge: after merging this becomes a
+                    // visible same-column line, so reserve the interior to
+                    // prevent lines passing through unrelated nodes.
+                    column_ranges[c_gd.column].push((r_min + 1, r_max - 1));
+                }
+                // Cross-column long edges (> MINGAPLEN): no interior needed.
+                // After merging they become arrow-gap edges with only small
+                // segments at the endpoints — the large gap is invisible.
+            }
+        }
+
+        for ranges in &mut column_ranges {
+            merge_ranges(ranges);
+        }
+
+        // Step 2: Greedy interval graph coloring.
+        // Assign each original column to the leftmost compacted column
+        // whose existing ranges don't overlap. Process in original order
+        // so the main branch (column 0) stays leftmost.
+        let mut remap: Vec<usize> = vec![0; num_cols];
+        let mut compacted: Vec<Vec<(usize, usize)>> = Vec::new();
+
+        for col in 0..num_cols {
+            let ranges = &column_ranges[col];
+            let target = compacted
+                .iter()
+                .enumerate()
+                .find(|(_, existing)| !ranges_overlap(existing, ranges))
+                .map(|(new_col, _)| new_col);
+
+            match target {
+                Some(new_col) => {
+                    compacted[new_col].extend(ranges.iter().copied());
+                    merge_ranges(&mut compacted[new_col]);
+                    remap[col] = new_col;
+                }
+                None => {
+                    compacted.push(ranges.clone());
+                    remap[col] = compacted.len() - 1;
+                }
+            }
+        }
+
+        // Step 3: Remap columns in graph_data.
+        for gd in graph_data.values_mut() {
+            gd.column = remap[gd.column];
+        }
+    }
+}
+
+fn merge_ranges(ranges: &mut Vec<(usize, usize)>) {
+    if ranges.len() <= 1 {
+        return;
+    }
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for &(start, end) in ranges.iter() {
+        if let Some(last) = merged.last_mut()
+            && start <= last.1 + 1
+        {
+            last.1 = last.1.max(end);
+            continue;
+        }
+        merged.push((start, end));
+    }
+    *ranges = merged;
+}
+
+fn ranges_overlap(a: &[(usize, usize)], b: &[(usize, usize)]) -> bool {
+    let (mut i, mut j) = (0, 0);
+    while i < a.len() && j < b.len() {
+        if a[i].0 <= b[j].1 && b[j].0 <= a[i].1 {
+            return true;
+        }
+        if a[i].1 < b[j].1 {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -1608,5 +1750,146 @@ mod tests {
         let hide_layout = hide_calc.calculate_layout();
 
         assert_parents_preserved(&show_layout, &hide_layout, "merge of merge");
+    }
+
+    #[test]
+    fn property_compaction_preserves_layout_validity() {
+        let test_cases = vec![
+            // Simple branch + merge
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "main"),
+                make_commit(3, vec![1], "feature"),
+                make_commit(4, vec![2, 3], "merge"),
+            ],
+            // Sequential branches (non-overlapping in time)
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a1"),
+                make_commit(3, vec![1], "f1"),
+                make_commit(4, vec![2, 3], "merge1"),
+                make_commit(5, vec![4], "b1"),
+                make_commit(6, vec![4], "f2"),
+                make_commit(7, vec![5, 6], "merge2"),
+            ],
+            // Complex merge topology
+            vec![
+                make_commit(1, vec![], "root1"),
+                make_commit(2, vec![], "root2"),
+                make_commit(3, vec![], "root3"),
+                make_commit(4, vec![1], "2f38767"),
+                make_commit(5, vec![2], "5cb5908"),
+                make_commit(6, vec![3], "ed13a61"),
+                make_commit(7, vec![4, 5], "59295b8"),
+                make_commit(8, vec![7, 6], "5701a67"),
+            ],
+        ];
+
+        for commits in &test_cases {
+            let calc = GraphCalculator::new(
+                commits.clone(),
+                HashMap::new(),
+                Vec::new(),
+                GraphOptions::default(),
+            );
+            let layout = calc.calculate_layout();
+
+            // Verify: no same-column edge passes through an unrelated node
+            // within the edge's effective occupied range.
+            let node_by_pos: HashMap<(usize, usize), Oid> = layout
+                .nodes
+                .iter()
+                .map(|n| ((n.row, n.column), n.oid))
+                .collect();
+
+            for edge in &layout.edges {
+                if edge.from_col != edge.to_col {
+                    continue;
+                }
+                let (r_min, r_max) = (
+                    edge.from_row.min(edge.to_row),
+                    edge.from_row.max(edge.to_row),
+                );
+                let span = r_max - r_min;
+
+                // Determine effective occupied ranges
+                let occupied: Vec<(usize, usize)> = if span > MINGAPLEN {
+                    vec![
+                        (r_min, r_min + ARROW_SEG_LEN),
+                        (r_max - ARROW_SEG_LEN, r_max),
+                    ]
+                } else {
+                    vec![(r_min, r_max)]
+                };
+
+                // Find source and target OIDs
+                let src_oid = node_by_pos.get(&(edge.from_row, edge.from_col)).copied();
+                let dst_oid = node_by_pos.get(&(edge.to_row, edge.to_col)).copied();
+
+                for node in &layout.nodes {
+                    if node.column != edge.from_col {
+                        continue;
+                    }
+                    if node.row == edge.from_row || node.row == edge.to_row {
+                        continue;
+                    }
+                    let in_occupied = occupied
+                        .iter()
+                        .any(|(s, e)| node.row >= *s && node.row <= *e);
+                    if !in_occupied {
+                        continue;
+                    }
+                    // Node is in the edge's occupied range — must be on the chain
+                    let on_chain = src_oid.is_some_and(|s| {
+                        let src = commits.iter().find(|c| c.oid == s);
+                        src.is_some_and(|sc| sc.parent_oids.contains(&node.oid)) || node.oid == s
+                    }) || dst_oid.is_some_and(|d| {
+                        let dst = commits.iter().find(|c| c.oid == d);
+                        dst.is_some_and(|dc| dc.parent_oids.contains(&node.oid)) || node.oid == d
+                    });
+                    assert!(
+                        on_chain,
+                        "Compaction created overlap: same-column edge ({},{})→({},{}) \
+                         passes through unrelated node {} at ({},{})",
+                        edge.from_row,
+                        edge.from_col,
+                        edge.to_row,
+                        edge.to_col,
+                        node.oid.short_hex(),
+                        node.row,
+                        node.column,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compaction_reduces_column_count() {
+        // Two non-overlapping branches should share a column after compaction.
+        // Topology: root → a1 → merge1 → b1 → merge2
+        //                  f1 →┘         f2 →┘
+        // f1 and f2 are active at different times (no row overlap).
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "a1");
+        let c3 = make_commit(3, vec![1], "f1");
+        let c4 = make_commit(4, vec![2, 3], "merge1");
+        let c5 = make_commit(5, vec![4], "b1");
+        let c6 = make_commit(6, vec![4], "f2");
+        let c7 = make_commit(7, vec![5, 6], "merge2");
+        let commits = vec![c7, c6, c5, c4, c3, c2, c1];
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // With compaction, sequential feature branches should share a column.
+        // Without compaction this would need 3 columns (main + 2 features).
+        // With compaction, f1 and f2 can share since they don't overlap.
+        assert!(
+            layout.total_columns <= 2,
+            "Sequential branches should compact to ≤2 columns (main + shared feature), got {}",
+            layout.total_columns
+        );
     }
 }

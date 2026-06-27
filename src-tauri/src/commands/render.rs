@@ -13,6 +13,7 @@ pub struct RenderGraphInput {
     pub scale: f32,
     pub visible_start: usize,
     pub visible_end: usize,
+    pub h_scroll_left: f32,
     pub total_columns: usize,
     pub row_height: f32,
     pub lane_width: f32,
@@ -70,12 +71,15 @@ fn tessellate_edge(
     row_height: f32,
     lane_width: f32,
     padding_left: f32,
+    h_scroll_left: f32,
     scale: f32,
     is_dimmed: bool,
 ) -> Vec<EdgeVertex> {
-    let x1 = (edge.from_col as f32 * lane_width + padding_left + lane_width / 2.0) * scale;
+    let x1 = (edge.from_col as f32 * lane_width + padding_left + lane_width / 2.0 - h_scroll_left)
+        * scale;
     let y1 = (edge.from_row as f32 * row_height + row_height / 2.0) * scale;
-    let x2 = (edge.to_col as f32 * lane_width + padding_left + lane_width / 2.0) * scale;
+    let x2 =
+        (edge.to_col as f32 * lane_width + padding_left + lane_width / 2.0 - h_scroll_left) * scale;
     let y2 = (edge.to_row as f32 * row_height + row_height / 2.0) * scale;
 
     let color = [
@@ -213,7 +217,8 @@ fn render_inner(wgpu_state: &WgpuState, input: &RenderGraphInput) -> Result<Vec<
         .iter()
         .map(|n| {
             let cx =
-                (n.column as f32 * input.lane_width + input.padding_left + input.lane_width / 2.0)
+                (n.column as f32 * input.lane_width + input.padding_left + input.lane_width / 2.0
+                    - input.h_scroll_left)
                     * input.scale;
             let cy = (n.row as f32 * input.row_height + input.row_height / 2.0) * input.scale;
             let mut flags: u32 = 0;
@@ -260,6 +265,7 @@ fn render_inner(wgpu_state: &WgpuState, input: &RenderGraphInput) -> Result<Vec<
                 input.row_height,
                 input.lane_width,
                 input.padding_left,
+                input.h_scroll_left,
                 input.scale,
                 e.is_dimmed,
             )

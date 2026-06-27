@@ -408,6 +408,7 @@ export interface RenderGraphInput {
 	scale: number;
 	visible_start: number;
 	visible_end: number;
+	h_scroll_left: number;
 	total_columns: number;
 	row_height: number;
 	lane_width: number;

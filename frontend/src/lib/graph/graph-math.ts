@@ -25,6 +25,13 @@ export function isEdgeVisible(edge: Edge, startRow: number, endRow: number): boo
 	return minRow <= endRow && maxRow >= startRow;
 }
 
+export const ARROW_GAP_THRESHOLD = 100;
+export const ARROW_SEGMENT_LENGTH = 3;
+
+export function hasArrowGap(edge: Edge): boolean {
+	return Math.abs(edge.to_row - edge.from_row) > ARROW_GAP_THRESHOLD;
+}
+
 export function nodeHitTest(
 	mx: number,
 	my: number,

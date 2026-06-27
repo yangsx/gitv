@@ -1,5 +1,10 @@
 import type { Edge, GraphLayout } from '$lib/bindings/types';
-import { columnCenterX, nodeCenterY } from '$lib/graph/graph-math';
+import {
+	columnCenterX,
+	nodeCenterY,
+	hasArrowGap,
+	ARROW_SEGMENT_LENGTH
+} from '$lib/graph/graph-math';
 
 export interface EdgeCoords {
 	x1: number;
@@ -7,6 +12,17 @@ export interface EdgeCoords {
 	x2: number;
 	y2: number;
 	sameColumn: boolean;
+}
+
+export interface VisibleEdgeSegment {
+	edge: Edge;
+	idx: number;
+	coords: EdgeCoords;
+	arrow: 'down' | 'up' | null;
+	fromRow: number;
+	fromCol: number;
+	toRow: number;
+	toCol: number;
 }
 
 export function computeEdgeCoords(
@@ -87,11 +103,14 @@ export function edgeHitTest(mx: number, my: number, coords: EdgeCoords, toleranc
 export function edgeFarOid(
 	edge: Edge,
 	layout: GraphLayout,
-	selectedOid: string | null
+	selectedOid: string | null,
+	arrow: 'down' | 'up' | null = null
 ): string | null {
 	const fromNode = layout.nodes.find((n) => n.row === edge.from_row);
 	const toNode = layout.nodes.find((n) => n.row === edge.to_row);
 	if (!fromNode || !toNode) return null;
+	if (arrow === 'down') return toNode.oid;
+	if (arrow === 'up') return fromNode.oid;
 	if (!selectedOid) return toNode.oid;
 	if (selectedOid === fromNode.oid) return toNode.oid;
 	if (selectedOid === toNode.oid) return fromNode.oid;
@@ -109,18 +128,72 @@ export function computeVisibleEdgeCoords(
 	rowHeight: number,
 	laneWidth: number,
 	paddingLeft: number
-): Array<{ edge: Edge; idx: number; coords: EdgeCoords }> {
-	const result: Array<{ edge: Edge; idx: number; coords: EdgeCoords }> = [];
+): VisibleEdgeSegment[] {
+	const result: VisibleEdgeSegment[] = [];
 	for (let i = 0; i < layout.edges.length; i++) {
 		const edge = layout.edges[i];
 		const minRow = Math.min(edge.from_row, edge.to_row);
 		const maxRow = Math.max(edge.from_row, edge.to_row);
 		if (minRow > endRow || maxRow < startRow) continue;
-		result.push({
-			edge,
-			idx: i,
-			coords: computeEdgeCoords(edge, startRow, rowHeight, laneWidth, paddingLeft)
-		});
+
+		if (hasArrowGap(edge)) {
+			const dir = edge.to_row > edge.from_row ? 1 : -1;
+			const seg1EndRow = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
+			const seg1Lo = Math.min(edge.from_row, seg1EndRow);
+			const seg1Hi = Math.max(edge.from_row, seg1EndRow);
+			if (seg1Lo < endRow && seg1Hi > startRow) {
+				const x = columnCenterX(edge.from_col, laneWidth, paddingLeft);
+				result.push({
+					edge,
+					idx: i,
+					coords: {
+						x1: x,
+						y1: nodeCenterY(edge.from_row, startRow, rowHeight),
+						x2: x,
+						y2: nodeCenterY(seg1EndRow, startRow, rowHeight),
+						sameColumn: true
+					},
+					arrow: 'down',
+					fromRow: edge.from_row,
+					fromCol: edge.from_col,
+					toRow: seg1EndRow,
+					toCol: edge.from_col
+				});
+			}
+			const seg2StartRow = edge.to_row - dir * ARROW_SEGMENT_LENGTH;
+			const seg2Lo = Math.min(seg2StartRow, edge.to_row);
+			const seg2Hi = Math.max(seg2StartRow, edge.to_row);
+			if (seg2Lo < endRow && seg2Hi > startRow) {
+				const x = columnCenterX(edge.to_col, laneWidth, paddingLeft);
+				result.push({
+					edge,
+					idx: i,
+					coords: {
+						x1: x,
+						y1: nodeCenterY(seg2StartRow, startRow, rowHeight),
+						x2: x,
+						y2: nodeCenterY(edge.to_row, startRow, rowHeight),
+						sameColumn: true
+					},
+					arrow: 'up',
+					fromRow: seg2StartRow,
+					fromCol: edge.to_col,
+					toRow: edge.to_row,
+					toCol: edge.to_col
+				});
+			}
+		} else {
+			result.push({
+				edge,
+				idx: i,
+				coords: computeEdgeCoords(edge, startRow, rowHeight, laneWidth, paddingLeft),
+				arrow: null,
+				fromRow: edge.from_row,
+				fromCol: edge.from_col,
+				toRow: edge.to_row,
+				toCol: edge.to_col
+			});
+		}
 	}
 	return result;
 }
@@ -160,17 +233,48 @@ export function drawEdgeEndpoints(
 	ctx: CanvasRenderingContext2D,
 	coords: EdgeCoords,
 	color: string,
-	nodeRadius: number
+	nodeRadius: number,
+	arrow: 'down' | 'up' | null = null
 ) {
-	ctx.beginPath();
 	ctx.globalAlpha = 0.8;
 	ctx.strokeStyle = color;
 	ctx.lineWidth = 1.5;
 	ctx.setLineDash([]);
-	ctx.arc(coords.x1, coords.y1, nodeRadius + 3, 0, Math.PI * 2);
-	ctx.stroke();
+	if (arrow === null || arrow === 'down') {
+		ctx.beginPath();
+		ctx.arc(coords.x1, coords.y1, nodeRadius + 3, 0, Math.PI * 2);
+		ctx.stroke();
+	}
+	if (arrow === null || arrow === 'up') {
+		ctx.beginPath();
+		ctx.arc(coords.x2, coords.y2, nodeRadius + 3, 0, Math.PI * 2);
+		ctx.stroke();
+	}
+	ctx.globalAlpha = 1.0;
+}
+
+export function drawArrowHead(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	color: string,
+	direction: 'up' | 'down',
+	alpha = 1.0
+) {
+	const s = 4;
 	ctx.beginPath();
-	ctx.arc(coords.x2, coords.y2, nodeRadius + 3, 0, Math.PI * 2);
-	ctx.stroke();
+	ctx.globalAlpha = alpha;
+	ctx.fillStyle = color;
+	if (direction === 'down') {
+		ctx.moveTo(x, y + s);
+		ctx.lineTo(x - s * 0.7, y - s * 0.4);
+		ctx.lineTo(x + s * 0.7, y - s * 0.4);
+	} else {
+		ctx.moveTo(x, y - s);
+		ctx.lineTo(x - s * 0.7, y + s * 0.4);
+		ctx.lineTo(x + s * 0.7, y + s * 0.4);
+	}
+	ctx.closePath();
+	ctx.fill();
 	ctx.globalAlpha = 1.0;
 }
