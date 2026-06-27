@@ -323,7 +323,7 @@
 		"no_matches": "No matching commands"
 	},
 	"debug": {
-		"header": "DEBUG",
+		"header": "Performance",
 		"close_hint": "F12 to close",
 		"fps": "FPS",
 		"commits": "Commits",

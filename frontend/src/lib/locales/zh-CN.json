@@ -323,7 +323,7 @@
 		"no_matches": "无匹配命令"
 	},
 	"debug": {
-		"header": "调试",
+		"header": "性能",
 		"close_hint": "按 F12 关闭",
 		"fps": "帧率",
 		"commits": "提交数",

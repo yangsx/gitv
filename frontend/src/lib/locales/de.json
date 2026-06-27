@@ -325,7 +325,7 @@
 		"no_matches": "Keine passenden Befehle"
 	},
 	"debug": {
-		"header": "DEBUG",
+		"header": "Leistung",
 		"close_hint": "F12 zum Schließen",
 		"fps": "FPS",
 		"commits": "Commits",

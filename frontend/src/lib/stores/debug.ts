@@ -51,7 +51,7 @@ export const avgIpcTime = derived(debug, ($d) => {
 });
 
 export const recentIpcTimings = derived(debug, ($d) => {
-	return $d.ipcTimings.slice(-20);
+	return $d.ipcTimings.slice(-20).reverse();
 });
 
 export const logPath = writable('');
