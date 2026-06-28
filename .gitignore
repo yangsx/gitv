@@ -1,7 +1,8 @@
 /target/
+/coverage-report/
 src-tauri/gen/
 .DS_Store
-.github
 .kiro
 .vscode
 bak
+__pycache__/
