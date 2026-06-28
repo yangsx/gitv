@@ -1733,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "gitv"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "clap",
@@ -1757,7 +1757,7 @@ dependencies = [
 
 [[package]]
 name = "gitv-git-core"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "criterion",
@@ -1780,7 +1780,7 @@ dependencies = [
 
 [[package]]
 name = "gitv-wgpu-renderer"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "bytemuck",
  "tracing",
