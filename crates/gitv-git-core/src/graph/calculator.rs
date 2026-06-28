@@ -110,9 +110,9 @@ const DEUTERANOPIA_PALETTE: &[Color] = &[
         a: 255,
     },
     Color {
-        r: 0,
-        g: 0,
-        b: 0,
+        r: 51,
+        g: 34,
+        b: 136,
         a: 255,
     },
 ];
@@ -161,9 +161,9 @@ const PROTANOPIA_PALETTE: &[Color] = &[
         a: 255,
     },
     Color {
-        r: 0,
-        g: 0,
-        b: 0,
+        r: 51,
+        g: 34,
+        b: 136,
         a: 255,
     },
 ];
@@ -212,9 +212,9 @@ const TRITANOPIA_PALETTE: &[Color] = &[
         a: 255,
     },
     Color {
-        r: 0,
-        g: 0,
-        b: 0,
+        r: 51,
+        g: 34,
+        b: 136,
         a: 255,
     },
 ];
