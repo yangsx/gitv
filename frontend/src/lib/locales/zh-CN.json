@@ -373,7 +373,10 @@
 	},
 	"toast": {
 		"aria": "通知",
-		"dismiss": "关闭通知"
+		"dismiss": "关闭通知",
+		"reload_layout": "正在重新加载图形布局…",
+		"reload_layout_done": "图形布局已重新加载",
+		"reload_layout_failed": "重新加载图形布局失败"
 	},
 	"working_changes": {
 		"title": "工作区变更",

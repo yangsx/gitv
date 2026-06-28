@@ -375,7 +375,10 @@
 	},
 	"toast": {
 		"aria": "Benachrichtigungen",
-		"dismiss": "Benachrichtigung schließen"
+		"dismiss": "Benachrichtigung schlie\u00dfen",
+		"reload_layout": "Grafiklayout wird neu geladen\u2026",
+		"reload_layout_done": "Grafiklayout neu geladen",
+		"reload_layout_failed": "Fehler beim Neuladen des Grafiklayouts"
 	},
 	"working_changes": {
 		"title": "Arbeitskopie-Änderungen",

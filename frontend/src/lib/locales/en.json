@@ -373,7 +373,10 @@
 	},
 	"toast": {
 		"aria": "Notifications",
-		"dismiss": "Dismiss notification"
+		"dismiss": "Dismiss notification",
+		"reload_layout": "Reloading graph layout\u2026",
+		"reload_layout_done": "Graph layout reloaded",
+		"reload_layout_failed": "Failed to reload graph layout"
 	},
 	"working_changes": {
 		"title": "Working Changes",

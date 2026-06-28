@@ -60,7 +60,7 @@
 	import Toolbar from '$lib/components/Toolbar.svelte';
 	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast, updateToast, dismissToast } from '$lib/stores/toast';
 	import {
 		toggleDebug,
 		tickFps,
@@ -109,6 +109,7 @@
 	const COMMIT_BATCH_SIZE = 1000;
 	let graphLayout = $state<GraphLayout | null>(null);
 	let layoutGeneration = 0;
+	let layoutToastId: number | null = null;
 	let commitDetails = $state<CommitDetails | null>(null);
 	let detailsLoading = $state(false);
 	let comparisonDetails = $state<CommitDetails | null>(null);
@@ -403,6 +404,8 @@
 		if (!repoPath) return;
 		operationState.set('ApplyingFilter');
 		const gen = ++layoutGeneration;
+		if (layoutToastId !== null) dismissToast(layoutToastId);
+		layoutToastId = showToast($t('toast.reload_layout'), 'info');
 		try {
 			const result = await getGraphLayout(repoPath, {
 				orientation: $graphOrientation,
@@ -413,8 +416,17 @@
 			});
 			if (gen !== layoutGeneration) return;
 			graphLayout = result;
+			if (layoutToastId !== null) {
+				updateToast(layoutToastId, $t('toast.reload_layout_done'), 'info');
+				layoutToastId = null;
+			}
 		} catch (e) {
 			console.error('Failed to reload graph layout:', e);
+			if (layoutToastId !== null) {
+				dismissToast(layoutToastId);
+				layoutToastId = null;
+			}
+			showToast($t('toast.reload_layout_failed'), 'error');
 		} finally {
 			if ($operationState === 'ApplyingFilter') operationState.set('Idle');
 		}
