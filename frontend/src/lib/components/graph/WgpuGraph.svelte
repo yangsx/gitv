@@ -3,21 +3,19 @@
 	import type {
 		GraphLayout,
 		RenderGraphInput,
-		RenderNode,
 		RenderEdge,
 		CommitInfo,
-		Edge
+		NodePosition
 	} from '$lib/bindings/types';
 	import {
 		columnCenterX,
 		nodeCenterY,
 		nodeHitTest,
 		colorToCSS,
-		hasArrowGap,
 		isCrossColumn,
-		ARROW_SEGMENT_LENGTH,
-		SELECT_RGB,
-		COMPARISON_RGB
+		SELECTED_COLOR,
+		COMPARISON_COLOR,
+		STASH_COLOR
 	} from '$lib/graph/graph-math';
 	import {
 		edgeHitTest,
@@ -25,6 +23,7 @@
 		drawEdgeHighlight,
 		drawEdgeEndpoints,
 		drawArrowHead,
+		computeVisibleEdgeCoords,
 		type VisibleEdgeSegment
 	} from '$lib/graph/edge-interaction';
 	import {
@@ -32,37 +31,6 @@
 		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE
 	} from '$lib/constants';
 	import { arrowGapThreshold } from '$lib/stores/repository';
-
-	const EDGE_BUCKET_SIZE = 64;
-
-	function makeSeg(
-		edge: Edge,
-		idx: number,
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		arrow: 'down' | 'up' | null,
-		fromRow: number,
-		fromCol: number,
-		toRow: number,
-		toCol: number,
-		isEdgeStart: boolean,
-		isEdgeEnd: boolean
-	): VisibleEdgeSegment {
-		return {
-			edge,
-			idx,
-			coords: { x1, y1, x2, y2, sameColumn: fromCol === toCol },
-			arrow,
-			fromRow,
-			fromCol,
-			toRow,
-			toCol,
-			isEdgeStart,
-			isEdgeEnd
-		};
-	}
 
 	interface Props {
 		layout: GraphLayout;
@@ -99,6 +67,7 @@
 	let canvasEl: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D | null = $state(null);
 	let dpr = $state(1);
+	let scale = $state(1.0);
 	let baseImageData: ImageData | null = null;
 	let imageDataBuffer: ImageData | null = null;
 	let lastRenderedStart = 0;
@@ -106,552 +75,30 @@
 	let renderInFlight = false;
 	let pendingGen: number | null = null;
 
+	// Scaled values (match Canvas 2D's sc-based scaling)
+	let sLaneWidth = $derived(laneWidth * scale);
+	let sNodeRadius = $derived(nodeRadius * scale);
+	let sPadding = $derived(PADDING_LEFT * scale);
+
 	let containerWidth = $derived(Math.round(visibleWidth));
 	let containerHeight = $derived(Math.round((visibleEnd - visibleStart) * rowHeight));
 
 	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
 
-	// Pre-built edge bucket index for O(1) viewport lookup.
-	// Each segment is bucketed by its minRow so we only scan relevant buckets.
-	type BucketEntry = {
-		edgeIdx: number;
-		fromRow: number;
-		toRow: number;
-		fromCol: number;
-		toCol: number;
-		arrow: 'down' | 'up' | null;
-		isEdgeStart: boolean;
-		isEdgeEnd: boolean;
-	};
-
-	let edgeBuckets = $derived.by<BucketEntry[][]>(() => {
-		const totalRows = layout.nodes.length;
-		const numBuckets = Math.max(1, Math.ceil(totalRows / EDGE_BUCKET_SIZE));
-		const buckets: BucketEntry[][] = Array.from({ length: numBuckets }, () => []);
-		const threshold = $arrowGapThreshold;
-		for (let i = 0; i < layout.edges.length; i++) {
-			const edge = layout.edges[i];
-			if (!isCrossColumn(edge)) {
-				// Same-column edge
-				if (hasArrowGap(edge, threshold)) {
-					const dir = edge.to_row > edge.from_row ? 1 : -1;
-					const seg1End = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
-					const seg2Start = edge.to_row - dir * ARROW_SEGMENT_LENGTH;
-					const e1Min = Math.min(edge.from_row, seg1End);
-					const e1Max = Math.max(edge.from_row, seg1End);
-					const e2Min = Math.min(seg2Start, edge.to_row);
-					const e2Max = Math.max(seg2Start, edge.to_row);
-					for (
-						let b = Math.floor(e1Min / EDGE_BUCKET_SIZE);
-						b <= Math.floor(e1Max / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: edge.from_row,
-								toRow: seg1End,
-								fromCol: edge.from_col,
-								toCol: edge.from_col,
-								arrow: 'down',
-								isEdgeStart: true,
-								isEdgeEnd: false
-							});
-					}
-					for (
-						let b = Math.floor(e2Min / EDGE_BUCKET_SIZE);
-						b <= Math.floor(e2Max / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: seg2Start,
-								toRow: edge.to_row,
-								fromCol: edge.to_col,
-								toCol: edge.to_col,
-								arrow: 'up',
-								isEdgeStart: false,
-								isEdgeEnd: true
-							});
-					}
-				} else {
-					const eMin = Math.min(edge.from_row, edge.to_row);
-					const eMax = Math.max(edge.from_row, edge.to_row);
-					for (
-						let b = Math.floor(eMin / EDGE_BUCKET_SIZE);
-						b <= Math.floor(eMax / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: edge.from_row,
-								toRow: edge.to_row,
-								fromCol: edge.from_col,
-								toCol: edge.to_col,
-								arrow: null,
-								isEdgeStart: true,
-								isEdgeEnd: true
-							});
-					}
-				}
-			} else {
-				// Cross-column edge: orthogonal path — two segments
-				if (edge.edge_type === 'Branch') {
-					// Vertical segment in child's column
-					const vMin = Math.min(edge.from_row, edge.to_row);
-					const vMax = Math.max(edge.from_row, edge.to_row);
-					for (
-						let b = Math.floor(vMin / EDGE_BUCKET_SIZE);
-						b <= Math.floor(vMax / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: edge.from_row,
-								toRow: edge.to_row,
-								fromCol: edge.from_col,
-								toCol: edge.from_col,
-								arrow: null,
-								isEdgeStart: false,
-								isEdgeEnd: false
-							});
-					}
-					// Horizontal segment at parent's row
-					const hRow = edge.to_row;
-					for (
-						let b = Math.floor(hRow / EDGE_BUCKET_SIZE);
-						b <= Math.floor(hRow / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: hRow,
-								toRow: hRow,
-								fromCol: edge.from_col,
-								toCol: edge.to_col,
-								arrow: null,
-								isEdgeStart: false,
-								isEdgeEnd: false
-							});
-					}
-				} else {
-					// Horizontal segment at child's row
-					const hRow = edge.from_row;
-					for (
-						let b = Math.floor(hRow / EDGE_BUCKET_SIZE);
-						b <= Math.floor(hRow / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: hRow,
-								toRow: hRow,
-								fromCol: edge.from_col,
-								toCol: edge.to_col,
-								arrow: null,
-								isEdgeStart: false,
-								isEdgeEnd: false
-							});
-					}
-					// Vertical segment in parent's column
-					const vMin = Math.min(edge.from_row, edge.to_row);
-					const vMax = Math.max(edge.from_row, edge.to_row);
-					for (
-						let b = Math.floor(vMin / EDGE_BUCKET_SIZE);
-						b <= Math.floor(vMax / EDGE_BUCKET_SIZE) && b < numBuckets;
-						b++
-					) {
-						if (b >= 0)
-							buckets[b].push({
-								edgeIdx: i,
-								fromRow: edge.from_row,
-								toRow: edge.to_row,
-								fromCol: edge.to_col,
-								toCol: edge.to_col,
-								arrow: null,
-								isEdgeStart: false,
-								isEdgeEnd: false
-							});
-					}
-				}
-			}
-		}
-		return buckets;
-	});
-
 	let hoveredEdgeIdx = $state<number | null>(null);
 	let selectedEdgeIdx = $state<number | null>(null);
 
-	let visibleEdgeData = $derived.by<VisibleEdgeSegment[]>(() => {
-		const startB = Math.max(0, Math.floor(visibleStart / EDGE_BUCKET_SIZE));
-		const endB = Math.min(edgeBuckets.length - 1, Math.floor(visibleEnd / EDGE_BUCKET_SIZE));
-		const seen: Record<string, true> = {};
-		const crossColumnDone: Record<number, true> = {};
-		const result: VisibleEdgeSegment[] = [];
-		const chamfer = laneWidth * 0.5;
-		for (let b = startB; b <= endB; b++) {
-			for (const entry of edgeBuckets[b]) {
-				const key = `${entry.edgeIdx}:${entry.fromRow}:${entry.toRow}:${entry.fromCol}:${entry.toCol}`;
-				if (seen[key]) continue;
-				seen[key] = true;
-				const edge = layout.edges[entry.edgeIdx];
-				const minR = Math.min(entry.fromRow, entry.toRow);
-				const maxR = Math.max(entry.fromRow, entry.toRow);
-				if (minR > visibleEnd || maxR < visibleStart) continue;
-				if (isCrossColumn(edge)) {
-					if (crossColumnDone[entry.edgeIdx]) continue;
-					crossColumnDone[entry.edgeIdx] = true;
-					const cX = columnCenterX(edge.from_col, laneWidth, PADDING_LEFT);
-					const pX = columnCenterX(edge.to_col, laneWidth, PADDING_LEFT);
-					const cY = nodeCenterY(edge.from_row, visibleStart, rowHeight);
-					const pY = nodeCenterY(edge.to_row, visibleStart, rowHeight);
-
-					if (hasArrowGap(edge, $arrowGapThreshold)) {
-						// Long cross-column edge: orthogonal routing with arrow gaps
-						const dir = edge.to_row > edge.from_row ? 1 : -1;
-						const dxSign = edge.to_col > edge.from_col ? 1 : -1;
-						const seg1EndRow = edge.from_row + dir * ARROW_SEGMENT_LENGTH;
-						const seg2StartRow = edge.to_row - dir * ARROW_SEGMENT_LENGTH;
-						const seg1Y = nodeCenterY(seg1EndRow, visibleStart, rowHeight);
-						const seg2Y = nodeCenterY(seg2StartRow, visibleStart, rowHeight);
-						const chamfer = laneWidth * 0.5;
-
-						if (edge.edge_type === 'Branch') {
-							// 1. 'down' at child's column
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									cY,
-									cX,
-									seg1Y,
-									'down',
-									edge.from_row,
-									edge.from_col,
-									seg1EndRow,
-									edge.from_col,
-									true,
-									false
-								)
-							);
-							// 2. vertical in child's column
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									seg1Y,
-									cX,
-									seg2Y - dir * chamfer,
-									null,
-									seg1EndRow,
-									edge.from_col,
-									seg2StartRow,
-									edge.from_col,
-									false,
-									false
-								)
-							);
-							// 3. diagonal chamfer at corner
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									seg2Y - dir * chamfer,
-									cX + dxSign * chamfer,
-									seg2Y,
-									null,
-									seg2StartRow,
-									edge.from_col,
-									seg2StartRow,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							// 4. horizontal at parent-3 row
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX + dxSign * chamfer,
-									seg2Y,
-									pX,
-									seg2Y,
-									null,
-									seg2StartRow,
-									edge.from_col,
-									seg2StartRow,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							// 5. 'up' at parent's column
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									pX,
-									seg2Y,
-									pX,
-									pY,
-									'up',
-									seg2StartRow,
-									edge.to_col,
-									edge.to_row,
-									edge.to_col,
-									false,
-									true
-								)
-							);
-						} else {
-							// 1. 'down' at child's column
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									cY,
-									cX,
-									seg1Y,
-									'down',
-									edge.from_row,
-									edge.from_col,
-									seg1EndRow,
-									edge.from_col,
-									true,
-									false
-								)
-							);
-							// 2. horizontal at child+3 row
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									seg1Y,
-									pX - dxSign * chamfer,
-									seg1Y,
-									null,
-									seg1EndRow,
-									edge.from_col,
-									seg1EndRow,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							// 3. diagonal chamfer at corner
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									pX - dxSign * chamfer,
-									seg1Y,
-									pX,
-									seg1Y + dir * chamfer,
-									null,
-									seg1EndRow,
-									edge.from_col,
-									seg1EndRow,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							// 4. vertical in parent's column
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									pX,
-									seg1Y + dir * chamfer,
-									pX,
-									seg2Y,
-									null,
-									seg1EndRow,
-									edge.to_col,
-									seg2StartRow,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							// 5. 'up' at parent's column
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									pX,
-									seg2Y,
-									pX,
-									pY,
-									'up',
-									seg2StartRow,
-									edge.to_col,
-									edge.to_row,
-									edge.to_col,
-									false,
-									true
-								)
-							);
-						}
-					} else {
-						// Short cross-column edge: chamfered orthogonal path
-						const dxSign = edge.to_col > edge.from_col ? 1 : -1;
-						const drSign = edge.to_row > edge.from_row ? 1 : -1;
-						if (edge.edge_type === 'Branch') {
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									cY,
-									cX,
-									pY - drSign * chamfer,
-									null,
-									edge.from_row,
-									edge.from_col,
-									edge.to_row,
-									edge.from_col,
-									true,
-									false
-								)
-							);
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									pY - drSign * chamfer,
-									cX + dxSign * chamfer,
-									pY,
-									null,
-									edge.to_row,
-									edge.from_col,
-									edge.to_row,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX + dxSign * chamfer,
-									pY,
-									pX,
-									pY,
-									null,
-									edge.to_row,
-									edge.from_col,
-									edge.to_row,
-									edge.to_col,
-									false,
-									true
-								)
-							);
-						} else {
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									cX,
-									cY,
-									pX - dxSign * chamfer,
-									cY,
-									null,
-									edge.from_row,
-									edge.from_col,
-									edge.from_row,
-									edge.to_col,
-									true,
-									false
-								)
-							);
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									pX - dxSign * chamfer,
-									cY,
-									pX,
-									cY + drSign * chamfer,
-									null,
-									edge.from_row,
-									edge.to_col,
-									edge.to_row,
-									edge.to_col,
-									false,
-									false
-								)
-							);
-							result.push(
-								makeSeg(
-									edge,
-									entry.edgeIdx,
-									pX,
-									cY + drSign * chamfer,
-									pX,
-									pY,
-									null,
-									edge.from_row,
-									edge.to_col,
-									edge.to_row,
-									edge.to_col,
-									false,
-									true
-								)
-							);
-						}
-					}
-				} else {
-					const sameCol = entry.fromCol === entry.toCol;
-					result.push({
-						edge,
-						idx: entry.edgeIdx,
-						coords: {
-							x1: columnCenterX(entry.fromCol, laneWidth, PADDING_LEFT),
-							y1: nodeCenterY(entry.fromRow, visibleStart, rowHeight),
-							x2: columnCenterX(entry.toCol, laneWidth, PADDING_LEFT),
-							y2: nodeCenterY(entry.toRow, visibleStart, rowHeight),
-							sameColumn: sameCol
-						},
-						arrow: entry.arrow,
-						fromRow: entry.fromRow,
-						fromCol: entry.fromCol,
-						toRow: entry.toRow,
-						toCol: entry.toCol,
-						isEdgeStart: entry.isEdgeStart,
-						isEdgeEnd: entry.isEdgeEnd
-					});
-				}
-			}
-		}
-		return result;
-	});
-
-	let visibleStashLabels = $derived.by(() => {
-		const stashIdxMap = new Map(layout.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
-		return layout.nodes
-			.filter((n) => n.is_stash && n.row >= visibleStart && n.row <= visibleEnd)
-			.map((n) => ({
-				index: stashIdxMap.get(n.oid) ?? 0,
-				left: Math.round(
-					columnCenterX(n.column, laneWidth, PADDING_LEFT) + nodeRadius + 2 - hScrollLeft
-				),
-				top: Math.round(nodeCenterY(n.row, visibleStart, rowHeight))
-			}));
-	});
+	let visibleEdgeData = $derived(
+		computeVisibleEdgeCoords(
+			layout,
+			visibleStart,
+			visibleEnd,
+			rowHeight,
+			sLaneWidth,
+			sPadding,
+			$arrowGapThreshold
+		)
+	);
 
 	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 
@@ -659,42 +106,9 @@
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	let nodeHitMap = new Map<string, { x: number; y: number; radius: number }>();
 
-	function buildNodes(start: number, end: number): RenderNode[] {
-		const result: RenderNode[] = [];
-		nodeHitMap = new Map();
-		const minCol = Math.max(0, Math.floor((hScrollLeft - PADDING_LEFT) / laneWidth) - 1);
-		const maxCol = Math.ceil((hScrollLeft + visibleWidth) / laneWidth) + 1;
-		for (const n of layout.nodes) {
-			if (n.row < start || n.row > end) continue;
-			if (n.column < minCol || n.column > maxCol) continue;
-			const x = columnCenterX(n.column, laneWidth, PADDING_LEFT);
-			const y = nodeCenterY(n.row, start, rowHeight);
-			const [cr, cg, cb, ca] = [n.color.r, n.color.g, n.color.b, n.color.a];
-			const [sr, sg, sb] = n.oid === comparisonOid ? COMPARISON_RGB : SELECT_RGB;
-			result.push({
-				row: n.row,
-				column: n.column,
-				color_r: cr,
-				color_g: cg,
-				color_b: cb,
-				color_a: ca,
-				is_dimmed: n.is_dimmed,
-				is_selected: n.oid === selectedOid,
-				is_comparison: n.oid === comparisonOid,
-				is_merge: n.is_merge,
-				is_stash: n.is_stash,
-				sel_color_r: sr,
-				sel_color_g: sg,
-				sel_color_b: sb
-			});
-			nodeHitMap.set(n.oid, { x, y, radius: nodeRadius });
-		}
-		return result;
-	}
-
 	function buildEdges(segments: VisibleEdgeSegment[]): RenderEdge[] {
 		return segments
-			.filter((seg) => !isCrossColumn(seg.edge))
+			.filter((seg) => !isCrossColumn(seg.edge) && seg.coords.wpPx.length === 0)
 			.map((seg) => {
 				const e = seg.edge;
 				return {
@@ -747,19 +161,34 @@
 				imageDataBuffer = null;
 			}
 
+			// Rebuild node hit map (nodes are rendered in overlay, not GPU)
+			nodeHitMap = new Map();
+			const minCol = Math.max(0, Math.floor((hScrollLeft - sPadding) / sLaneWidth) - 1);
+			const maxCol = Math.ceil((hScrollLeft + visibleWidth) / sLaneWidth) + 1;
+			for (const n of layout.nodes) {
+				if (n.row < visibleStart || n.row > visibleEnd) continue;
+				if (n.column < minCol || n.column > maxCol) continue;
+				nodeHitMap.set(n.oid, {
+					x: columnCenterX(n.column, sLaneWidth, sPadding),
+					y: nodeCenterY(n.row, visibleStart, rowHeight),
+					radius: sNodeRadius
+				});
+			}
+
+			// GPU renders only same-column straight edges (no waypoints, no cross-column)
 			const input: RenderGraphInput = {
 				width: physW,
 				height: physH,
 				scale: dpr,
 				visible_start: visibleStart,
 				visible_end: visibleEnd,
-				h_scroll_left: hScrollLeft,
+				h_scroll_left: hScrollLeft * scale,
 				total_columns: layout.total_columns,
 				row_height: rowHeight,
-				lane_width: laneWidth,
-				padding_left: PADDING_LEFT,
-				node_radius: nodeRadius,
-				nodes: buildNodes(visibleStart, visibleEnd),
+				lane_width: sLaneWidth,
+				padding_left: sPadding,
+				node_radius: sNodeRadius,
+				nodes: [],
 				edges: buildEdges(visibleEdgeData)
 			};
 
@@ -799,23 +228,49 @@
 		}
 	}
 
-	function overdrawOverlay() {
+	function drawOverlayEdges() {
 		if (!ctx) return;
-		ctx.setTransform(dpr, 0, 0, dpr, -hScrollLeft * dpr, 0);
 		for (const seg of visibleEdgeData) {
-			const { edge, idx, coords, arrow, isEdgeStart, isEdgeEnd } = seg;
-			const color = colorToCSS(edge.color);
-			const alpha = edge.is_dimmed ? 0.35 : 0.8;
+			const { edge, idx, coords } = seg;
+			if (!isCrossColumn(edge) && coords.wpPx.length === 0) continue;
 
-			if (isCrossColumn(edge)) {
-				ctx.globalAlpha = alpha;
-				ctx.strokeStyle = color;
-				ctx.lineWidth = 1.5;
-				ctx.beginPath();
-				ctx.moveTo(coords.x1, coords.y1);
-				ctx.lineTo(coords.x2, coords.y2);
-				ctx.stroke();
+			const color = colorToCSS(edge.color);
+			const isSelected = idx === selectedEdgeIdx;
+			const isHovered = idx === hoveredEdgeIdx && !isSelected;
+			const alpha = edge.is_dimmed ? 0.35 : isSelected ? 1.0 : isHovered ? 0.9 : 0.8;
+
+			ctx.globalAlpha = alpha;
+			ctx.strokeStyle = color;
+			if (edge.edge_style === 'Dashed') {
+				ctx.setLineDash([6, 3]);
+			} else if (edge.edge_style === 'Dotted') {
+				ctx.setLineDash([2, 3]);
+			} else {
+				ctx.setLineDash([]);
 			}
+			ctx.lineWidth = isSelected ? 3.5 : isHovered ? 2.5 : 1.5;
+			ctx.beginPath();
+			ctx.moveTo(coords.x1, coords.y1);
+			for (const wp of coords.wpPx) {
+				ctx.lineTo(wp.x, wp.y);
+			}
+			ctx.lineTo(coords.x2, coords.y2);
+			ctx.stroke();
+			ctx.setLineDash([]);
+		}
+		ctx.globalAlpha = 1.0;
+	}
+
+	function drawOverlayArrows() {
+		if (!ctx) return;
+		for (const seg of visibleEdgeData) {
+			const { edge, idx, coords, arrow } = seg;
+			if (arrow === null) continue;
+
+			const color = colorToCSS(edge.color);
+			const isSelected = idx === selectedEdgeIdx;
+			const isHovered = idx === hoveredEdgeIdx && !isSelected;
+			const alpha = edge.is_dimmed ? 0.35 : isSelected ? 1.0 : isHovered ? 0.9 : 0.8;
 
 			if (arrow === 'down') {
 				const headDir = coords.y2 > coords.y1 ? 'down' : 'up';
@@ -824,15 +279,89 @@
 				const headDir = coords.y2 > coords.y1 ? 'up' : 'down';
 				drawArrowHead(ctx, coords.x1, coords.y1, color, headDir, alpha);
 			}
+		}
+	}
+
+	function drawOverlayNode(node: NodePosition) {
+		if (!ctx) return;
+		const x = columnCenterX(node.column, sLaneWidth, sPadding);
+		const y = nodeCenterY(node.row, visibleStart, rowHeight);
+
+		if (node.oid === selectedOid) {
+			ctx.beginPath();
+			ctx.arc(x, y, sNodeRadius + 3, 0, Math.PI * 2);
+			ctx.strokeStyle = SELECTED_COLOR;
+			ctx.lineWidth = 2;
+			ctx.stroke();
+		} else if (node.oid === comparisonOid) {
+			ctx.beginPath();
+			ctx.arc(x, y, sNodeRadius + 3, 0, Math.PI * 2);
+			ctx.strokeStyle = COMPARISON_COLOR;
+			ctx.lineWidth = 2;
+			ctx.setLineDash([3, 3]);
+			ctx.stroke();
+			ctx.setLineDash([]);
+		}
+
+		ctx.globalAlpha = node.is_dimmed ? 0.35 : 1.0;
+		if (node.is_stash) {
+			const s = sNodeRadius * 0.7;
+			ctx.beginPath();
+			ctx.moveTo(x, y - s);
+			ctx.lineTo(x + s, y);
+			ctx.lineTo(x, y + s);
+			ctx.lineTo(x - s, y);
+			ctx.closePath();
+			ctx.fillStyle = STASH_COLOR;
+		} else {
+			ctx.beginPath();
+			ctx.arc(x, y, sNodeRadius, 0, Math.PI * 2);
+			ctx.fillStyle = colorToCSS(node.color);
+		}
+		ctx.fill();
+		if (node.is_stash) {
+			const stashIdxMap = new Map(layout.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
+			const idx = stashIdxMap.get(node.oid);
+			if (idx !== undefined) {
+				ctx.font = `${10 * scale}px monospace`;
+				ctx.fillStyle = STASH_COLOR;
+				ctx.fillText(`S${idx}`, x + sNodeRadius + 2 * scale, y + 3 * scale);
+			}
+		}
+		ctx.globalAlpha = 1.0;
+	}
+
+	function drawOverlayNodes() {
+		if (!ctx) return;
+		for (const node of layout.nodes) {
+			if (node.row < visibleStart || node.row > visibleEnd) continue;
+			drawOverlayNode(node);
+		}
+	}
+
+	function drawOverlayHighlights() {
+		if (!ctx) return;
+		for (const seg of visibleEdgeData) {
+			const { edge, idx, coords, arrow, isEdgeStart, isEdgeEnd } = seg;
+			const color = colorToCSS(edge.color);
 
 			if (idx === selectedEdgeIdx) {
 				drawEdgeHighlight(ctx, coords, color, 3.5);
-				drawEdgeEndpoints(ctx, coords, color, nodeRadius, arrow, isEdgeStart, isEdgeEnd);
+				drawEdgeEndpoints(ctx, coords, color, sNodeRadius, arrow, isEdgeStart, isEdgeEnd);
 			} else if (idx === hoveredEdgeIdx) {
 				drawEdgeHighlight(ctx, coords, color, 2.5);
-				drawEdgeEndpoints(ctx, coords, color, nodeRadius, arrow, isEdgeStart, isEdgeEnd);
+				drawEdgeEndpoints(ctx, coords, color, sNodeRadius, arrow, isEdgeStart, isEdgeEnd);
 			}
 		}
+	}
+
+	function overdrawOverlay() {
+		if (!ctx) return;
+		ctx.setTransform(dpr, 0, 0, dpr, -hScrollLeft * scale * dpr, 0);
+		drawOverlayEdges();
+		drawOverlayArrows();
+		drawOverlayNodes();
+		drawOverlayHighlights();
 	}
 
 	$effect(() => {
@@ -846,6 +375,7 @@
 		void nodeRadius;
 		void hScrollLeft;
 		void visibleWidth;
+		void scale;
 
 		if (canvasEl) {
 			const rowDelta = visibleStart - lastRenderedStart;
@@ -878,6 +408,13 @@
 		return () => cancelAnimationFrame(pendingRender);
 	});
 
+	function handleWheel(e: WheelEvent) {
+		if (!e.ctrlKey && !e.metaKey) return;
+		e.preventDefault();
+		const delta = e.deltaY > 0 ? -0.1 : 0.1;
+		scale = Math.max(0.5, Math.min(2.0, +(scale + delta).toFixed(2)));
+	}
+
 	function handleEdgeClick(mx: number, my: number): boolean {
 		for (const { edge, idx, coords, arrow } of visibleEdgeData) {
 			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {
@@ -899,7 +436,7 @@
 
 	function handleClick(e: MouseEvent) {
 		const rect = canvasEl.getBoundingClientRect();
-		const mx = e.clientX - rect.left + hScrollLeft;
+		const mx = e.clientX - rect.left + hScrollLeft * scale;
 		const my = e.clientY - rect.top;
 		for (const [oid, pos] of nodeHitMap) {
 			if (nodeHitTest(mx, my, pos.x, pos.y, pos.radius)) {
@@ -915,14 +452,14 @@
 
 	function handleMouseMove(e: MouseEvent) {
 		const rect = canvasEl.getBoundingClientRect();
-		const mx = e.clientX - rect.left + hScrollLeft;
+		const mx = e.clientX - rect.left + hScrollLeft * scale;
 		const my = e.clientY - rect.top;
 		const row = Math.floor(my / rowHeight) + visibleStart;
-		const hitRadius = nodeRadius + 4;
+		const hitRadius = sNodeRadius + 4;
 
 		for (const n of layout.nodes) {
 			if (n.row === row) {
-				const nx = columnCenterX(n.column, laneWidth, PADDING_LEFT);
+				const nx = columnCenterX(n.column, sLaneWidth, sPadding);
 				const ny = nodeCenterY(n.row, visibleStart, rowHeight);
 				if (Math.abs(mx - nx) < hitRadius && Math.abs(my - ny) < hitRadius) {
 					if (n.is_stash) {
@@ -971,6 +508,7 @@
 		onclick={handleClick}
 		onmousemove={handleMouseMove}
 		onmouseleave={handleMouseLeave}
+		onwheel={handleWheel}
 		class="block absolute inset-0"
 		style="image-rendering: auto; width: {containerWidth}px; height: {containerHeight}px;"
 	></canvas>
@@ -982,13 +520,4 @@
 			{tooltip.text}
 		</div>
 	{/if}
-	<div class="absolute inset-0" style="pointer-events: none;">
-		{#each visibleStashLabels as s (s.index)}
-			<span
-				class="absolute text-xs font-bold font-mono leading-none select-none"
-				style="left: {s.left}px; top: {s.top}px; transform: translateY(-50%); color: #f59e0b;"
-				>S{s.index}</span
-			>
-		{/each}
-	</div>
 </div>

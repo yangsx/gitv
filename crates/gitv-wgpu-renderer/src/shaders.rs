@@ -166,11 +166,12 @@ fn fs_edge(in: VOut) -> @location(0) vec4<f32> {
     let style = in.edge_param.y;
     let dist = in.edge_param.x;
 
-    // Dashed: 8px on, 4px off
+    // Dashed: 6px on, 3px off (matches Canvas 2D setLineDash([6,3]))
     if style > 0.5 && style < 1.5 {
-        if fract(dist / 12.0) > 0.6667 { discard; }
+        if fract(dist / 9.0) > 0.6667 { discard; }
     } else if style > 1.5 {
-        if fract(dist / 6.0) > 0.3333 { discard; }
+        // Dotted: 2px on, 3px off (matches Canvas 2D setLineDash([2,3]))
+        if fract(dist / 5.0) > 0.4 { discard; }
     }
 
     return in.color;

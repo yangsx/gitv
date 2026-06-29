@@ -1,6 +1,7 @@
 use chrono::Utc;
 use gitv_git_core::graph::{GraphCalculator, GraphOptions};
 use gitv_git_core::models::*;
+use gitv_git_core::repository::Repository;
 use gitv_git_core::search::{CombineMode, SearchEngine, SearchQuery};
 use proptest::prelude::*;
 use std::collections::HashMap;
@@ -141,5 +142,39 @@ proptest! {
             .collect();
         let engine = SearchEngine::new(commits);
         assert_eq!(engine.commit_count(), n as usize);
+    }
+}
+
+/// Manual measurement test — run with:
+///   cargo test --package gitv-git-core --test property_tests measure_real_repo -- --ignored --nocapture
+#[test]
+#[ignore]
+fn measure_real_repo() {
+    for path_str in &["/home/yangsx/C/Rust/grit", "/home/yangsx/C/software/gitv"] {
+        let path = std::path::Path::new(path_str);
+        let repo = match gitv_git_core::gix_repo::GixRepository::open(path) {
+            Ok(r) => r,
+            Err(_) => {
+                eprintln!("skip {path_str}: not a git repo");
+                continue;
+            }
+        };
+        let commits = repo.commits(None, &[]).expect("failed to load commits");
+        let refs_map: HashMap<Oid, Vec<gitv_git_core::models::Ref>> = HashMap::new();
+
+        let calc = GraphCalculator::new(commits, refs_map, Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let errors = layout.verify();
+        eprintln!(
+            "{path_str}: {} nodes, {} edges, {} cols, {} errors",
+            layout.nodes.len(),
+            layout.edges.len(),
+            layout.total_columns,
+            errors.len(),
+        );
+        for e in errors.iter().take(3) {
+            eprintln!("    {e}");
+        }
     }
 }

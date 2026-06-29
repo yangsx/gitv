@@ -9,6 +9,7 @@ interface InternalEdge {
 	color: { r: number; g: number; b: number; a: number };
 	is_dimmed: boolean;
 	edge_style: 'Solid' | 'Dashed' | 'Dotted';
+	waypoints: [number, number][];
 	removable: boolean;
 	ancestorIndex: number;
 	idx: number;
@@ -150,6 +151,7 @@ export function computeHideMergeLayout(
 			color: e.color,
 			is_dimmed: e.is_dimmed,
 			edge_style: e.edge_style,
+			waypoints: e.waypoints,
 			removable: false,
 			ancestorIndex: -1,
 			idx: nextIdx++
@@ -197,6 +199,7 @@ export function computeHideMergeLayout(
 					color: e.color,
 					is_dimmed: false,
 					edge_style: 'Solid',
+					waypoints: [],
 					removable: !makeNonRemovable,
 					ancestorIndex: ai,
 					idx: nextIdx++
@@ -329,7 +332,8 @@ export function computeHideMergeLayout(
 			edge_type: ie.edge_type,
 			color: ie.color,
 			is_dimmed: ie.is_dimmed,
-			edge_style: ie.edge_style
+			edge_style: ie.edge_style,
+			waypoints: []
 		});
 	}
 

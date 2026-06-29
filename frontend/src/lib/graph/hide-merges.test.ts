@@ -49,6 +49,7 @@ function edge(
 		color: BLUE,
 		is_dimmed: false,
 		edge_style: 'Solid' as EdgeStyle,
+		waypoints: [],
 		...opts
 	};
 }

@@ -68,7 +68,8 @@ export function applyVirtualWorkingChanges(
 				edge_type: 'Straight' as const,
 				color: UNSTAGED_EDGE_COLOR,
 				is_dimmed: false,
-				edge_style: 'Solid' as const
+				edge_style: 'Solid' as const,
+				waypoints: []
 			});
 		}
 		if (hasStaged) {
@@ -80,7 +81,8 @@ export function applyVirtualWorkingChanges(
 				edge_type: 'Straight' as const,
 				color: STAGED_EDGE_COLOR,
 				is_dimmed: false,
-				edge_style: 'Solid' as const
+				edge_style: 'Solid' as const,
+				waypoints: []
 			});
 		}
 	}

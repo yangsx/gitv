@@ -84,6 +84,8 @@ export interface Edge {
 	color: Color;
 	is_dimmed: boolean;
 	edge_style: EdgeStyle;
+	/** [row, col] pairs at direction changes — render as connected segments */
+	waypoints: [number, number][];
 }
 
 export interface StashMarker {

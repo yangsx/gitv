@@ -346,6 +346,10 @@
 		}
 
 		ctx.moveTo(x1, y1);
+		// Draw through waypoints (multi-segment edges)
+		for (const wp of coords.wpPx) {
+			ctx.lineTo(wp.x * sc, wp.y);
+		}
 		ctx.lineTo(x2, y2);
 
 		ctx.stroke();

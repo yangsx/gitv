@@ -15,6 +15,8 @@ export interface EdgeCoords {
 	x2: number;
 	y2: number;
 	sameColumn: boolean;
+	/** Pixel coordinates of waypoints (unscaled) */
+	wpPx: { x: number; y: number }[];
 }
 
 export interface VisibleEdgeSegment {
@@ -37,12 +39,17 @@ export function computeEdgeCoords(
 	laneWidth: number,
 	paddingLeft: number
 ): EdgeCoords {
+	const wpPx = (edge.waypoints ?? []).map(([r, c]) => ({
+		x: columnCenterX(c, laneWidth, paddingLeft),
+		y: nodeCenterY(r, startRow, rowHeight)
+	}));
 	return {
 		x1: columnCenterX(edge.from_col, laneWidth, paddingLeft),
 		y1: nodeCenterY(edge.from_row, startRow, rowHeight),
 		x2: columnCenterX(edge.to_col, laneWidth, paddingLeft),
 		y2: nodeCenterY(edge.to_row, startRow, rowHeight),
-		sameColumn: edge.from_col === edge.to_col
+		sameColumn: edge.from_col === edge.to_col,
+		wpPx
 	};
 }
 
@@ -64,21 +71,42 @@ function pointToSegmentDist(
 }
 
 export function edgeHitTest(mx: number, my: number, coords: EdgeCoords, tolerance = 6): boolean {
-	if (coords.sameColumn) {
-		return (
-			Math.abs(mx - coords.x1) <= tolerance &&
-			my >= Math.min(coords.y1, coords.y2) - tolerance &&
-			my <= Math.max(coords.y1, coords.y2) + tolerance
-		);
+	// Build the list of points to test (from → waypoints → to)
+	const points: Array<{ x: number; y: number }> = [
+		{ x: coords.x1, y: coords.y1 },
+		...coords.wpPx,
+		{ x: coords.x2, y: coords.y2 }
+	];
+
+	// Test each segment
+	for (let i = 0; i < points.length - 1; i++) {
+		const a = points[i];
+		const b = points[i + 1];
+		if (a.x === b.x) {
+			// Vertical segment
+			if (
+				Math.abs(mx - a.x) <= tolerance &&
+				my >= Math.min(a.y, b.y) - tolerance &&
+				my <= Math.max(a.y, b.y) + tolerance
+			) {
+				return true;
+			}
+		} else if (a.y === b.y) {
+			// Horizontal segment
+			if (
+				Math.abs(my - a.y) <= tolerance &&
+				mx >= Math.min(a.x, b.x) - tolerance &&
+				mx <= Math.max(a.x, b.x) + tolerance
+			) {
+				return true;
+			}
+		} else {
+			if (pointToSegmentDist(mx, my, a.x, a.y, b.x, b.y) <= tolerance) {
+				return true;
+			}
+		}
 	}
-	if (coords.y1 === coords.y2) {
-		return (
-			Math.abs(my - coords.y1) <= tolerance &&
-			mx >= Math.min(coords.x1, coords.x2) - tolerance &&
-			mx <= Math.max(coords.x1, coords.x2) + tolerance
-		);
-	}
-	return pointToSegmentDist(mx, my, coords.x1, coords.y1, coords.x2, coords.y2) <= tolerance;
+	return false;
 }
 
 export function edgeFarOid(
@@ -120,7 +148,7 @@ function pushSegPx(
 	result.push({
 		edge,
 		idx,
-		coords: { x1, y1, x2, y2, sameColumn: fromCol === toCol },
+		coords: { x1, y1, x2, y2, sameColumn: fromCol === toCol, wpPx: [] },
 		arrow: null,
 		fromRow,
 		fromCol,
@@ -147,6 +175,24 @@ export function computeVisibleEdgeCoords(
 		const maxRow = Math.max(edge.from_row, edge.to_row);
 		if (minRow > endRow || maxRow < startRow) continue;
 
+		// Multi-segment edges with waypoints: render as single segment,
+		// bypassing arrow gap and chamfering logic.
+		if (edge.waypoints && edge.waypoints.length > 0) {
+			result.push({
+				edge,
+				idx: i,
+				coords: computeEdgeCoords(edge, startRow, rowHeight, laneWidth, paddingLeft),
+				arrow: null,
+				fromRow: edge.from_row,
+				fromCol: edge.from_col,
+				toRow: edge.to_row,
+				toCol: edge.to_col,
+				isEdgeStart: true,
+				isEdgeEnd: true
+			});
+			continue;
+		}
+
 		if (!isCrossColumn(edge)) {
 			// Same-column edge: existing arrow gap logic
 			if (hasArrowGap(edge, arrowGapThreshold)) {
@@ -164,7 +210,8 @@ export function computeVisibleEdgeCoords(
 							y1: nodeCenterY(edge.from_row, startRow, rowHeight),
 							x2: x,
 							y2: nodeCenterY(seg1EndRow, startRow, rowHeight),
-							sameColumn: true
+							sameColumn: true,
+							wpPx: []
 						},
 						arrow: 'down',
 						fromRow: edge.from_row,
@@ -188,7 +235,8 @@ export function computeVisibleEdgeCoords(
 							y1: nodeCenterY(seg2StartRow, startRow, rowHeight),
 							x2: x,
 							y2: nodeCenterY(edge.to_row, startRow, rowHeight),
-							sameColumn: true
+							sameColumn: true,
+							wpPx: []
 						},
 						arrow: 'up',
 						fromRow: seg2StartRow,
@@ -532,22 +580,11 @@ export function drawEdgeHighlight(
 	ctx.strokeStyle = color;
 	ctx.lineWidth = lineWidth;
 	ctx.setLineDash([]);
-	if (coords.sameColumn || coords.y1 === coords.y2) {
-		ctx.moveTo(coords.x1, coords.y1);
-		ctx.lineTo(coords.x2, coords.y2);
-	} else {
-		const midX = (coords.x1 + coords.x2) / 2;
-		const dy = coords.y2 - coords.y1;
-		ctx.moveTo(coords.x1, coords.y1);
-		ctx.bezierCurveTo(
-			midX,
-			coords.y1 + dy * 0.25,
-			midX,
-			coords.y2 - dy * 0.25,
-			coords.x2,
-			coords.y2
-		);
+	ctx.moveTo(coords.x1, coords.y1);
+	for (const wp of coords.wpPx) {
+		ctx.lineTo(wp.x, wp.y);
 	}
+	ctx.lineTo(coords.x2, coords.y2);
 	ctx.stroke();
 	ctx.globalAlpha = 1.0;
 }
@@ -562,7 +599,7 @@ export function drawEdgeEndpoints(
 	coords: EdgeCoords,
 	color: string,
 	nodeRadius: number,
-	arrow: 'down' | 'up' | null = null,
+	_arrow: 'down' | 'up' | null = null,
 	drawStart = true,
 	drawEnd = true
 ) {
@@ -570,12 +607,12 @@ export function drawEdgeEndpoints(
 	ctx.strokeStyle = color;
 	ctx.lineWidth = 1.5;
 	ctx.setLineDash([]);
-	if ((arrow === null || arrow === 'down') && drawStart) {
+	if (drawStart) {
 		ctx.beginPath();
 		ctx.arc(coords.x1, coords.y1, nodeRadius + 3, 0, Math.PI * 2);
 		ctx.stroke();
 	}
-	if ((arrow === null || arrow === 'up') && drawEnd) {
+	if (drawEnd) {
 		ctx.beginPath();
 		ctx.arc(coords.x2, coords.y2, nodeRadius + 3, 0, Math.PI * 2);
 		ctx.stroke();
