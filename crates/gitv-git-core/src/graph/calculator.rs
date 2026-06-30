@@ -327,12 +327,26 @@ impl GraphCalculator {
             displayorder_idx[row] = i;
         }
 
-        // Sort children by row ascending (youngest first) for ordertoken computation
-        let children_sorted = Self::sort_children_by_row(&children, &row_assignments);
+        // Compute first-parent chain from HEAD for ordertoken tiebreaking.
+        // When fork-point children share the same timestamp, the child on the
+        // first-parent chain is preferred as the "chosen" continuation (gets
+        // the smaller ordertoken → col 0), matching gitk's semantics.
+        let head_oid = commits[displayorder_idx[0]].oid;
+        let first_parent_chain: HashSet<Oid> =
+            Self::compute_first_parent_chain(head_oid, &commits, &oid_index);
+
+        // Sort children: first_parent_chain members first, then by row ascending.
+        let children_sorted =
+            Self::sort_children_by_row(&children, &row_assignments, &first_parent_chain);
 
         // Compute ordertokens for stable column ordering
-        let ordertokens =
-            Self::compute_ordertokens(&commits, &children_sorted, &displayorder_idx, &oid_index);
+        let ordertokens = Self::compute_ordertokens(
+            &commits,
+            &children_sorted,
+            &displayorder_idx,
+            &oid_index,
+            &first_parent_chain,
+        );
 
         // Assign columns using row-by-row active-thread tracking (gitk algorithm)
         let mingap_len = self.options.arrow_gap_threshold;
@@ -634,17 +648,54 @@ impl GraphCalculator {
             .collect()
     }
 
-    /// Sort each commit's children list by row ascending (youngest first).
-    /// Required for ordertoken computation — the first child in the list is
-    /// the youngest child, which determines the commit's position in the
-    /// first-parent chain.
+    /// Walk first-parent pointers from HEAD to build the first-parent chain set.
+    /// Used for ordertoken tiebreaking at fork points.
+    fn compute_first_parent_chain(
+        head_oid: Oid,
+        commits: &[CommitInfo],
+        oid_index: &HashMap<Oid, usize>,
+    ) -> HashSet<Oid> {
+        let mut chain = HashSet::new();
+        let mut oid = head_oid;
+        loop {
+            chain.insert(oid);
+            let Some(&idx) = oid_index.get(&oid) else {
+                break;
+            };
+            let c = &commits[idx];
+            if c.parent_oids.is_empty() {
+                break;
+            }
+            oid = c.parent_oids[0];
+        }
+        chain
+    }
+
+    /// Sort each commit's children list so that first-parent-chain children
+    /// come first, then by row ascending (youngest first). This ensures the
+    /// ordertoken "chosen" continuation is the one on HEAD's mainline when
+    /// fork-point children share the same timestamp.
     fn sort_children_by_row(
         children: &HashMap<Oid, Vec<Oid>>,
         row_assignments: &HashMap<Oid, usize>,
+        first_parent_chain: &HashSet<Oid>,
     ) -> HashMap<Oid, Vec<Oid>> {
         let mut sorted = children.clone();
         for kids in sorted.values_mut() {
-            kids.sort_by_key(|oid| row_assignments.get(oid).copied().unwrap_or(usize::MAX));
+            kids.sort_by(|a, b| {
+                let a_is_fpc = first_parent_chain.contains(a);
+                let b_is_fpc = first_parent_chain.contains(b);
+                if a_is_fpc != b_is_fpc {
+                    return if a_is_fpc {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    };
+                }
+                let a_row = row_assignments.get(a).copied().unwrap_or(usize::MAX);
+                let b_row = row_assignments.get(b).copied().unwrap_or(usize::MAX);
+                a_row.cmp(&b_row)
+            });
         }
         sorted
     }
@@ -672,6 +723,7 @@ impl GraphCalculator {
         children_sorted: &HashMap<Oid, Vec<Oid>>,
         displayorder_idx: &[usize],
         oid_index: &HashMap<Oid, usize>,
+        first_parent_chain: &HashSet<Oid>,
     ) -> HashMap<Oid, String> {
         let mut ordertokens: HashMap<Oid, String> = HashMap::new();
 
@@ -709,6 +761,11 @@ impl GraphCalculator {
         // (youngest) child inherits the fork point's token. Other children
         // get a suffix (child index) appended to their entire descendant
         // subtree, ensuring each branch sorts into a distinct column.
+        //
+        // Propagation skips children on the first-parent chain (mainline) to
+        // prevent side-branch suffixes from leaking through merge points
+        // into the mainline. Other children (side-branch continuations after
+        // a merge) continue to receive the suffix normally.
         for &ci in displayorder_idx {
             let oid = commits[ci].oid;
             let Some(kids) = children_sorted.get(&oid) else {
@@ -722,7 +779,13 @@ impl GraphCalculator {
                     continue;
                 }
                 let suffix = child_idx.to_string();
-                propagate_branch_token(child_oid, children_sorted, &mut ordertokens, &suffix);
+                propagate_branch_token(
+                    child_oid,
+                    children_sorted,
+                    &mut ordertokens,
+                    &suffix,
+                    first_parent_chain,
+                );
             }
         }
 
@@ -930,9 +993,12 @@ impl GraphCalculator {
                 }
                 let should_add = children_sorted
                     .get(&p_oid)
-                    .and_then(|kids| kids.first())
-                    .and_then(|&fk| row_assignments.get(&fk))
-                    .is_some_and(|&fk_row| fk_row < row);
+                    .map(|kids| {
+                        kids.iter().any(|&kid| {
+                            row_assignments.get(&kid).copied().unwrap_or(usize::MAX) < row
+                        })
+                    })
+                    .unwrap_or(false);
                 if should_add {
                     entries.push((ordertokens[&p_oid].clone(), p_oid));
                 }
@@ -1089,12 +1155,15 @@ impl GraphCalculator {
                 let mut hint = curr_col;
                 for &p_oid in &pre_commit.parent_oids {
                     if !idlist.contains(&p_oid) {
-                        // Only insert if first child has already been displayed
+                        // Only insert if any child has already been displayed
                         let should_insert = children_sorted
                             .get(&p_oid)
-                            .and_then(|kids| kids.first())
-                            .and_then(|&fk| row_assignments.get(&fk))
-                            .is_some_and(|&fk_row| fk_row < row);
+                            .map(|kids| {
+                                kids.iter().any(|&kid| {
+                                    row_assignments.get(&kid).copied().unwrap_or(usize::MAX) < row
+                                })
+                            })
+                            .unwrap_or(false);
                         if should_insert {
                             let col = Self::idcol(&idlist, p_oid, ordertokens, hint);
                             idlist.insert(col, p_oid);
@@ -1109,9 +1178,12 @@ impl GraphCalculator {
                     if !idlist.contains(&next_oid) {
                         let should_insert = children_sorted
                             .get(&next_oid)
-                            .and_then(|kids| kids.first())
-                            .and_then(|&fk| row_assignments.get(&fk))
-                            .is_some_and(|&fk_row| fk_row < row);
+                            .map(|kids| {
+                                kids.iter().any(|&kid| {
+                                    row_assignments.get(&kid).copied().unwrap_or(usize::MAX) < row
+                                })
+                            })
+                            .unwrap_or(false);
                         if should_insert {
                             let col = Self::idcol(&idlist, next_oid, ordertokens, hint);
                             idlist.insert(col, next_oid);
@@ -1411,11 +1483,17 @@ impl GraphCalculator {
 /// This is used during ordertoken post-processing: when a fork point has
 /// children [A, B, C], B's subtree gets `"1"` and C's subtree gets `"2"`,
 /// ensuring each branch sorts into a distinct column via `idcol`.
+///
+/// Propagation skips children on the first-parent chain (mainline) at each
+/// visited commit, preventing side-branch suffixes from leaking through
+/// merge points into the mainline. Other children (side-branch continuations
+/// after a merge) continue to receive the suffix normally.
 fn propagate_branch_token(
     start_oid: Oid,
     children_sorted: &HashMap<Oid, Vec<Oid>>,
     ordertokens: &mut HashMap<Oid, String>,
     suffix: &str,
+    first_parent_chain: &HashSet<Oid>,
 ) {
     let mut stack = vec![start_oid];
     let mut visited = HashSet::new();
@@ -1428,6 +1506,13 @@ fn propagate_branch_token(
         }
         if let Some(kids) = children_sorted.get(&oid) {
             for &kid in kids.iter().rev() {
+                // Skip children on the first-parent chain (mainline) —
+                // they should not receive a side branch's suffix. This
+                // prevents leaks through merge points while allowing
+                // propagation to continue through side-branch descendants.
+                if first_parent_chain.contains(&kid) {
+                    continue;
+                }
                 stack.push(kid);
             }
         }
@@ -3240,5 +3325,374 @@ mod tests {
         // f421e8d (parent) should be in column 0 (mainline)
         let parent = layout.nodes.iter().find(|n| n.oid == make_oid(2)).unwrap();
         assert_eq!(parent.column, 0, "f421e8d should be in mainline column 0");
+    }
+
+    #[test]
+    fn fork_point_prefers_first_parent_chain_child() {
+        // Topology where branch tip sorts earlier than mainline child due to
+        // equal commit_time tiebreak by Oid. Without the first_parent_chain
+        // preference in sort_children_by_row, the branch gets col 0 instead
+        // of the mainline.
+        //
+        // oid1(HEAD, t=10) → oid2(t=9) → oid3(t=9) → oid5(merge, t=8)
+        //                                           └→ oid7(branch, t=9)
+        // oid7 has hex "0700..." > "0300..." (oid3) → oid7 gets row 1, oid3 row 3
+        // Without fix: children_sorted[oid5] = [oid7, oid3] (row order)
+        //   → oid7 gets token "" (col 0), oid3 gets "1" (col 1) — WRONG
+        // With fix: first_parent_chain = {oid1,oid2,oid3,oid5,...}
+        //   → children_sorted[oid5] = [oid3(fpc), oid7(not)] → oid3 gets col 0 — CORRECT
+        let make_commit_at = |oid: u8, parents: Vec<u8>, time: i64| -> CommitInfo {
+            CommitInfo {
+                oid: make_oid(oid),
+                short_oid: format!("{oid:02x}00000"),
+                message: String::new(),
+                summary: String::new(),
+                author: Author {
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
+                },
+                committer: Author {
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
+                },
+                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                parent_oids: parents.into_iter().map(make_oid).collect(),
+                refs: Vec::new(),
+            }
+        };
+
+        let commits = vec![
+            make_commit_at(1, vec![2], 10),   // HEAD
+            make_commit_at(7, vec![5], 9),    // branch tip
+            make_commit_at(2, vec![3], 9),    // mainline
+            make_commit_at(3, vec![5], 9),    // mainline child of merge
+            make_commit_at(5, vec![4, 6], 8), // merge/fork point
+            make_commit_at(4, vec![], 7),     // parent 1 of merge
+            make_commit_at(6, vec![], 6),     // parent 2 of merge
+        ];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // oid3 (mainline child of merge) should be at col 0
+        let oid3 = layout.nodes.iter().find(|n| n.oid == make_oid(3)).unwrap();
+        assert_eq!(
+            oid3.column, 0,
+            "mainline child oid3 should be at column 0, got {}",
+            oid3.column
+        );
+
+        // oid7 (branch tip) should be at col > 0
+        let oid7 = layout.nodes.iter().find(|n| n.oid == make_oid(7)).unwrap();
+        assert!(
+            oid7.column > 0,
+            "branch tip oid7 should be at column > 0, got {}",
+            oid7.column
+        );
+    }
+
+    #[test]
+    fn visual_grit_repo_fork_has_mainline_at_col_0() {
+        // Exact topology of the grit repo fork point, using commit_time
+        // values that force equal-timestamp tiebreak. Verifies the visual
+        // layout a user would see:
+        //
+        //   oid4(row 0, HEAD, t=10)     oid7(row 1, branch tip, t=9)
+        //        │                            │
+        //   oid2(row 2, t=9)                  │
+        //        │                            │
+        //   oid3(row 3, child of merge, t=9)  │
+        //        │                           /
+        //      oid5(merge, t=8)
+        //       /         \
+        //   oid4(p1, t=7)  oid6(p2, t=6)
+        //   (main below)   (branch below)
+        //
+        // oid7 has hex "07...", oid3 has hex "03..." → oid7 sorts first in heap
+        // Without fix: oid7 becomes first child → col 0, oid3 → col 1
+        // With fix: oid3 is on first-parent chain → col 0, oid7 → col 1
+        let make = |oid: u8, parents: Vec<u8>, time: i64| -> CommitInfo {
+            CommitInfo {
+                oid: make_oid(oid),
+                short_oid: format!("{oid:02x}00000"),
+                message: String::new(),
+                summary: String::new(),
+                author: Author {
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
+                },
+                committer: Author {
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
+                },
+                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                parent_oids: parents.into_iter().map(make_oid).collect(),
+                refs: Vec::new(),
+            }
+        };
+
+        let commits = vec![
+            make(1, vec![2], 10),   // HEAD — mainline chain
+            make(7, vec![5], 9),    // branch tip (non-fpc)
+            make(2, vec![3], 9),    // mainline
+            make(3, vec![5], 9),    // mainline child of merge (fpc)
+            make(5, vec![4, 6], 8), // merge/fork point
+            make(4, vec![], 7),     // parent 1 — mainline below merge
+            make(6, vec![], 6),     // parent 2 — branch below merge
+        ];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // MAINLINE chain (above and below merge) should be at col 0
+        for &(oid, label) in &[
+            (1, "HEAD"),
+            (2, "mainline"),
+            (3, "mainline child of merge"),
+            (4, "parent 1/mainline below merge"),
+        ] {
+            let node = layout
+                .nodes
+                .iter()
+                .find(|n| n.oid == make_oid(oid))
+                .unwrap();
+            assert_eq!(
+                node.column, 0,
+                "{label} should be at column 0, got {}",
+                node.column
+            );
+        }
+
+        // BRANCH chain (above and below merge) should be at col > 0
+        for &(oid, label) in &[(7, "branch tip"), (6, "parent 2/branch below merge")] {
+            let node = layout
+                .nodes
+                .iter()
+                .find(|n| n.oid == make_oid(oid))
+                .unwrap();
+            assert!(
+                node.column > 0,
+                "{label} should be at column > 0, got {}",
+                node.column
+            );
+        }
+
+        // Verify the layout is structurally valid
+        let errors = layout.verify();
+        assert!(
+            errors.is_empty(),
+            "verify() should find no errors: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn visual_three_way_fork_all_branches_right_of_mainline() {
+        // Root with 4 children splitting at the same timestamp. The three
+        // non-fpc children sit to the right of the mainline. Branches may
+        // share columns if their row ranges don't overlap (column compaction).
+        //
+        //   oid6(HEAD, t=12)
+        //        │
+        //   oid2(mainline, t=11)   oid3 oid4 oid5(branches, t=11)
+        //        │                    \    |    /
+        //       oid1(root, t=10)
+        //
+        // children_sorted[oid1] = [oid2(fpc), oid3, oid4, oid5]
+        // oid2 → col 0; oid3/oid4/oid5 → col > 0
+        let make = |oid: u8, parents: Vec<u8>, time: i64| -> CommitInfo {
+            CommitInfo {
+                oid: make_oid(oid),
+                short_oid: format!("{oid:02x}00000"),
+                message: String::new(),
+                summary: String::new(),
+                author: Author {
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
+                },
+                committer: Author {
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
+                },
+                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                parent_oids: parents.into_iter().map(make_oid).collect(),
+                refs: Vec::new(),
+            }
+        };
+
+        let commits = vec![
+            make(6, vec![2], 12), // HEAD (child of mainline)
+            make(2, vec![1], 11), // mainline child of root (fpc)
+            make(3, vec![1], 11), // branch 1
+            make(4, vec![1], 11), // branch 2
+            make(5, vec![1], 11), // branch 3
+            make(1, vec![], 10),  // root
+        ];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // Mainline at col 0
+        let mainline = layout.nodes.iter().find(|n| n.oid == make_oid(2)).unwrap();
+        assert_eq!(
+            mainline.column, 0,
+            "mainline should be at column 0, got {}",
+            mainline.column
+        );
+
+        // All branches at col > 0
+        for &oid in &[3u8, 4, 5] {
+            let node = layout
+                .nodes
+                .iter()
+                .find(|n| n.oid == make_oid(oid))
+                .unwrap();
+            assert!(
+                node.column > 0,
+                "branch oid{oid} should be at column > 0, got {}",
+                node.column
+            );
+        }
+
+        let errors = layout.verify();
+        assert!(
+            errors.is_empty(),
+            "verify() should find no errors: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn visual_pre_insertion_triggers_on_any_child() {
+        // Root has two children: a non-fpc branch tip at row 1, and an fpc
+        // mainline child at row 120. The branch tip triggers pre-insertion
+        // of root's thread at row ~2 (even though children_sorted[0] is the
+        // fpc child at row 120). Without the pre-insertion fix, root enters
+        // the idlist only at row 120 → no arrow_gap on the branch edge.
+        //
+        //   oid120(HEAD, t=130) → oid119 → ... → oid2 → oid1(root, t=1)
+        //   oid121(branch, t=129) ────────────────────────────┘
+        //
+        // oid1 has children [oid2(fpc, row ~119), oid121(branch, row 1)].
+        // oid121 is NOT on the first-parent chain from HEAD.
+        let mut commits = vec![];
+        // Mainline chain: oid120 → oid119 → ... → oid2 → oid1(root)
+        for i in (2..=120u8).rev() {
+            let parent = i - 1; // i → i-1 (e.g. oid120 → oid119, oid2 → oid1)
+            let time = i as i64 + 100;
+            commits.push(CommitInfo {
+                oid: make_oid(i),
+                short_oid: format!("{i:02x}00000"),
+                message: format!("main {i}"),
+                summary: format!("main {i}"),
+                author: Author {
+                    name: "T".into(),
+                    email: "t@t.com".into(),
+                },
+                committer: Author {
+                    name: "T".into(),
+                    email: "t@t.com".into(),
+                },
+                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                parent_oids: vec![make_oid(parent)],
+                refs: Vec::new(),
+            });
+        }
+        // root (oid1)
+        let root_time = 101i64;
+        commits.push(CommitInfo {
+            oid: make_oid(1),
+            short_oid: "0100000".into(),
+            message: "root".into(),
+            summary: "root".into(),
+            author: Author {
+                name: "T".into(),
+                email: "t@t.com".into(),
+            },
+            committer: Author {
+                name: "T".into(),
+                email: "t@t.com".into(),
+            },
+            author_time: Utc.timestamp_opt(root_time, 0).single().unwrap(),
+            commit_time: Utc.timestamp_opt(root_time, 0).single().unwrap(),
+            parent_oids: vec![],
+            refs: Vec::new(),
+        });
+        // branch tip (oid121). Parents = [oid1 (root)]
+        commits.push(CommitInfo {
+            oid: make_oid(121),
+            short_oid: "12100000".into(),
+            message: "branch".into(),
+            summary: "branch".into(),
+            author: Author {
+                name: "T".into(),
+                email: "t@t.com".into(),
+            },
+            committer: Author {
+                name: "T".into(),
+                email: "t@t.com".into(),
+            },
+            author_time: Utc.timestamp_opt(229, 0).single().unwrap(),
+            commit_time: Utc.timestamp_opt(229, 0).single().unwrap(),
+            parent_oids: vec![make_oid(1)],
+            refs: Vec::new(),
+        });
+        // HEAD merge (oid120's child = oid122)
+        // Actually, rework: HEAD = oid122 = merge of oid120 (main) and oid121 (branch)
+        commits.push(CommitInfo {
+            oid: make_oid(122),
+            short_oid: "12200000".into(),
+            message: "merge".into(),
+            summary: "merge".into(),
+            author: Author {
+                name: "T".into(),
+                email: "t@t.com".into(),
+            },
+            committer: Author {
+                name: "T".into(),
+                email: "t@t.com".into(),
+            },
+            author_time: Utc.timestamp_opt(230, 0).single().unwrap(),
+            commit_time: Utc.timestamp_opt(230, 0).single().unwrap(),
+            parent_oids: vec![make_oid(120), make_oid(121)],
+            refs: Vec::new(),
+        });
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let branch_node = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(121))
+            .unwrap();
+        let root_node = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+
+        let branch_edge = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == branch_node.row && e.to_row == root_node.row)
+            .expect("should have edge from branch to root");
+
+        // Branch→root spans ~120 rows; thread should be removed and
+        // re-inserted, producing an arrow_gap. Without the pre-insertion
+        // fix (any-child check), the root wouldn't enter the idlist early
+        // enough to be removed → no arrow_gap.
+        assert!(
+            branch_edge.arrow_gap.is_some(),
+            "long-spanning branch→root edge should have arrow_gap from pre-insertion + thread removal"
+        );
+
+        let errors = layout.verify();
+        assert!(
+            errors.is_empty(),
+            "verify() should find no errors: {:?}",
+            errors
+        );
     }
 }
