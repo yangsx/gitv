@@ -458,6 +458,7 @@ pub struct CachedCommitSummary {
     pub summary: String,
     pub author: Author,
     pub author_time: DateTime<Utc>,
+    pub commit_time: DateTime<Utc>,
     pub parent_oids: Vec<Oid>,
     pub refs: Vec<Ref>,
 }
@@ -473,7 +474,7 @@ impl From<CachedCommitSummary> for CommitInfo {
             author: s.author.clone(),
             committer: s.author,
             author_time: s.author_time,
-            commit_time: s.author_time,
+            commit_time: s.commit_time,
             parent_oids: s.parent_oids,
             refs: s.refs,
         }

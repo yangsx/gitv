@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::error::CacheError;
 use crate::models::*;
 
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 const CACHE_FILENAME: &str = "repo-cache.bin";
 
 pub struct RepositoryCache {
@@ -81,6 +81,7 @@ impl CachedRepoData {
                     summary: c.summary.clone(),
                     author: c.author.clone(),
                     author_time: c.author_time,
+                    commit_time: c.commit_time,
                     parent_oids: c.parent_oids.clone(),
                     refs: c.refs.clone(),
                 })
@@ -140,6 +141,7 @@ mod tests {
                     email: "test@test.com".to_string(),
                 },
                 author_time: Utc::now(),
+                commit_time: Utc::now(),
                 parent_oids: vec![],
                 refs: vec![],
             }],
