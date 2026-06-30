@@ -17,7 +17,6 @@
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onEdgeNavigate?: (_oid: string) => void;
-		hScrollLeft?: number;
 		visibleWidth?: number;
 	}
 
@@ -33,7 +32,6 @@
 		comparisonOid = null,
 		onSelect,
 		onEdgeNavigate,
-		hScrollLeft = 0,
 		visibleWidth = 200
 	}: Props = $props();
 
@@ -59,7 +57,6 @@
 		{comparisonOid}
 		{onSelect}
 		{onEdgeNavigate}
-		{hScrollLeft}
 		{visibleWidth}
 	/>
 {:else}
@@ -75,7 +72,6 @@
 		{comparisonOid}
 		{onSelect}
 		{onEdgeNavigate}
-		{hScrollLeft}
 		{visibleWidth}
 	/>
 {/if}

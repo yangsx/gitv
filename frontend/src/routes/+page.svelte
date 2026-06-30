@@ -1538,7 +1538,6 @@
 								matchingOids={$matchingOids.size > 0 ? $matchingOids : undefined}
 								onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 								onContextMenu={handleCommitContextMenu}
-								graphWidth={savedLayout?.graphWidth ?? 200}
 								{rowHeight}
 								onLoadMore={loadMoreCommits}
 								loadedCommitCount={commits.length}

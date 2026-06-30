@@ -35,7 +35,6 @@
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onEdgeNavigate?: (_oid: string) => void;
-		hScrollLeft?: number;
 		visibleWidth?: number;
 	}
 
@@ -51,7 +50,6 @@
 		comparisonOid = null,
 		onSelect,
 		onEdgeNavigate,
-		hScrollLeft = 0,
 		visibleWidth = 200
 	}: Props = $props();
 
@@ -96,14 +94,7 @@
 		}
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		ctx.setTransform(
-			devicePixelRatio,
-			0,
-			0,
-			devicePixelRatio,
-			-hScrollLeft * sc * devicePixelRatio,
-			0
-		);
+		ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
 		const startRow = visibleStart;
 		const endRow = visibleEnd;
@@ -133,7 +124,6 @@
 		void visibleEnd;
 		void hoveredEdgeIdx;
 		void selectedEdgeIdx;
-		void hScrollLeft;
 		void visibleWidth;
 		draw(layout);
 	});
@@ -165,8 +155,8 @@
 		const sNodeRadius = nodeRadius * sc;
 		const sPadding = PADDING_LEFT * sc;
 		const hitRadius = sNodeRadius + 4 * sc;
-		const mxScaled = mouseCSS + hScrollLeft * sc;
-		const mxUnscaled = mouseCSS + hScrollLeft;
+		const mxScaled = mouseCSS;
+		const mxUnscaled = mouseCSS;
 		const my = e.clientY - rect.top;
 
 		for (const node of layout.nodes) {
@@ -192,8 +182,8 @@
 		const sLaneWidth = laneWidth * sc;
 		const sNodeRadius = nodeRadius * sc;
 		const sPadding = PADDING_LEFT * sc;
-		const xScaled = mouseCSS + hScrollLeft * sc;
-		const xUnscaled = mouseCSS + hScrollLeft;
+		const xScaled = mouseCSS;
+		const xUnscaled = mouseCSS;
 		const y = e.clientY - rect.top;
 		const row = Math.floor(y / rowHeight) + visibleStart;
 		const hitRadius = sNodeRadius + 4 * sc;

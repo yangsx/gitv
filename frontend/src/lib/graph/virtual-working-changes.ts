@@ -102,7 +102,8 @@ export function applyVirtualWorkingChanges(
 			}))
 		],
 		stash_markers: graphLayout.stash_markers.map((s) => ({ ...s, row: s.row + virtualCount })),
-		total_rows: graphLayout.total_rows + virtualCount
+		total_rows: graphLayout.total_rows + virtualCount,
+		row_max_column: [...new Array(virtualCount).fill(1), ...graphLayout.row_max_column]
 	};
 }
 

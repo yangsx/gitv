@@ -43,7 +43,6 @@
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onEdgeNavigate?: (_oid: string) => void;
-		hScrollLeft?: number;
 		visibleWidth?: number;
 	}
 
@@ -59,7 +58,6 @@
 		comparisonOid = null,
 		onSelect,
 		onEdgeNavigate,
-		hScrollLeft = 0,
 		visibleWidth = 200
 	}: Props = $props();
 
@@ -154,11 +152,8 @@
 
 			// Rebuild node hit map (nodes are rendered in overlay, not GPU)
 			nodeHitMap = new Map();
-			const minCol = Math.max(0, Math.floor((hScrollLeft - sPadding) / sLaneWidth) - 1);
-			const maxCol = Math.ceil((hScrollLeft + visibleWidth) / sLaneWidth) + 1;
 			for (const n of layout.nodes) {
 				if (n.row < visibleStart || n.row > visibleEnd) continue;
-				if (n.column < minCol || n.column > maxCol) continue;
 				nodeHitMap.set(n.oid, {
 					x: columnCenterX(n.column, sLaneWidth, sPadding),
 					y: nodeCenterY(n.row, visibleStart, rowHeight),
@@ -173,7 +168,7 @@
 				scale: dpr,
 				visible_start: visibleStart,
 				visible_end: visibleEnd,
-				h_scroll_left: hScrollLeft * scale,
+				h_scroll_left: 0,
 				total_columns: layout.total_columns,
 				row_height: rowHeight,
 				lane_width: sLaneWidth,
@@ -348,7 +343,7 @@
 
 	function overdrawOverlay() {
 		if (!ctx) return;
-		ctx.setTransform(dpr, 0, 0, dpr, -hScrollLeft * scale * dpr, 0);
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		drawOverlayEdges();
 		drawOverlayArrows();
 		drawOverlayNodes();
@@ -364,7 +359,6 @@
 		void rowHeight;
 		void laneWidth;
 		void nodeRadius;
-		void hScrollLeft;
 		void visibleWidth;
 		void scale;
 
@@ -427,7 +421,7 @@
 
 	function handleClick(e: MouseEvent) {
 		const rect = canvasEl.getBoundingClientRect();
-		const mx = e.clientX - rect.left + hScrollLeft * scale;
+		const mx = e.clientX - rect.left;
 		const my = e.clientY - rect.top;
 		for (const [oid, pos] of nodeHitMap) {
 			if (nodeHitTest(mx, my, pos.x, pos.y, pos.radius)) {
@@ -443,7 +437,7 @@
 
 	function handleMouseMove(e: MouseEvent) {
 		const rect = canvasEl.getBoundingClientRect();
-		const mx = e.clientX - rect.left + hScrollLeft * scale;
+		const mx = e.clientX - rect.left;
 		const my = e.clientY - rect.top;
 		const row = Math.floor(my / rowHeight) + visibleStart;
 		const hitRadius = sNodeRadius + 4;

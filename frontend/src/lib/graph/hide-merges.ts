@@ -337,6 +337,11 @@ export function computeHideMergeLayout(
 		});
 	}
 
+	const newRowMaxColumn: number[] = new Array(rowMap.size).fill(0);
+	for (const [origRow, mappedRow] of rowMap) {
+		newRowMaxColumn[mappedRow] = layout.row_max_column[origRow] ?? 0;
+	}
+
 	return {
 		...layout,
 		nodes: sortedNodes
@@ -346,6 +351,7 @@ export function computeHideMergeLayout(
 		stash_markers: layout.stash_markers
 			.filter((s) => !mergeRows.has(s.row))
 			.map((s) => ({ ...s, row: rowMap.get(s.row)! })),
-		total_rows: rowMap.size
+		total_rows: rowMap.size,
+		row_max_column: newRowMaxColumn
 	};
 }

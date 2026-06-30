@@ -109,6 +109,7 @@ export interface GraphLayout {
 	orientation: 'TopToBottom' | 'BottomToTop';
 	total_rows: number;
 	stash_commits: CommitInfo[];
+	row_max_column: number[];
 }
 
 export interface CommitBatch {

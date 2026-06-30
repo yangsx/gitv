@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, Ref, Highlight, MatchType } from '$lib/bindings/types';
-	import { STAGED_OID, UNSTAGED_OID } from '$lib/constants';
+	import {
+		STAGED_OID,
+		UNSTAGED_OID,
+		HASH_COLUMN_WIDTH,
+		AUTHOR_COLUMN_WIDTH,
+		DATE_COLUMN_WIDTH
+	} from '$lib/constants';
 	import { formatGitDateTime } from '$lib/utils/format-date';
 
 	interface Props {
@@ -15,6 +21,7 @@
 		oncontextmenu?: (_e: MouseEvent, _oid: string) => void;
 		id?: string;
 		rowHeight?: number;
+		graphOffset?: number;
 	}
 
 	let {
@@ -27,7 +34,8 @@
 		onclick,
 		oncontextmenu,
 		id,
-		rowHeight = 28
+		rowHeight = 28,
+		graphOffset = 0
 	}: Props = $props();
 
 	function escapeHtml(s: string): string {
@@ -70,95 +78,132 @@
 		if (r.Remote) return `${r.Remote.remote}/${r.Remote.name}`;
 		return null;
 	}
-</script>
 
-{#if isVirtual}
-	<button
-		{id}
-		tabindex="-1"
-		role="option"
-		aria-selected={isSelected}
-		style="height: {rowHeight}px;"
-		class="flex w-full items-center gap-3 px-3 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
-			? 'bg-blue-900/40 text-blue-200'
+	function refColorClass(r: Ref): string {
+		if (r.Branch?.is_head) return 'text-green-400 font-medium';
+		if (r.Branch) return 'text-green-600';
+		if (r.Tag) return 'text-yellow-400';
+		if (r.Remote) return 'text-gray-500';
+		return 'text-gray-400';
+	}
+
+	let rowBgClass = $derived(
+		isSelected ? 'bg-blue-900/40' : isComparison ? 'bg-indigo-900/40' : 'bg-gray-800'
+	);
+
+	let rowHoverClass = $derived(isSelected || isComparison ? '' : 'group-hover:bg-gray-700');
+
+	let textClass = $derived(
+		isSelected
+			? 'text-blue-200'
 			: isComparison
-				? 'bg-indigo-900/40 text-indigo-200'
-				: 'text-gray-300'}"
-		aria-label={$t('commit_row.staged_aria', {
-			summary: commit.summary,
-			type: isStaged ? 'staged' : 'unstaged'
-		})}
-		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
-			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
-	>
-		<span class="w-[80px] shrink-0 flex items-center gap-1">
-			<span
-				class="inline-block h-2 w-2 rounded-full {isStaged ? 'bg-green-400' : 'bg-orange-400'}"
-				aria-hidden="true"
-			></span>
-		</span>
-		<span class="min-w-0 truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			{@html renderSummary()}
-		</span>
-	</button>
-{:else}
-	<button
-		{id}
-		tabindex="-1"
-		role="option"
-		aria-selected={isSelected}
-		style="height: {rowHeight}px;"
-		class="flex w-full items-center gap-3 px-3 text-left text-sm hover:bg-gray-700 focus:outline-none {isSelected
-			? 'bg-blue-900/40 text-blue-200'
-			: isComparison
-				? 'bg-indigo-900/40 text-indigo-200'
+				? 'text-indigo-200'
 				: isDimmed
 					? 'text-gray-600'
-					: 'text-gray-300'}"
-		aria-label={$t('commit_row.aria_label', {
-			summary: commit.summary,
-			author: commit.author.name,
-			date: formatGitDateTime(commit.commit_time)
-		}) +
+					: 'text-gray-300'
+	);
+</script>
+
+<button
+	{id}
+	tabindex="-1"
+	role="option"
+	aria-selected={isSelected}
+	class="group flex w-full items-center text-left text-sm focus:outline-none"
+	style="height: {rowHeight}px;"
+	aria-label={isVirtual
+		? $t('commit_row.staged_aria', {
+				summary: commit.summary,
+				type: isStaged ? 'staged' : 'unstaged'
+			})
+		: $t('commit_row.aria_label', {
+				summary: commit.summary,
+				author: commit.author.name,
+				date: formatGitDateTime(commit.commit_time)
+			}) +
 			(commit.refs.length > 0 ? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ') : '')}
-		onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
-			onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
-		oncontextmenu={(e: MouseEvent) => oncontextmenu?.(e, commit.oid)}
+	onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
+		onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
+	oncontextmenu={(e: MouseEvent) => oncontextmenu?.(e, commit.oid)}
+>
+	<!-- Sticky hash column (frozen left) -->
+	<span
+		class="sticky left-0 z-10 flex shrink-0 items-center {rowBgClass} {rowHoverClass}"
+		style="width: {HASH_COLUMN_WIDTH}px;"
 	>
-		<span class="w-[80px] shrink-0 font-mono text-xs text-gray-500">
-			{commit.short_oid}
-		</span>
-		<span class="flex shrink-0 gap-1 overflow-hidden">
-			{#each commit.refs as ref (ref.Branch ? 'b:' + ref.Branch.name : ref.Tag ? 't:' + ref.Tag.name : ref.Remote ? 'r:' + ref.Remote.remote + '/' + ref.Remote.name : '')}
-				{@const label = refLabel(ref)}
-				{#if label}
-					<span
-						class="inline-block rounded px-1 text-xs {ref.Branch?.is_head
-							? 'bg-green-700/50 text-green-300'
-							: ref.Tag
-								? 'bg-yellow-700/50 text-yellow-300'
-								: 'bg-gray-600/50 text-gray-400'}"
-					>
-						{label}
-					</span>
-				{/if}
-			{/each}
-		</span>
-		<span class="min-w-0 truncate">
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			{@html renderSummary()}
-		</span>
-		{#if matchType === 'Patch'}
+		{#if isVirtual}
 			<span
-				class="shrink-0 text-yellow-400 text-xs"
-				title={$t('commit_row.patch_match')}
-				aria-label={$t('commit_row.patch_match')}
-			>
-				⌗
+				class="ml-2 inline-block h-2 w-2 rounded-full {isStaged ? 'bg-green-400' : 'bg-orange-400'}"
+				aria-hidden="true"
+			></span>
+		{:else}
+			<span class="px-2 font-mono text-xs text-gray-500">
+				{commit.short_oid}
 			</span>
 		{/if}
-		<span class="ml-auto shrink-0 text-xs text-gray-500">{commit.author.name}</span>
-		<span class="shrink-0 text-xs text-gray-600">{formatGitDateTime(commit.commit_time)}</span>
-	</button>
-{/if}
+	</span>
+
+	<!-- Graph spacer (transparent — canvas shows through) -->
+	<div
+		class="shrink-0"
+		style="width: {graphOffset}px; pointer-events: none;"
+		aria-hidden="true"
+	></div>
+
+	<!-- Flowing text: inline refs + message -->
+	<span
+		class="flex min-w-0 flex-1 items-center gap-1 truncate py-0.5 pl-1 pr-2 {rowBgClass} {rowHoverClass} {textClass}"
+	>
+		{#if isVirtual}
+			<span class="truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+				{@html renderSummary()}
+			</span>
+		{:else}
+			{#each commit.refs as ref (ref.Branch ? 'b:' + ref.Branch.name : ref.Tag ? 't:' + ref.Tag.name : ref.Remote ? 'r:' + ref.Remote.remote + '/' + ref.Remote.name : '')}
+				{#if ref.Remote}
+					<span class="shrink-0 text-xs">
+						<span class="text-cyan-400">{ref.Remote.remote}/</span>
+						<span class="text-green-600">{ref.Remote.name}</span>
+					</span>
+				{:else}
+					{@const label = refLabel(ref)}
+					{#if label}
+						<span class="shrink-0 text-xs {refColorClass(ref)}">
+							{label}
+						</span>
+					{/if}
+				{/if}
+			{/each}
+			<span class="min-w-0 truncate">
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+				{@html renderSummary()}
+			</span>
+			{#if matchType === 'Patch'}
+				<span
+					class="shrink-0 text-xs text-yellow-400"
+					title={$t('commit_row.patch_match')}
+					aria-label={$t('commit_row.patch_match')}
+				>
+					⌗
+				</span>
+			{/if}
+		{/if}
+	</span>
+
+	<!-- Sticky author column (frozen right) -->
+	<span
+		class="sticky z-10 shrink-0 truncate px-2 text-right text-xs text-gray-500 {rowBgClass} {rowHoverClass}"
+		style="right: {DATE_COLUMN_WIDTH}px; width: {AUTHOR_COLUMN_WIDTH}px;"
+	>
+		{commit.author.name}
+	</span>
+
+	<!-- Sticky date column (frozen right) -->
+	<span
+		class="sticky right-0 z-10 shrink-0 truncate px-2 text-right text-xs text-gray-600 {rowBgClass} {rowHoverClass}"
+		style="width: {DATE_COLUMN_WIDTH}px;"
+	>
+		{formatGitDateTime(commit.commit_time)}
+	</span>
+</button>

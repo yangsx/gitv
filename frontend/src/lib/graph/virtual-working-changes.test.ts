@@ -71,6 +71,7 @@ function layout(
 		total_rows: nodes.length,
 		orientation: 'TopToBottom',
 		stash_commits: [],
+		row_max_column: new Array(nodes.length).fill(1),
 		...extras
 	};
 }

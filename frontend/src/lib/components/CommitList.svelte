@@ -3,7 +3,15 @@
 	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
 	import { searchResults } from '$lib/stores/repository';
 	import { debug } from '$lib/stores/debug';
-	import { GRAPH_PADDING_LEFT, GRAPH_LANE_WIDTH, GRAPH_MAX_VIEWPORT_RATIO } from '$lib/constants';
+	import {
+		GRAPH_PADDING_LEFT,
+		GRAPH_LANE_WIDTH,
+		HASH_COLUMN_WIDTH,
+		AUTHOR_COLUMN_WIDTH,
+		DATE_COLUMN_WIDTH,
+		GRAPH_GAP,
+		MIN_TEXT_WIDTH
+	} from '$lib/constants';
 	import CommitRow from './CommitRow.svelte';
 	import GraphRenderer from './graph/GraphRenderer.svelte';
 
@@ -16,7 +24,6 @@
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
 		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
 		rowHeight?: number;
-		graphWidth?: number;
 		onEdgeNavigate?: (_oid: string) => void;
 		onLoadMore?: () => void;
 		loadedCommitCount?: number;
@@ -31,7 +38,6 @@
 		onSelect,
 		onContextMenu,
 		rowHeight = 28,
-		graphWidth = 200,
 		onLoadMore,
 		loadedCommitCount,
 		onEdgeNavigate
@@ -43,7 +49,7 @@
 	let containerEl: HTMLDivElement;
 	let scrollTop = $state(0);
 	let containerHeight = $state(800);
-	let hScrollLeft = $state(0);
+	let containerWidth = $state(800);
 	let rafId = 0;
 	let pendingScrollTop = 0;
 
@@ -66,6 +72,7 @@
 	let visibleEnd = $derived(Math.min(effectiveTotalRows, visibleStart + viewportRows));
 	let totalHeight = $derived(effectiveTotalRows * rowHeight);
 	let visibleCommits = $derived(orderedCommits.slice(visibleStart, visibleEnd));
+	let visibleHeight = $derived((visibleEnd - visibleStart) * rowHeight);
 
 	const LOAD_MORE_BUFFER = 200;
 
@@ -78,27 +85,24 @@
 		}
 	});
 
-	let viewportWidth = $state(window.innerWidth);
-
-	$effect(() => {
-		const onResize = () => {
-			viewportWidth = window.innerWidth;
-		};
-		window.addEventListener('resize', onResize);
-		return () => window.removeEventListener('resize', onResize);
-	});
-
-	let effectiveGraphWidth = $derived(
+	let maxGraphWidth = $derived(
 		layout
-			? Math.max(
-					graphWidth,
-					Math.min(
-						layout.total_columns * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT * 2,
-						Math.floor(viewportWidth * GRAPH_MAX_VIEWPORT_RATIO)
-					)
-				)
-			: graphWidth
+			? layout.total_columns * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT + GRAPH_GAP
+			: GRAPH_PADDING_LEFT + GRAPH_GAP
 	);
+
+	let contentWidth = $derived(
+		Math.max(
+			HASH_COLUMN_WIDTH + maxGraphWidth + MIN_TEXT_WIDTH + AUTHOR_COLUMN_WIDTH + DATE_COLUMN_WIDTH,
+			containerWidth
+		)
+	);
+
+	function rowGraphOffset(row: number): number {
+		if (!layout) return GRAPH_PADDING_LEFT + GRAPH_GAP;
+		const maxCol = layout.row_max_column[row] ?? layout.total_columns;
+		return maxCol * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT + GRAPH_GAP;
+	}
 
 	let lastDebugUpdate = 0;
 	$effect(() => {
@@ -125,13 +129,10 @@
 		}
 	}
 
-	function onGraphHScroll(e: Event) {
-		hScrollLeft = (e.target as HTMLDivElement).scrollLeft;
-	}
-
 	function handleResize() {
 		if (containerEl) {
 			containerHeight = containerEl.clientHeight;
+			containerWidth = containerEl.clientWidth;
 		}
 	}
 
@@ -263,7 +264,7 @@
 <div class="flex h-full min-h-0" role="listbox" aria-label={$t('commit_list.aria')}>
 	<div
 		bind:this={containerEl}
-		class="flex-1 min-h-0 overflow-y-auto"
+		class="flex-1 min-h-0 overflow-auto"
 		onscroll={onScroll}
 		onkeydown={handleKeydown}
 		tabindex="0"
@@ -271,12 +272,15 @@
 		aria-label={$t('commit_list.commits_aria')}
 		aria-activedescendant={selectedOid ? `commit-${selectedOid}` : undefined}
 	>
-		<div style="height: {totalHeight}px; position: relative;">
-			<div class="flex" style="transform: translateY({visibleStart * rowHeight}px);">
+		<div style="height: {totalHeight}px; width: {contentWidth}px; position: relative;">
+			<div
+				class="relative"
+				style="transform: translateY({visibleStart * rowHeight}px); width: {contentWidth}px;"
+			>
 				{#if layout}
 					<div
-						class="shrink-0 relative overflow-hidden"
-						style="width: {effectiveGraphWidth}px;"
+						class="absolute top-0 overflow-hidden"
+						style="left: {HASH_COLUMN_WIDTH}px; width: {maxGraphWidth}px; height: {visibleHeight}px; z-index: 0;"
 						aria-hidden="true"
 					>
 						<GraphRenderer
@@ -289,46 +293,44 @@
 							{comparisonOid}
 							{onSelect}
 							onEdgeNavigate={onEdgeNavigate ?? handleEdgeNavigate}
-							{hScrollLeft}
-							visibleWidth={effectiveGraphWidth}
+							visibleWidth={maxGraphWidth}
 						/>
-						<div
-							class="absolute bottom-0 left-0 right-0 overflow-x-auto overflow-y-hidden"
-							style="height: 12px;"
-							onscroll={onGraphHScroll}
-						>
-							<div
-								style="width: {Math.max(
-									effectiveGraphWidth,
-									layout.total_columns * GRAPH_LANE_WIDTH + GRAPH_PADDING_LEFT * 2
-								)}px; height: 1px;"
-							></div>
-						</div>
 					</div>
 				{/if}
-				<div class="flex-1 min-w-0">
-					{#each visibleCommits as commit, i (commit?.oid ?? `placeholder-${visibleStart + i}`)}
-						{#if commit}
-							<CommitRow
-								id="commit-{commit.oid}"
-								{commit}
-								isSelected={commit.oid === selectedOid}
-								isComparison={commit.oid === comparisonOid}
-								isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
-								highlights={highlightsByOid.get(commit.oid)}
-								matchType={matchTypeByOid.get(commit.oid)}
-								onclick={onSelect}
-								oncontextmenu={onContextMenu}
-								{rowHeight}
-							/>
-						{:else}
-							<div
-								class="flex items-center px-2 text-xs text-gray-700"
-								style="height: {rowHeight}px;"
-							></div>
-						{/if}
-					{/each}
-				</div>
+				{#each visibleCommits as commit, i (commit?.oid ?? `placeholder-${visibleStart + i}`)}
+					{#if commit}
+						<CommitRow
+							id="commit-{commit.oid}"
+							{commit}
+							isSelected={commit.oid === selectedOid}
+							isComparison={commit.oid === comparisonOid}
+							isDimmed={matchingOids ? !matchingOids.has(commit.oid) : false}
+							highlights={highlightsByOid.get(commit.oid)}
+							matchType={matchTypeByOid.get(commit.oid)}
+							onclick={onSelect}
+							oncontextmenu={onContextMenu}
+							{rowHeight}
+							graphOffset={rowGraphOffset(visibleStart + i)}
+						/>
+					{:else}
+						<div class="flex w-full items-center" style="height: {rowHeight}px;">
+							<span
+								class="sticky left-0 z-10 shrink-0 bg-gray-800"
+								style="width: {HASH_COLUMN_WIDTH}px;"
+							></span>
+							<div class="shrink-0" style="width: {rowGraphOffset(visibleStart + i)}px;"></div>
+							<span class="flex-1 bg-gray-800"></span>
+							<span
+								class="sticky z-10 shrink-0 bg-gray-800"
+								style="right: {DATE_COLUMN_WIDTH}px; width: {AUTHOR_COLUMN_WIDTH}px;"
+							></span>
+							<span
+								class="sticky right-0 z-10 shrink-0 bg-gray-800"
+								style="width: {DATE_COLUMN_WIDTH}px;"
+							></span>
+						</div>
+					{/if}
+				{/each}
 			</div>
 		</div>
 	</div>

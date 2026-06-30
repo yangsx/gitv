@@ -115,6 +115,11 @@ pub struct GraphLayout {
     pub orientation: GraphOrientation,
     pub total_rows: usize,
     pub stash_commits: Vec<CommitInfo>,
+    /// Per-row maximum occupied column index + 1 (i.e. lane count).
+    /// Indexed by row. Used by the frontend to compute per-row text start
+    /// offset for the gitk-style flowing-text layout.
+    #[serde(default)]
+    pub row_max_column: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -124,6 +129,8 @@ pub struct GraphViewport {
     pub stash_markers: Vec<StashMarker>,
     pub edges: Vec<Edge>,
     pub total_columns: usize,
+    #[serde(default)]
+    pub row_max_column: Vec<usize>,
 }
 
 impl GraphLayout {

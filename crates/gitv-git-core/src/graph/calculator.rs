@@ -383,7 +383,19 @@ impl GraphCalculator {
         self.assign_colors_to_nodes(&sorted, &children_sorted, &mut graph_data);
         let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
         let mut edges = self.rebuild_edges_with_colors(&sorted, &graph_data, &rowidlist);
-        let (mut stash_markers, extra_cols) = self.insert_stash_nodes(&mut nodes, &mut edges);
+
+        let mut row_max_column: Vec<usize> = rowidlist
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .rposition(|e| e.is_some())
+                    .map(|i| i + 1)
+                    .unwrap_or(0)
+            })
+            .collect();
+
+        let (mut stash_markers, extra_cols) =
+            self.insert_stash_nodes(&mut nodes, &mut edges, &mut row_max_column);
         let total_rows = nodes
             .iter()
             .map(|n| n.row)
@@ -391,6 +403,24 @@ impl GraphCalculator {
             .map(|r| r + 1)
             .unwrap_or(0);
         let total_columns = total_columns + extra_cols;
+
+        // Adjust row_max_column for edge horizontal segments (merge/branch fan-out).
+        // rowidlist captures threads entering each row but misses the parent columns
+        // that merge edges fan out to at the merge commit's own row.
+        for edge in &edges {
+            let max_col = edge.from_col.max(edge.to_col) + 1;
+            if edge.from_row < row_max_column.len() {
+                row_max_column[edge.from_row] = row_max_column[edge.from_row].max(max_col);
+            }
+            if edge.to_row < row_max_column.len() {
+                row_max_column[edge.to_row] = row_max_column[edge.to_row].max(max_col);
+            }
+            for &(row, col) in &edge.waypoints {
+                if row < row_max_column.len() {
+                    row_max_column[row] = row_max_column[row].max(col + 1);
+                }
+            }
+        }
 
         let stash_commits: Vec<CommitInfo> = stash_markers
             .iter()
@@ -432,6 +462,7 @@ impl GraphCalculator {
             for marker in &mut stash_markers {
                 marker.row = max_row - marker.row;
             }
+            row_max_column.reverse();
         }
 
         GraphLayout {
@@ -442,6 +473,7 @@ impl GraphCalculator {
             orientation: self.options.orientation,
             total_rows,
             stash_commits,
+            row_max_column,
         }
     }
 
@@ -1207,6 +1239,7 @@ impl GraphCalculator {
         &self,
         nodes: &mut Vec<NodePosition>,
         edges: &mut Vec<Edge>,
+        row_max_column: &mut Vec<usize>,
     ) -> (Vec<StashMarker>, usize) {
         let node_map: HashMap<Oid, &NodePosition> = nodes.iter().map(|n| (n.oid, n)).collect();
         let mut by_parent: Vec<(usize, &StashEntry, usize, usize)> = Vec::new();
@@ -1265,6 +1298,12 @@ impl GraphCalculator {
                     }
                 }
             }
+
+            while row_max_column.len() < insert_row {
+                row_max_column.push(0);
+            }
+            let orig_threads = row_max_column.get(insert_row).copied().unwrap_or(0);
+            row_max_column.insert(insert_row, orig_threads.max(branch_col + 1));
 
             let parent_new_row = nodes
                 .iter()
@@ -1473,6 +1512,7 @@ impl GraphCalculator {
             orientation: self.options.orientation,
             total_rows: 0,
             stash_commits: Vec::new(),
+            row_max_column: Vec::new(),
         }
     }
 }
@@ -2000,6 +2040,56 @@ mod tests {
                 .map(|n| (n.oid.short_hex(), n.column))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn row_max_column_length_matches_total_rows() {
+        let c1 = make_commit(1, vec![], "a");
+        let c2 = make_commit(2, vec![1], "b");
+        let c3 = make_commit(3, vec![1], "c");
+        let c4 = make_commit(4, vec![2, 3], "merge");
+        let commits = vec![c4, c3, c2, c1];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+        assert_eq!(
+            layout.row_max_column.len(),
+            layout.total_rows,
+            "row_max_column length should match total_rows"
+        );
+    }
+
+    #[test]
+    fn row_max_column_covers_node_columns() {
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "on main");
+        let c3 = make_commit(3, vec![1], "on branch");
+        let c4 = make_commit(4, vec![2, 3], "merge");
+        let commits = vec![c4, c3, c2, c1];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+        for node in &layout.nodes {
+            assert!(
+                layout.row_max_column[node.row] > node.column,
+                "row_max_column[{}] = {} should be > {} (node column)",
+                node.row,
+                layout.row_max_column[node.row],
+                node.column
+            );
+        }
+    }
+
+    #[test]
+    fn row_max_column_empty_for_empty_layout() {
+        let calc = GraphCalculator::new(
+            Vec::new(),
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let layout = calc.calculate_layout();
+        assert!(layout.row_max_column.is_empty());
     }
 
     #[test]

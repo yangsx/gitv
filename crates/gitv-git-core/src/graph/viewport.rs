@@ -31,12 +31,19 @@ impl GraphLayout {
             .cloned()
             .collect();
 
+        let row_max_column: Vec<usize> = self
+            .row_max_column
+            .get(start_row..clamped_end)
+            .unwrap_or(&[])
+            .to_vec();
+
         GraphViewport {
             rows,
             nodes,
             stash_markers,
             edges,
             total_columns: self.total_columns,
+            row_max_column,
         }
     }
 }
