@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use chrono::Utc;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use gitv_git_core::graph::{GraphCalculator, GraphOptions};
 use gitv_git_core::models::*;
@@ -21,6 +20,7 @@ fn generate_linear_commits(count: usize) -> Vec<CommitInfo> {
         } else {
             vec![]
         };
+        let time = chrono::DateTime::from_timestamp(i as i64, 0).unwrap();
         commits.push(CommitInfo {
             oid,
             short_oid: format!("{:07x}", i),
@@ -34,8 +34,8 @@ fn generate_linear_commits(count: usize) -> Vec<CommitInfo> {
                 name: "author".into(),
                 email: "a@example.com".into(),
             },
-            author_time: Utc::now(),
-            commit_time: Utc::now(),
+            author_time: time,
+            commit_time: time,
             parent_oids,
             refs: vec![],
         });
@@ -65,6 +65,7 @@ fn generate_branchy_commits(count: usize, branch_freq: usize) -> Vec<CommitInfo>
         } else {
             vec![make_oid((i - 1) as u64)]
         };
+        let time = chrono::DateTime::from_timestamp(i as i64, 0).unwrap();
         commits.push(CommitInfo {
             oid,
             short_oid: format!("{:07x}", i),
@@ -78,8 +79,8 @@ fn generate_branchy_commits(count: usize, branch_freq: usize) -> Vec<CommitInfo>
                 name: format!("author{}", i % 5),
                 email: format!("a{}@example.com", i % 5),
             },
-            author_time: Utc::now(),
-            commit_time: Utc::now(),
+            author_time: time,
+            commit_time: time,
             parent_oids,
             refs: vec![],
         });
@@ -91,16 +92,9 @@ fn bench_graph_layout(c: &mut Criterion) {
     let mut group = c.benchmark_group("graph_layout");
     for size in [100, 1_000, 10_000] {
         let commits = generate_linear_commits(size);
-        group.bench_with_input(BenchmarkId::new("linear", size), &commits, |b, commits| {
-            b.iter(|| {
-                let calc = GraphCalculator::new(
-                    black_box(commits.clone()),
-                    HashMap::new(),
-                    vec![],
-                    GraphOptions::default(),
-                );
-                black_box(calc.calculate_layout())
-            });
+        let calc = GraphCalculator::new(commits, HashMap::new(), vec![], GraphOptions::default());
+        group.bench_with_input(BenchmarkId::new("linear", size), &calc, |b, calc| {
+            b.iter(|| black_box(calc.calculate_layout()));
         });
     }
     group.finish();
@@ -108,16 +102,9 @@ fn bench_graph_layout(c: &mut Criterion) {
     let mut group = c.benchmark_group("graph_layout_branchy");
     for size in [100, 1_000, 10_000] {
         let commits = generate_branchy_commits(size, 20);
-        group.bench_with_input(BenchmarkId::new("branchy", size), &commits, |b, commits| {
-            b.iter(|| {
-                let calc = GraphCalculator::new(
-                    black_box(commits.clone()),
-                    HashMap::new(),
-                    vec![],
-                    GraphOptions::default(),
-                );
-                black_box(calc.calculate_layout())
-            });
+        let calc = GraphCalculator::new(commits, HashMap::new(), vec![], GraphOptions::default());
+        group.bench_with_input(BenchmarkId::new("branchy", size), &calc, |b, calc| {
+            b.iter(|| black_box(calc.calculate_layout()));
         });
     }
     group.finish();

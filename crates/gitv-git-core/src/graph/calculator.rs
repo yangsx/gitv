@@ -637,16 +637,17 @@ impl GraphCalculator {
             })
             .collect();
 
-        // Max-heap by commit_time (newest first). Ties broken by oid_hex
-        // (largest first — any consistent tiebreaker suffices).
-        let mut heap: std::collections::BinaryHeap<(i64, String, usize)> =
+        // Max-heap by commit_time (newest first). Ties broken by oid bytes
+        // (largest first — any consistent tiebreaker suffices). Raw bytes give
+        // the same ordering as the hex string but avoid a per-commit allocation.
+        let mut heap: std::collections::BinaryHeap<(i64, [u8; 20], usize)> =
             std::collections::BinaryHeap::new();
 
         for i in 0..n {
             if indegree[i] == 0 {
                 heap.push((
                     commits[i].commit_time.timestamp(),
-                    commits[i].oid.to_hex(),
+                    *commits[i].oid.as_bytes(),
                     i,
                 ));
             }
@@ -665,7 +666,7 @@ impl GraphCalculator {
                     if indegree[parent_idx] == 0 {
                         heap.push((
                             commits[parent_idx].commit_time.timestamp(),
-                            commits[parent_idx].oid.to_hex(),
+                            *commits[parent_idx].oid.as_bytes(),
                             parent_idx,
                         ));
                     }
@@ -1457,6 +1458,9 @@ impl GraphCalculator {
         rowidlist: &[Vec<Option<Oid>>],
     ) -> Vec<Edge> {
         let mut edges = Vec::new();
+        // Precompute each oid's (row, col) positions once so per-edge thread
+        // tracing is a range lookup instead of a linear scan over all rows.
+        let thread_positions = build_thread_index(rowidlist);
         for c in sorted {
             let c_row = graph_data[&c.oid].row;
             let c_col = graph_data[&c.oid].column;
@@ -1483,7 +1487,8 @@ impl GraphCalculator {
 
                     // Trace the parent's thread through the rowidlist to
                     // find direction-change waypoints (gitk drawlineseg approach).
-                    let (waypoints, arrow_gap) = trace_thread(p_oid, c_row, p_gd.row, rowidlist);
+                    let (waypoints, arrow_gap) =
+                        trace_thread(p_oid, c_row, p_gd.row, &thread_positions);
 
                     edges.push(Edge {
                         from_row: c_row,
@@ -1652,6 +1657,27 @@ fn patch_rows(
     }
 }
 
+/// Precompute, for each `Oid` appearing anywhere in `rowidlist`, the sorted
+/// list of `(row, column)` positions where it appears. Rows are scanned in
+/// ascending order so each vector is automatically sorted by row, enabling
+/// a binary-search range lookup in [`trace_thread`] instead of a per-edge
+/// linear scan over every intermediate row.
+///
+/// Building this index costs O(total cells) once per layout; each subsequent
+/// `trace_thread` call drops from O(span × columns_per_row) to
+/// O(log₂(positions) + matching_positions).
+fn build_thread_index(rowidlist: &[Vec<Option<Oid>>]) -> HashMap<Oid, Vec<(usize, usize)>> {
+    let mut idx: HashMap<Oid, Vec<(usize, usize)>> = HashMap::new();
+    for (row, idlist) in rowidlist.iter().enumerate() {
+        for (col, slot) in idlist.iter().enumerate() {
+            if let Some(oid) = slot {
+                idx.entry(*oid).or_default().push((row, col));
+            }
+        }
+    }
+    idx
+}
+
 /// Trace a thread (parent_oid) through the rowidlist from child_row to
 /// parent_row, recording (row, col) at each direction change.
 ///
@@ -1659,6 +1685,9 @@ fn patch_rows(
 /// the thread appears, recording coordinates only when the column delta
 /// changes direction. When the thread has been removed from intermediate
 /// rows (gitk thread lifecycle), gaps are detected.
+///
+/// `thread_positions` must be a precomputed index (see [`build_thread_index`])
+/// giving, for each oid, its `(row, col)` positions in ascending row order.
 ///
 /// All gaps are found (not just the first), and each contiguous sub-segment
 /// is simplified independently to avoid creating incorrect long diagonals
@@ -1673,23 +1702,25 @@ fn trace_thread(
     parent_oid: Oid,
     child_row: usize,
     parent_row: usize,
-    rowidlist: &[Vec<Option<Oid>>],
+    thread_positions: &HashMap<Oid, Vec<(usize, usize)>>,
 ) -> (Vec<(usize, usize)>, Option<(usize, usize)>) {
     if parent_row <= child_row + 1 {
         return (Vec::new(), None);
     }
 
-    // Collect the thread's column at each intermediate row.
-    // Start at child_row+1 (not child_row) so the first waypoint is
-    // below the child. This allows the renderer to apply vertical-first
-    // chamfering (vertical from child, then horizontal near parent)
-    // instead of forcing a horizontal jog at the child's row.
+    // Look up the parent's precomputed positions (sorted ascending by row).
+    // Collect the slice strictly between child_row and parent_row.
+    // Start at the first row > child_row so the first waypoint is below the
+    // child. This allows the renderer to apply vertical-first chamfering
+    // (vertical from child, then horizontal near parent) instead of forcing
+    // a horizontal jog at the child's row.
     let mut path: Vec<(usize, usize)> = Vec::new();
-    for r in (child_row + 1)..parent_row {
-        if r >= rowidlist.len() {
-            break;
-        }
-        if let Some(col) = rowidlist[r].iter().position(|&x| x == Some(parent_oid)) {
+    if let Some(positions) = thread_positions.get(&parent_oid) {
+        let start = positions.partition_point(|(r, _)| *r <= child_row);
+        for &(r, col) in &positions[start..] {
+            if r >= parent_row {
+                break;
+            }
             path.push((r, col));
         }
     }
@@ -3034,7 +3065,8 @@ mod tests {
             rowidlist.push(row);
         }
 
-        let (waypoints, gap) = trace_thread(parent, 0, 10, &rowidlist);
+        let idx = build_thread_index(&rowidlist);
+        let (waypoints, gap) = trace_thread(parent, 0, 10, &idx);
 
         assert!(gap.is_some(), "should detect the gap");
         let (lo, hi) = gap.unwrap();
@@ -3074,7 +3106,8 @@ mod tests {
             }
         }
 
-        let (waypoints, gap) = trace_thread(parent, 0, 10, &rowidlist);
+        let idx = build_thread_index(&rowidlist);
+        let (waypoints, gap) = trace_thread(parent, 0, 10, &idx);
 
         assert!(gap.is_some(), "should detect at least one gap");
 
