@@ -1179,6 +1179,19 @@ impl GraphCalculator {
                 if edge.to_row >= insert_row {
                     edge.to_row += 1;
                 }
+                for (r, _) in &mut edge.waypoints {
+                    if *r >= insert_row {
+                        *r += 1;
+                    }
+                }
+                if let Some((lo, hi)) = &mut edge.arrow_gap {
+                    if *lo >= insert_row {
+                        *lo += 1;
+                    }
+                    if *hi >= insert_row {
+                        *hi += 1;
+                    }
+                }
             }
 
             let parent_new_row = nodes
