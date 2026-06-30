@@ -219,6 +219,14 @@ const TRITANOPIA_PALETTE: &[Color] = &[
     },
 ];
 
+/// Number of rows below a child that a thread stays visible before removal.
+/// Matches gitk's `downarrowlen`.
+const DOWNARROW_LEN: usize = 5;
+
+/// Number of rows above a parent that a thread is pre-inserted.
+/// Matches gitk's `uparrowlen`.
+const UPARROW_LEN: usize = 5;
+
 const STASH_COLOR: Color = Color {
     r: 245,
     g: 158,
@@ -327,7 +335,15 @@ impl GraphCalculator {
             Self::compute_ordertokens(&commits, &children_sorted, &displayorder_idx, &oid_index);
 
         // Assign columns using row-by-row active-thread tracking (gitk algorithm)
-        let (_, mut rowidlist) = Self::assign_columns(&displayorder_idx, &commits, &ordertokens);
+        let mingap_len = self.options.arrow_gap_threshold;
+        let (_, mut rowidlist) = Self::assign_columns(
+            &displayorder_idx,
+            &commits,
+            &ordertokens,
+            &children_sorted,
+            &row_assignments,
+            mingap_len,
+        );
 
         // Build displayorder OIDs for optimize_rows and extract_columns
         let displayorder: Vec<Oid> = displayorder_idx.iter().map(|&ci| commits[ci].oid).collect();
@@ -350,7 +366,7 @@ impl GraphCalculator {
             .map(|c| c + 1)
             .unwrap_or(0);
 
-        self.assign_colors_to_nodes(&commits, &mut graph_data);
+        self.assign_colors_to_nodes(&sorted, &children_sorted, &mut graph_data);
         let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
         let mut edges = self.rebuild_edges_with_colors(&sorted, &graph_data, &rowidlist);
         let (mut stash_markers, extra_cols) = self.insert_stash_nodes(&mut nodes, &mut edges);
@@ -393,6 +409,10 @@ impl GraphCalculator {
                 edge.to_row = new_to;
                 for wp in &mut edge.waypoints {
                     wp.0 = max_row - wp.0;
+                }
+                if let Some(ref mut gap) = edge.arrow_gap {
+                    gap.0 = max_row - gap.0;
+                    gap.1 = max_row - gap.1;
                 }
             }
             for marker in &mut stash_markers {
@@ -769,7 +789,167 @@ impl GraphCalculator {
         }
     }
 
+    /// Find the next row >= `from_row` where `oid` is referenced (by a child
+    /// or the commit itself). Returns None if not found.
+    /// Matches gitk's `nextuse` function.
+    fn nextuse(
+        oid: Oid,
+        from_row: usize,
+        children_sorted: &HashMap<Oid, Vec<Oid>>,
+        row_assignments: &HashMap<Oid, usize>,
+    ) -> Option<usize> {
+        if let Some(kids) = children_sorted.get(&oid) {
+            for &kid in kids {
+                if let Some(&kid_row) = row_assignments.get(&kid)
+                    && kid_row > from_row
+                {
+                    return Some(kid_row);
+                }
+            }
+        }
+        row_assignments.get(&oid).copied()
+    }
+
+    /// Find the most recent row < `from_row` where `oid` is referenced by a
+    /// child. Returns None if not found.
+    /// Matches gitk's `prevuse` function.
+    fn prevuse(
+        oid: Oid,
+        from_row: usize,
+        children_sorted: &HashMap<Oid, Vec<Oid>>,
+        row_assignments: &HashMap<Oid, usize>,
+    ) -> Option<usize> {
+        let kids = children_sorted.get(&oid)?;
+        let mut ret = None;
+        for &kid in kids {
+            if let Some(&kid_row) = row_assignments.get(&kid) {
+                if kid_row < from_row {
+                    ret = Some(kid_row);
+                } else {
+                    break;
+                }
+            }
+        }
+        ret
+    }
+
+    /// Rebuild the idlist from scratch for a cold-start row.
+    ///
+    /// Scans backward for recently-removed threads whose next use is near,
+    /// active parent threads, and forward for upcoming commits and their
+    /// parents. Returns a sorted Vec<Oid> ready for use as the idlist.
+    ///
+    /// Matches gitk's `make_idlist` function. Called when thread removal
+    /// empties the idlist entirely.
+    #[allow(clippy::too_many_arguments)]
+    fn make_idlist(
+        row: usize,
+        displayorder_idx: &[usize],
+        commits: &[CommitInfo],
+        ordertokens: &HashMap<Oid, String>,
+        children_sorted: &HashMap<Oid, Vec<Oid>>,
+        row_assignments: &HashMap<Oid, usize>,
+        mingap_len: usize,
+    ) -> Vec<Oid> {
+        let n = displayorder_idx.len();
+        if n == 0 || row >= n {
+            return Vec::new();
+        }
+
+        let r_start = row.saturating_sub(mingap_len + DOWNARROW_LEN + 1);
+        let ra = row.saturating_sub(DOWNARROW_LEN);
+        let rb = (row + UPARROW_LEN + 1).min(n);
+
+        let mut entries: Vec<(String, Oid)> = Vec::new();
+
+        // Helper: get next commit oid at r+1 (for first-parent skip)
+        let next_oid_at = |r: usize| -> Option<Oid> {
+            if r + 1 < n {
+                Some(commits[displayorder_idx[r + 1]].oid)
+            } else {
+                None
+            }
+        };
+
+        // Phase 1: recently removed threads (r_start..ra) whose next use is near
+        #[allow(clippy::needless_range_loop)]
+        for r in r_start..ra.min(n) {
+            let ci = displayorder_idx[r];
+            let next_oid = next_oid_at(r);
+            for &p_oid in &commits[ci].parent_oids {
+                if Some(p_oid) == next_oid {
+                    continue;
+                }
+                if !ordertokens.contains_key(&p_oid) {
+                    continue;
+                }
+                if let Some(nr) = Self::nextuse(p_oid, r, children_sorted, row_assignments)
+                    && nr >= row
+                    && nr <= r + DOWNARROW_LEN + mingap_len + UPARROW_LEN
+                {
+                    entries.push((ordertokens[&p_oid].clone(), p_oid));
+                }
+            }
+        }
+
+        // Phase 2: active threads (ra..row) — parents still unresolved
+        #[allow(clippy::needless_range_loop)]
+        for r in ra..row.min(n) {
+            let ci = displayorder_idx[r];
+            let next_oid = next_oid_at(r);
+            for &p_oid in &commits[ci].parent_oids {
+                if Some(p_oid) == next_oid {
+                    continue;
+                }
+                if !ordertokens.contains_key(&p_oid) {
+                    continue;
+                }
+                let nr = Self::nextuse(p_oid, r, children_sorted, row_assignments);
+                if nr.is_none() || nr.unwrap() >= row {
+                    entries.push((ordertokens[&p_oid].clone(), p_oid));
+                }
+            }
+        }
+
+        // Phase 3: current commit
+        let curr_oid = commits[displayorder_idx[row]].oid;
+        if let Some(token) = ordertokens.get(&curr_oid) {
+            entries.push((token.clone(), curr_oid));
+        }
+
+        // Phase 4: upcoming commits and their parents (row..rb) — pre-insertion
+        #[allow(clippy::needless_range_loop)]
+        for r in row..rb {
+            if r >= n {
+                break;
+            }
+            let ci = displayorder_idx[r];
+            for &p_oid in &commits[ci].parent_oids {
+                if !ordertokens.contains_key(&p_oid) {
+                    continue;
+                }
+                let should_add = children_sorted
+                    .get(&p_oid)
+                    .and_then(|kids| kids.first())
+                    .and_then(|&fk| row_assignments.get(&fk))
+                    .is_some_and(|&fk_row| fk_row < row);
+                if should_add {
+                    entries.push((ordertokens[&p_oid].clone(), p_oid));
+                }
+            }
+        }
+
+        // Sort by ordertoken, deduplicate by oid, extract
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries.dedup_by(|a, b| a.1 == b.1);
+        entries.into_iter().map(|(_, oid)| oid).collect()
+    }
+
     /// Assign columns using gitk's row-by-row active-thread tracking.
+    ///
+    /// Implements the full gitk thread lifecycle:
+    /// - Thread removal: long threads are removed from the idlist, creating gaps
+    /// - Thread pre-insertion: upcoming branch tips are inserted `uparrowlen` rows early
     ///
     /// Returns (columns, rowidlist). The rowidlist stores the full active-
     /// thread list at each row, needed by optimize_rows and thread tracing.
@@ -777,6 +957,9 @@ impl GraphCalculator {
         displayorder_idx: &[usize],
         commits: &[CommitInfo],
         ordertokens: &HashMap<Oid, String>,
+        children_sorted: &HashMap<Oid, Vec<Oid>>,
+        row_assignments: &HashMap<Oid, usize>,
+        mingap_len: usize,
     ) -> (HashMap<Oid, usize>, Vec<Vec<Option<Oid>>>) {
         let n = displayorder_idx.len();
         if n == 0 {
@@ -811,8 +994,62 @@ impl GraphCalculator {
                 if ordertokens.contains_key(&p_oid) && !idlist.contains(&p_oid) {
                     let col = Self::idcol(&idlist, p_oid, ordertokens, hint);
                     idlist.insert(col, p_oid);
+                    // If prev is not p_oid's first (youngest) child, the thread
+                    // was likely removed earlier. Patch it back into prior rows
+                    // so the edge has a proper downward arrow segment.
+                    let is_first_child = children_sorted
+                        .get(&p_oid)
+                        .and_then(|kids| kids.first())
+                        .is_some_and(|&fk| fk == prev.oid);
+                    if !is_first_child {
+                        makeupline(
+                            p_oid,
+                            row - 1,
+                            row,
+                            col,
+                            &mut rowidlist,
+                            children_sorted,
+                            row_assignments,
+                            ordertokens,
+                            mingap_len,
+                        );
+                    }
                     hint = col;
                 }
+            }
+
+            // Thread removal: remove threads whose next use is too far away.
+            // Matches gitk's layoutrows thread removal at termrow = row - downarrowlen - 1.
+            if row > DOWNARROW_LEN {
+                let termrow = row - DOWNARROW_LEN - 1;
+                let term_ci = displayorder_idx[termrow];
+                let term_commit = &commits[term_ci];
+                for &p_oid in &term_commit.parent_oids {
+                    if let Some(i) = idlist.iter().position(|&x| x == p_oid) {
+                        let nr = Self::nextuse(p_oid, termrow, children_sorted, row_assignments);
+                        if nr.is_none() || nr.unwrap() >= row + mingap_len + UPARROW_LEN {
+                            let _ = idlist.remove(i);
+                        }
+                    }
+                }
+            }
+
+            // Cold-start: if thread removal emptied the idlist, rebuild from
+            // scratch. Matches gitk's make_idlist cold-start path.
+            if idlist.is_empty() {
+                idlist = Self::make_idlist(
+                    row,
+                    displayorder_idx,
+                    commits,
+                    ordertokens,
+                    children_sorted,
+                    row_assignments,
+                    mingap_len,
+                );
+                let col = idlist.iter().position(|&x| x == curr.oid).unwrap_or(0);
+                columns.insert(curr.oid, col);
+                rowidlist.push(idlist.iter().map(|&o| Some(o)).collect());
+                continue;
             }
 
             // Ensure curr is in idlist. Use end-of-list as hint so newly
@@ -820,6 +1057,67 @@ impl GraphCalculator {
             if !idlist.contains(&curr.oid) {
                 let col = Self::idcol(&idlist, curr.oid, ordertokens, idlist.len());
                 idlist.insert(col, curr.oid);
+                // If curr has children and was thread-removed, patch its
+                // thread back into prior rows so edges from children have
+                // a proper upward arrow segment near curr.
+                let has_children = children_sorted
+                    .get(&curr.oid)
+                    .is_some_and(|kids| !kids.is_empty());
+                if has_children {
+                    makeupline(
+                        curr.oid,
+                        row - 1,
+                        row,
+                        col,
+                        &mut rowidlist,
+                        children_sorted,
+                        row_assignments,
+                        ordertokens,
+                        mingap_len,
+                    );
+                }
+            }
+
+            // Thread pre-insertion: insert parents of upcoming commits so
+            // their threads appear `uparrowlen` rows early.
+            // Matches gitk's layoutrows pre-insertion logic.
+            let pre_row = row + UPARROW_LEN - 1;
+            if pre_row < n {
+                let pre_ci = displayorder_idx[pre_row];
+                let pre_commit = &commits[pre_ci];
+                let curr_col = idlist.iter().position(|&x| x == curr.oid).unwrap_or(0);
+                let mut hint = curr_col;
+                for &p_oid in &pre_commit.parent_oids {
+                    if !idlist.contains(&p_oid) {
+                        // Only insert if first child has already been displayed
+                        let should_insert = children_sorted
+                            .get(&p_oid)
+                            .and_then(|kids| kids.first())
+                            .and_then(|&fk| row_assignments.get(&fk))
+                            .is_some_and(|&fk_row| fk_row < row);
+                        if should_insert {
+                            let col = Self::idcol(&idlist, p_oid, ordertokens, hint);
+                            idlist.insert(col, p_oid);
+                            hint = col;
+                        }
+                    }
+                }
+                // Also check the commit at pre_row + 1
+                if pre_row + 1 < n {
+                    let next_ci = displayorder_idx[pre_row + 1];
+                    let next_oid = commits[next_ci].oid;
+                    if !idlist.contains(&next_oid) {
+                        let should_insert = children_sorted
+                            .get(&next_oid)
+                            .and_then(|kids| kids.first())
+                            .and_then(|&fk| row_assignments.get(&fk))
+                            .is_some_and(|&fk_row| fk_row < row);
+                        if should_insert {
+                            let col = Self::idcol(&idlist, next_oid, ordertokens, hint);
+                            idlist.insert(col, next_oid);
+                        }
+                    }
+                }
             }
 
             // Record column of curr
@@ -910,6 +1208,7 @@ impl GraphCalculator {
                 is_dimmed: false,
                 edge_style: EdgeStyle::Dashed,
                 waypoints: Vec::new(),
+                arrow_gap: None,
             });
 
             stash_markers.push(StashMarker {
@@ -934,21 +1233,45 @@ impl GraphCalculator {
 
     fn assign_colors_to_nodes(
         &self,
-        commits: &[CommitInfo],
+        sorted: &[&CommitInfo],
+        children_sorted: &HashMap<Oid, Vec<Oid>>,
         graph_data: &mut HashMap<Oid, CommitGraphData>,
     ) {
         let palette = palette_for(self.options.palette);
         let mut color_idx = 0usize;
 
+        let commit_map: HashMap<Oid, &CommitInfo> = sorted.iter().map(|c| (c.oid, *c)).collect();
+
         if self.options.color_mode == GraphColorMode::ByBranch {
             let mut lane_colors: HashMap<usize, Color> = HashMap::new();
             let mut ref_colors: HashMap<String, Color> = HashMap::new();
-            for c in commits {
+            for c in sorted {
                 let col = graph_data.get(&c.oid).map(|gd| gd.column).unwrap_or(0);
-                let color = *lane_colors.entry(col).or_insert_with(|| {
-                    let clr = palette[color_idx % palette.len()];
-                    color_idx += 1;
-                    clr
+
+                // Linear chain inheritance: if this commit has exactly one
+                // child and that child has exactly one parent, inherit the
+                // child's color. This keeps linear chains uniformly colored
+                // even when optimize_rows shifts columns.
+                let inherited = children_sorted.get(&c.oid).and_then(|kids| {
+                    if kids.len() == 1 {
+                        let child_oid = kids[0];
+                        let child_one_parent = commit_map
+                            .get(&child_oid)
+                            .map(|ci| ci.parent_oids.len() == 1)
+                            .unwrap_or(false);
+                        if child_one_parent {
+                            return graph_data.get(&child_oid).map(|gd| gd.color);
+                        }
+                    }
+                    None
+                });
+
+                let color = inherited.unwrap_or_else(|| {
+                    *lane_colors.entry(col).or_insert_with(|| {
+                        let clr = palette[color_idx % palette.len()];
+                        color_idx += 1;
+                        clr
+                    })
                 });
                 if let Some(refs) = self.refs.get(&c.oid) {
                     for r in refs {
@@ -966,7 +1289,7 @@ impl GraphCalculator {
             }
         } else {
             let mut author_colors: HashMap<String, Color> = HashMap::new();
-            for c in commits {
+            for c in sorted {
                 let author_key = format!("{} <{}>", c.author.name, c.author.email);
                 let color = *author_colors.entry(author_key).or_insert_with(|| {
                     let clr = palette[color_idx % palette.len()];
@@ -1013,7 +1336,6 @@ impl GraphCalculator {
         for c in sorted {
             let c_row = graph_data[&c.oid].row;
             let c_col = graph_data[&c.oid].column;
-            let c_color = graph_data[&c.oid].color;
             for (pi, &p_oid) in c.parent_oids.iter().enumerate() {
                 if let Some(p_gd) = graph_data.get(&p_oid) {
                     let edge_type = if pi == 0 {
@@ -1037,7 +1359,7 @@ impl GraphCalculator {
 
                     // Trace the parent's thread through the rowidlist to
                     // find direction-change waypoints (gitk drawlineseg approach).
-                    let waypoints = trace_thread(p_oid, c_row, p_gd.row, rowidlist);
+                    let (waypoints, arrow_gap) = trace_thread(p_oid, c_row, p_gd.row, rowidlist);
 
                     edges.push(Edge {
                         from_row: c_row,
@@ -1045,10 +1367,11 @@ impl GraphCalculator {
                         to_row: p_gd.row,
                         to_col: p_gd.column,
                         edge_type,
-                        color: c_color,
+                        color: p_gd.color,
                         is_dimmed: false,
                         edge_style,
                         waypoints,
+                        arrow_gap,
                     });
                 }
             }
@@ -1098,24 +1421,131 @@ fn propagate_branch_token(
     }
 }
 
+/// Simplify a path by removing collinear intermediate points.
+///
+/// Uses cross-multiplication to compare slopes: three points
+/// (r0,c0), (r1,c1), (r2,c2) are collinear iff
+/// `(c1-c0)*(r2-r1) == (c2-c1)*(r1-r0)`.
+/// This correctly handles non-consecutive rows (e.g. across undetected
+/// gaps in the rowidlist) where row deltas differ between segments.
+fn simplify_collinear(path: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let mut waypoints: Vec<(usize, usize)> = Vec::new();
+    for &wp in path {
+        while waypoints.len() >= 2 {
+            let n = waypoints.len();
+            let (r0, c0) = waypoints[n - 2];
+            let (r1, c1) = waypoints[n - 1];
+            let (r2, c2) = wp;
+            // Cross-multiply to avoid float division:
+            // slope01 = (c1-c0)/(r1-r0), slope12 = (c2-c1)/(r2-r1)
+            let lhs = (c1 as i64 - c0 as i64) * (r2 as i64 - r1 as i64);
+            let rhs = (c2 as i64 - c1 as i64) * (r1 as i64 - r0 as i64);
+            if lhs == rhs {
+                waypoints.pop();
+            } else {
+                break;
+            }
+        }
+        waypoints.push(wp);
+    }
+    waypoints
+}
+
+/// Patch a thread (`oid`) back into the rowidlist for rows between its last
+/// use and the current row. This creates proper arrow segments at both ends
+/// of a thread-removal gap.
+///
+/// Matches gitk's `makeupline` function. Called when:
+/// - A non-first-child parent is inserted into the idlist (it was removed
+///   earlier by thread removal, and now needs to be visible again)
+/// - The current commit reappears in the idlist after being thread-removed
+///
+/// `prev_row`: row of the commit whose parents are being processed (= rm1 in gitk)
+/// `curr_row`: the current row being processed (= rend in gitk)
+/// `col_hint`: column where `oid` was just inserted in the idlist
+#[allow(clippy::too_many_arguments)]
+fn makeupline(
+    oid: Oid,
+    prev_row: usize,
+    curr_row: usize,
+    col_hint: usize,
+    rowidlist: &mut [Vec<Option<Oid>>],
+    children_sorted: &HashMap<Oid, Vec<Oid>>,
+    row_assignments: &HashMap<Oid, usize>,
+    ordertokens: &HashMap<Oid, String>,
+    mingap_len: usize,
+) {
+    // Find rstart = previous use of oid before curr_row
+    let rstart = match GraphCalculator::prevuse(oid, curr_row, children_sorted, row_assignments) {
+        Some(r) if r < prev_row => r,
+        _ => return,
+    };
+
+    // If the gap is very large, clamp rstart so we only patch uparrowlen rows
+    if rstart + UPARROW_LEN + mingap_len + DOWNARROW_LEN < curr_row {
+        let clamped = curr_row.saturating_sub(UPARROW_LEN + 1);
+        patch_rows(oid, clamped, prev_row, col_hint, rowidlist, ordertokens);
+    } else {
+        patch_rows(oid, rstart, prev_row, col_hint, rowidlist, ordertokens);
+    }
+}
+
+/// Insert `oid` into rows `rstart+1..=prev_row` of the rowidlist where not
+/// already present.
+fn patch_rows(
+    oid: Oid,
+    rstart: usize,
+    prev_row: usize,
+    col_hint: usize,
+    rowidlist: &mut [Vec<Option<Oid>>],
+    ordertokens: &HashMap<Oid, String>,
+) {
+    let mut col = col_hint;
+    for r in (rstart + 1)..=prev_row {
+        if r >= rowidlist.len() {
+            break;
+        }
+        if rowidlist[r].contains(&Some(oid)) {
+            continue;
+        }
+        let active: Vec<Oid> = rowidlist[r].iter().copied().flatten().collect();
+        col = GraphCalculator::idcol(&active, oid, ordertokens, col.min(active.len()));
+        rowidlist[r].insert(col, Some(oid));
+    }
+}
+
 /// Trace a thread (parent_oid) through the rowidlist from child_row to
 /// parent_row, recording (row, col) at each direction change.
 ///
 /// This matches gitk's drawlineseg approach: walk consecutive rows where
 /// the thread appears, recording coordinates only when the column delta
-/// changes direction. This produces the minimal set of waypoints needed
-/// to render the thread's actual path.
+/// changes direction. When the thread has been removed from intermediate
+/// rows (gitk thread lifecycle), gaps are detected.
+///
+/// All gaps are found (not just the first), and each contiguous sub-segment
+/// is simplified independently to avoid creating incorrect long diagonals
+/// across undetected gaps.
+///
+/// Returns `(waypoints, gap)` where gap is `Some((lower_end_row, upper_start_row))`
+/// for the **primary** (largest) gap — the one the renderer should draw
+/// arrowheads at. Smaller gaps are preserved as waypoints but without
+/// arrowhead rendering.
+#[allow(clippy::type_complexity)]
 fn trace_thread(
     parent_oid: Oid,
     child_row: usize,
     parent_row: usize,
     rowidlist: &[Vec<Option<Oid>>],
-) -> Vec<(usize, usize)> {
+) -> (Vec<(usize, usize)>, Option<(usize, usize)>) {
     if parent_row <= child_row + 1 {
-        return Vec::new();
+        return (Vec::new(), None);
     }
 
-    // Collect the thread's column at each intermediate row
+    // Collect the thread's column at each intermediate row.
+    // Start at child_row+1 (not child_row) so the first waypoint is
+    // below the child. This allows the renderer to apply vertical-first
+    // chamfering (vertical from child, then horizontal near parent)
+    // instead of forcing a horizontal jog at the child's row.
     let mut path: Vec<(usize, usize)> = Vec::new();
     for r in (child_row + 1)..parent_row {
         if r >= rowidlist.len() {
@@ -1127,48 +1557,51 @@ fn trace_thread(
     }
 
     if path.is_empty() {
-        return Vec::new();
+        return (Vec::new(), None);
     }
 
-    // Simplify: keep only waypoints where direction changes
-    // (matching gitk's drawlineseg coordinate generation)
+    // Detect ALL gaps (row discontinuities) and split into contiguous
+    // sub-segments. Each sub-segment is simplified independently so
+    // that non-consecutive rows across gaps don't create false
+    // collinear collapses.
+    let mut gap_boundaries: Vec<(usize, usize)> = Vec::new();
+    let mut seg_starts: Vec<usize> = vec![0]; // start index of each segment
+
+    for i in 0..path.len().saturating_sub(1) {
+        if path[i + 1].0 > path[i].0 + 1 {
+            gap_boundaries.push((path[i].0, path[i + 1].0));
+            seg_starts.push(i + 1);
+        }
+    }
+
+    // Simplify each contiguous sub-segment independently
     let mut waypoints = Vec::new();
-    let mut prev_dir: i64 = 0;
-
-    for &(r, col) in &path {
-        if waypoints.is_empty() {
-            waypoints.push((r, col));
-            continue;
+    for (si, &start) in seg_starts.iter().enumerate() {
+        let end = if si + 1 < seg_starts.len() {
+            seg_starts[si + 1]
+        } else {
+            path.len()
+        };
+        if start < end {
+            waypoints.extend(simplify_collinear(&path[start..end]));
         }
-        let (_, prev_col) = waypoints.last().unwrap();
-        let dir = col as i64 - *prev_col as i64;
-        if dir != prev_dir {
-            // Direction changed — the last waypoint is the turning point
-            // But we already added it. Update prev_dir.
-            prev_dir = dir;
-        }
-        waypoints.push((r, col));
     }
 
-    // Further simplify: remove intermediate waypoints with same direction
-    let mut simplified: Vec<(usize, usize)> = Vec::new();
-    for wp in waypoints {
-        while simplified.len() >= 2 {
-            let n = simplified.len();
-            let (_, c0) = simplified[n - 2];
-            let (_, c1) = simplified[n - 1];
-            let d0 = c1 as i64 - c0 as i64;
-            let d1 = wp.1 as i64 - c1 as i64;
-            if d0 == d1 {
-                simplified.pop();
-            } else {
-                break;
-            }
+    // Return the largest gap as the primary arrow_gap (for frontend arrowheads)
+    let primary_gap = gap_boundaries.into_iter().max_by_key(|(lo, hi)| hi - lo);
+
+    // Trivial waypoint filter: if all waypoints are at the same column
+    // (no direction changes) and there's no gap, the edge is a simple
+    // cross-column connection best handled by the renderer's chamfer
+    // path. Returning empty waypoints lets the chamfer kick in.
+    if primary_gap.is_none() && !waypoints.is_empty() {
+        let all_same_col = waypoints.windows(2).all(|w| w[0].1 == w[1].1);
+        if all_same_col {
+            return (Vec::new(), None);
         }
-        simplified.push(wp);
     }
 
-    simplified
+    (waypoints, primary_gap)
 }
 
 // --- optimize_rows (gitk port) ---
@@ -1891,6 +2324,48 @@ mod tests {
         );
     }
 
+    #[test]
+    fn property_no_pass_through_with_parallel_branches() {
+        // Three parallel branches fork from root and merge at the end.
+        // Each branch has 3 commits, creating long-spanning lane edges.
+        // The layout must route them through distinct columns / waypoints
+        // so no same-column edge passes through an unrelated node.
+        //
+        // root(1) ─→ main(2) → main(5) → main(8) ─→ mergeAB(11) → mergeFinal(12)
+        //         ├→ branchA(3) → branchA(6) → branchA(9) ─┘
+        //         └→ branchB(4) → branchB(7) → branchB(10) ───────────────────┘
+        let commits = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "main1"),
+            make_commit(3, vec![1], "branchA1"),
+            make_commit(4, vec![1], "branchB1"),
+            make_commit(5, vec![2], "main2"),
+            make_commit(6, vec![3], "branchA2"),
+            make_commit(7, vec![4], "branchB2"),
+            make_commit(8, vec![5], "main3"),
+            make_commit(9, vec![6], "branchA3"),
+            make_commit(10, vec![7], "branchB3"),
+            make_commit(11, vec![8, 9], "mergeAB"),
+            make_commit(12, vec![11, 10], "mergeFinal"),
+        ];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let errors = layout.verify();
+        assert!(
+            errors.is_empty(),
+            "verify() found {} pass-through error(s):\n{}",
+            errors.len(),
+            errors
+                .iter()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
     /// Verify the parent-preservation invariant: every non-merge commit that
     /// has ≥1 parent when merges are shown must still have ≥1 parent edge
     /// when merges are hidden.
@@ -2116,5 +2591,641 @@ mod tests {
             "Sequential branches should compact to ≤2 columns (main + shared feature), got {}",
             layout.total_columns
         );
+    }
+
+    // --- Phase 1-4: gitk algorithm alignment tests ---
+
+    #[test]
+    fn prevuse_finds_most_recent_child() {
+        let oid = make_oid(1);
+        let child_a = make_oid(2);
+        let child_b = make_oid(3);
+
+        let mut children: HashMap<Oid, Vec<Oid>> = HashMap::new();
+        children.insert(oid, vec![child_a, child_b]);
+
+        let mut row_assignments: HashMap<Oid, usize> = HashMap::new();
+        row_assignments.insert(child_a, 0);
+        row_assignments.insert(child_b, 5);
+        row_assignments.insert(oid, 10);
+
+        assert_eq!(
+            GraphCalculator::prevuse(oid, 6, &children, &row_assignments),
+            Some(5),
+            "prevuse(6) should find child_b at row 5"
+        );
+        assert_eq!(
+            GraphCalculator::prevuse(oid, 5, &children, &row_assignments),
+            Some(0),
+            "prevuse(5) should find child_a at row 0"
+        );
+        assert_eq!(
+            GraphCalculator::prevuse(oid, 0, &children, &row_assignments),
+            None,
+            "prevuse(0) should return None"
+        );
+    }
+
+    #[test]
+    fn thread_removal_creates_arrow_gap() {
+        // Long branch spanning >110 rows triggers thread removal + arrow_gap.
+        // root(1) → main(2) → ... → main(120) → merge(122)
+        //    └→ branch(121) ──────────────────────┘
+        // Edge branch(121)→root(1) spans ~120 rows.
+        let mut commits = vec![make_commit(1, vec![], "root")];
+        for i in 2..=120u8 {
+            commits.push(make_commit(i, vec![i - 1], "main"));
+        }
+        commits.push(make_commit(121, vec![1], "branch"));
+        commits.push(make_commit(122, vec![120, 121], "merge"));
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let branch_node = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(121))
+            .expect("branch must be in layout");
+        let root_node = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(1))
+            .expect("root must be in layout");
+
+        let branch_edge = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == branch_node.row && e.to_row == root_node.row)
+            .expect("should have edge from branch to root");
+
+        assert!(
+            branch_edge.arrow_gap.is_some(),
+            "long-spanning branch edge should have arrow_gap from thread removal"
+        );
+
+        let errors = layout.verify();
+        assert!(errors.is_empty(), "verify() should find no errors");
+    }
+
+    #[test]
+    fn short_edge_has_no_arrow_gap() {
+        // Short branch (<110 rows) should NOT have arrow_gap.
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "main");
+        let c3 = make_commit(3, vec![1], "branch");
+        let c4 = make_commit(4, vec![2, 3], "merge");
+        let commits = vec![c4, c3, c2, c1];
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        for edge in &layout.edges {
+            assert!(
+                edge.arrow_gap.is_none(),
+                "short edges should not have arrow_gap"
+            );
+        }
+    }
+
+    #[test]
+    fn linear_chain_inherits_color() {
+        // root → a → b → merge
+        //         └→ branch →┘
+        // Linear chain root→a→b should share color (each has 1 child with 1 parent).
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "a");
+        let c3 = make_commit(3, vec![2], "b");
+        let c4 = make_commit(4, vec![1], "branch");
+        let c5 = make_commit(5, vec![4], "branch2");
+        let c6 = make_commit(6, vec![3, 5], "merge");
+        let commits = vec![c6, c5, c4, c3, c2, c1];
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let n2 = layout.nodes.iter().find(|n| n.oid == make_oid(2)).unwrap();
+        let n3 = layout.nodes.iter().find(|n| n.oid == make_oid(3)).unwrap();
+
+        assert_eq!(
+            n2.color, n3.color,
+            "linear chain (a→b, each has 1 child/parent) should share color"
+        );
+    }
+
+    #[test]
+    fn edge_color_uses_parent_color() {
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "child");
+        let commits = vec![c2, c1];
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let n1 = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+        let edge = layout
+            .edges
+            .iter()
+            .find(|e| e.to_row == n1.row)
+            .expect("should have edge to root");
+
+        assert_eq!(
+            edge.color, n1.color,
+            "edge should use parent's color, not child's"
+        );
+    }
+
+    #[test]
+    fn arrow_gap_threshold_controls_removal() {
+        // Same topology as thread_removal test but with high threshold.
+        // With threshold=200, threads spanning 120 rows should NOT be removed.
+        let mut commits = vec![make_commit(1, vec![], "root")];
+        for i in 2..=120u8 {
+            commits.push(make_commit(i, vec![i - 1], "main"));
+        }
+        commits.push(make_commit(121, vec![1], "branch"));
+        commits.push(make_commit(122, vec![120, 121], "merge"));
+
+        let options = GraphOptions {
+            arrow_gap_threshold: 200,
+            ..GraphOptions::default()
+        };
+        let calc = GraphCalculator::new(commits, HashMap::new(), Vec::new(), options);
+        let layout = calc.calculate_layout();
+
+        let branch_node = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(121))
+            .unwrap();
+        let root_node = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+
+        let branch_edge = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == branch_node.row && e.to_row == root_node.row)
+            .expect("should have edge from branch to root");
+
+        assert!(
+            branch_edge.arrow_gap.is_none(),
+            "with threshold=200, 120-row edge should NOT be removed"
+        );
+    }
+
+    // --- simplify_collinear regression tests ---
+
+    #[test]
+    fn simplify_collinear_consecutive_rows() {
+        // Same column → all collapsed
+        let path = vec![(0, 3), (1, 3), (2, 3), (3, 3)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (3, 3)]);
+
+        // Uniform slope 1 (consecutive rows) → collapsed to endpoints
+        let path = vec![(0, 3), (1, 4), (2, 5), (3, 6)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (3, 6)]);
+
+        // Direction change → intermediate point preserved
+        let path = vec![(0, 3), (1, 4), (2, 3)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (1, 4), (2, 3)]);
+
+        // Slope change (flat then diagonal)
+        let path = vec![(0, 3), (1, 3), (2, 4), (3, 5)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (1, 3), (3, 5)]);
+    }
+
+    #[test]
+    fn simplify_collinear_nonconsecutive_rows() {
+        // Non-consecutive rows with same column delta but DIFFERENT slopes.
+        // Old buggy code compared only column deltas and would collapse (0,3)
+        // and (5,8) incorrectly. Cross-multiplication preserves the turn.
+        //
+        // (0,3) → (1,4): slope = 1/1 = 1
+        // (1,4) → (5,8): slope = 4/4 = 1  → same slope, collinear, collapse OK
+        let path = vec![(0, 3), (1, 4), (5, 8)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (5, 8)]);
+
+        // (0,3) → (1,5): slope = 2/1 = 2
+        // (1,5) → (5,6): slope = 1/4     → different slopes, preserve turn
+        let path = vec![(0, 3), (1, 5), (5, 6)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (1, 5), (5, 6)]);
+
+        // (0,3) → (1,4): slope = 1
+        // (1,4) → (5,5): slope = 1/4     → different, preserve
+        let path = vec![(0, 3), (1, 4), (5, 5)];
+        assert_eq!(simplify_collinear(&path), vec![(0, 3), (1, 4), (5, 5)]);
+    }
+
+    #[test]
+    fn simplify_collinear_single_and_empty() {
+        assert!(simplify_collinear(&[]).is_empty());
+        assert_eq!(simplify_collinear(&[(5, 3)]), vec![(5, 3)]);
+        assert_eq!(simplify_collinear(&[(5, 3), (6, 4)]), vec![(5, 3), (6, 4)]);
+    }
+
+    // --- trace_thread multi-gap regression test ---
+
+    #[test]
+    fn trace_thread_detects_largest_gap() {
+        // Build a rowidlist where parent_oid appears in two blocks:
+        //   rows 0-2 at column 0, rows 8-10 at column 0
+        // Gaps: rows 3-7 (5-row gap)
+        let parent = make_oid(1);
+        let other = make_oid(2);
+
+        let mut rowidlist: Vec<Vec<Option<Oid>>> = Vec::new();
+        for r in 0..=10 {
+            let mut row = vec![Some(parent)];
+            if (3..=7).contains(&r) {
+                // Gap region: parent is absent, other thread present
+                row = vec![Some(other)];
+            }
+            rowidlist.push(row);
+        }
+
+        let (waypoints, gap) = trace_thread(parent, 0, 10, &rowidlist);
+
+        assert!(gap.is_some(), "should detect the gap");
+        let (lo, hi) = gap.unwrap();
+        assert_eq!(lo, 2, "gap lower end is last row of segment 1");
+        assert_eq!(hi, 8, "gap upper start is first row of segment 2");
+
+        // Waypoints should include entries from both segments
+        assert!(
+            !waypoints.is_empty(),
+            "should have waypoints from both segments"
+        );
+        let rows: Vec<usize> = waypoints.iter().map(|(r, _)| *r).collect();
+        assert!(
+            rows.iter().all(|&r| r <= 2 || r >= 8),
+            "no waypoints in the gap region"
+        );
+    }
+
+    #[test]
+    fn trace_thread_multiple_gaps_simplifies_independently() {
+        // rowidlist where parent appears in THREE blocks:
+        //   rows 0-2: col 0
+        //   rows 5-6: col 0   (small gap of 2)
+        //   rows 9-10: col 0  (small gap of 2)
+        // The largest gap (rows 3-4, size 2) should be returned.
+        // Actually all gaps are the same size; first found wins.
+        let parent = make_oid(1);
+        let other = make_oid(2);
+
+        let mut rowidlist: Vec<Vec<Option<Oid>>> = Vec::new();
+        for r in 0..=10 {
+            let present = r <= 2 || (5..=6).contains(&r) || r >= 9;
+            if present {
+                rowidlist.push(vec![Some(parent)]);
+            } else {
+                rowidlist.push(vec![Some(other)]);
+            }
+        }
+
+        let (waypoints, gap) = trace_thread(parent, 0, 10, &rowidlist);
+
+        assert!(gap.is_some(), "should detect at least one gap");
+
+        // Waypoints should NOT include any rows in gap regions (3-4, 7-8)
+        let gap_rows: Vec<usize> = waypoints
+            .iter()
+            .map(|(r, _)| *r)
+            .filter(|&r| (3..=4).contains(&r) || (7..=8).contains(&r))
+            .collect();
+        assert!(
+            gap_rows.is_empty(),
+            "no waypoints in gap regions, got {:?}",
+            gap_rows
+        );
+    }
+
+    // --- Visual correctness: f421e8d multi-branch topology ---
+    // Real topology from this repo: f421e8d has 4 children
+    // (6ce557e=mainline, 4e14921, 7dae642, a344ea2).
+    // Each branch child has a chain of commits above it.
+
+    fn make_f421e8d_topology() -> Vec<CommitInfo> {
+        // OID assignments (higher = newer = appears first in display order):
+        // 14 = 6ce557e (mainline child of f421e8d)
+        // 13-10 = 279ad6c → 4f335b4 → b54e36f → 52f6ce1 (chain above 4e14921)
+        // 9  = 4e14921 (branch child of f421e8d)
+        // 8-5 = ff76046 → f2e47d6 → 562c79b → 55e3003 (chain above 7dae642)
+        // 4  = 7dae642 (branch child of f421e8d)
+        // 3  = a344ea2 (branch child of f421e8d)
+        // 2  = f421e8d (common parent)
+        // 1  = root (f421e8d's parent)
+        vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "f421e8d"),
+            make_commit(3, vec![2], "a344ea2"),
+            make_commit(4, vec![2], "7dae642"),
+            make_commit(5, vec![4], "55e3003"),
+            make_commit(6, vec![5], "562c79b"),
+            make_commit(7, vec![6], "f2e47d6"),
+            make_commit(8, vec![7], "ff76046"),
+            make_commit(9, vec![2], "4e14921"),
+            make_commit(10, vec![9], "52f6ce1"),
+            make_commit(11, vec![10], "b54e36f"),
+            make_commit(12, vec![11], "4f335b4"),
+            make_commit(13, vec![12], "279ad6c"),
+            make_commit(14, vec![2], "6ce557e"),
+        ]
+    }
+
+    /// Build the full pixel-ish path of an edge: (from_row, from_col) →
+    /// waypoints → (to_row, to_col). For edges with arrow_gap, only the
+    /// non-gap segments are included.
+    fn edge_full_path(edge: &Edge) -> Vec<Vec<(usize, usize)>> {
+        if let Some((gap_lo, gap_hi)) = edge.arrow_gap {
+            let mut seg1 = vec![(edge.from_row, edge.from_col)];
+            for wp in &edge.waypoints {
+                if wp.0 <= gap_lo {
+                    seg1.push(*wp);
+                }
+            }
+            let mut seg2: Vec<(usize, usize)> = Vec::new();
+            for wp in &edge.waypoints {
+                if wp.0 >= gap_hi {
+                    seg2.push(*wp);
+                }
+            }
+            seg2.push((edge.to_row, edge.to_col));
+            vec![seg1, seg2]
+        } else {
+            let mut path = vec![(edge.from_row, edge.from_col)];
+            path.extend(edge.waypoints.iter().copied());
+            path.push((edge.to_row, edge.to_col));
+            vec![path]
+        }
+    }
+
+    /// Check if any edge's RENDERED path crosses an unrelated node.
+    ///
+    /// For edges WITH waypoints: traces the polyline through waypoints.
+    /// For edges WITHOUT waypoints (cross-column): models the chamfer path
+    /// (horizontal-first: horizontal at child's row, then vertical at
+    /// parent's column). Checks that the vertical segment at parent_col
+    /// doesn't pass through any node, and the horizontal segment at
+    /// child's row doesn't pass through any node.
+    fn find_rendered_crossings(layout: &GraphLayout) -> Vec<String> {
+        let mut errors = Vec::new();
+        let node_at: HashMap<(usize, usize), String> = layout
+            .nodes
+            .iter()
+            .map(|n| ((n.row, n.column), n.oid.short_hex().to_string()))
+            .collect();
+
+        let efrom = |layout: &GraphLayout, edge: &Edge| {
+            layout
+                .nodes
+                .iter()
+                .find(|n| n.row == edge.from_row)
+                .map(|n| n.oid.short_hex().to_string())
+                .unwrap_or_default()
+        };
+        let eto = |layout: &GraphLayout, edge: &Edge| {
+            layout
+                .nodes
+                .iter()
+                .find(|n| n.row == edge.to_row)
+                .map(|n| n.oid.short_hex().to_string())
+                .unwrap_or_default()
+        };
+
+        for edge in &layout.edges {
+            if edge.from_col == edge.to_col {
+                // Same-column edge: check vertical pass-through
+                let (min_r, max_r) = (
+                    edge.from_row.min(edge.to_row),
+                    edge.from_row.max(edge.to_row),
+                );
+                for nr in (min_r + 1)..max_r {
+                    if let Some(name) = node_at.get(&(nr, edge.from_col)) {
+                        errors.push(format!(
+                            "edge {}→{} same-col passes through node {} at ({},{})",
+                            efrom(layout, edge),
+                            eto(layout, edge),
+                            name,
+                            nr,
+                            edge.from_col
+                        ));
+                    }
+                }
+                continue;
+            }
+
+            // Cross-column edge
+            if !edge.waypoints.is_empty() || edge.arrow_gap.is_some() {
+                // Has waypoints: trace polyline, check diagonal segments
+                for path in edge_full_path(edge) {
+                    for window in path.windows(2) {
+                        let (r1, c1) = window[0];
+                        let (r2, c2) = window[1];
+                        if r1 == r2 || c1 == c2 {
+                            continue;
+                        }
+                        let dr = (r2 as i64 - r1 as i64).abs();
+                        let dc = c2 as i64 - c1 as i64;
+                        let r_lo = r1.min(r2);
+                        let r_hi = r1.max(r2);
+                        for nr in (r_lo + 1)..r_hi {
+                            let frac = (nr as i64 - r1 as i64) as f64 / dr as f64;
+                            let c_frac = c1 as f64 + dc as f64 * frac;
+                            let c_round = c_frac.round() as usize;
+                            if let Some(name) = node_at.get(&(nr, c_round))
+                                && name != &efrom(layout, edge)
+                                && name != &eto(layout, edge)
+                            {
+                                errors.push(format!(
+                                    "edge {}→{} wp-segment ({},{})→({},{}) crosses node {} at ({},{})",
+                                    efrom(layout, edge), eto(layout, edge),
+                                    r1, c1, r2, c2, name, nr, c_round
+                                ));
+                            }
+                        }
+                    }
+                }
+            } else {
+                // No waypoints: rendered as chamfer.
+                // Horizontal-first: vertical at parent_col from ~child_row to parent_row.
+                // Check parent_col is clear between child_row+1 and parent_row.
+                let p_col = edge.to_col;
+                let (min_r, max_r) = (
+                    edge.from_row.min(edge.to_row) + 1,
+                    edge.from_row.max(edge.to_row),
+                );
+                for nr in min_r..max_r {
+                    if let Some(name) = node_at.get(&(nr, p_col))
+                        && name != &efrom(layout, edge)
+                        && name != &eto(layout, edge)
+                    {
+                        errors.push(format!(
+                            "edge {}→{} chamfer vertical at parent col {} crosses node {} at ({},{})",
+                            efrom(layout, edge), eto(layout, edge),
+                            p_col, name, nr, p_col
+                        ));
+                    }
+                }
+            }
+        }
+        errors
+    }
+
+    /// For branch edges (child_col != parent_col), verify the column
+    /// change does NOT happen at the child's row. The horizontal jog
+    /// should be below the child (closer to the parent), meaning the
+    /// edge first goes vertically for at least one row before changing
+    /// column.
+    fn find_branch_jogs_at_child_row(layout: &GraphLayout) -> Vec<String> {
+        let mut errors = Vec::new();
+        for edge in &layout.edges {
+            if edge.edge_type != EdgeType::Branch {
+                continue;
+            }
+            if edge.from_col == edge.to_col {
+                continue; // Same column, no jog
+            }
+            // Check waypoints: no waypoint should be at from_row with a
+            // different column. This would mean the jog is at child's row.
+            for wp in &edge.waypoints {
+                if wp.0 == edge.from_row && wp.1 != edge.from_col {
+                    let e_from = layout
+                        .nodes
+                        .iter()
+                        .find(|n| n.row == edge.from_row)
+                        .map(|n| n.oid.short_hex().to_string())
+                        .unwrap_or_default();
+                    errors.push(format!(
+                        "branch edge from {} has waypoint at child row {} with col {} (expected col {} or no waypoint at child row)",
+                        e_from, edge.from_row, wp.1, edge.from_col
+                    ));
+                }
+            }
+        }
+        errors
+    }
+
+    #[test]
+    fn f421e8d_no_edge_crosses_unrelated_node() {
+        let commits = make_f421e8d_topology();
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // First check basic verify (same-column pass-through)
+        let verify_errors = layout.verify();
+        assert!(
+            verify_errors.is_empty(),
+            "verify() found {} same-column pass-through error(s):\n{}",
+            verify_errors.len(),
+            verify_errors
+                .iter()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        // Check rendered crossings (chamfer-aware)
+        let crossings = find_rendered_crossings(&layout);
+        assert!(
+            crossings.is_empty(),
+            "Found {} rendered crossing(s):\n{}",
+            crossings.len(),
+            crossings
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn f421e8d_branch_edges_jog_below_child() {
+        let commits = make_f421e8d_topology();
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let jog_errors = find_branch_jogs_at_child_row(&layout);
+        assert!(
+            jog_errors.is_empty(),
+            "Found {} branch jog(s) at child row:\n{}",
+            jog_errors.len(),
+            jog_errors
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn f421e8d_all_four_children_reachable() {
+        let commits = make_f421e8d_topology();
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // f421e8d is OID 2. Its 4 children are OIDs 14, 9, 4, 3.
+        let parent_oid = make_oid(2);
+        let child_oids = [make_oid(14), make_oid(9), make_oid(4), make_oid(3)];
+
+        let parent_node = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == parent_oid)
+            .expect("f421e8d must be in layout");
+
+        for &child_oid in &child_oids {
+            let child_node = layout
+                .nodes
+                .iter()
+                .find(|n| n.oid == child_oid)
+                .unwrap_or_else(|| panic!("child {:?} must be in layout", child_oid));
+
+            // There must be an edge from child to parent
+            let has_edge = layout.edges.iter().any(|e| {
+                e.from_row == child_node.row
+                    && e.from_col == child_node.column
+                    && e.to_row == parent_node.row
+                    && e.to_col == parent_node.column
+            });
+            assert!(
+                has_edge,
+                "child {:?} (row {}, col {}) should have edge to parent (row {}, col {})",
+                child_oid, child_node.row, child_node.column, parent_node.row, parent_node.column
+            );
+        }
+    }
+
+    #[test]
+    fn f421e8d_branch_children_in_separate_columns() {
+        let commits = make_f421e8d_topology();
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // 4e14921, 7dae642, a344ea2 should be in columns > 0
+        // (separate from the mainline column 0)
+        for &oid in &[make_oid(9), make_oid(4), make_oid(3)] {
+            let node = layout.nodes.iter().find(|n| n.oid == oid).unwrap();
+            assert!(
+                node.column > 0,
+                "branch child {:?} should be in column > 0, got {}",
+                oid,
+                node.column
+            );
+        }
+
+        // f421e8d (parent) should be in column 0 (mainline)
+        let parent = layout.nodes.iter().find(|n| n.oid == make_oid(2)).unwrap();
+        assert_eq!(parent.column, 0, "f421e8d should be in mainline column 0");
     }
 }

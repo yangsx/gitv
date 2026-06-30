@@ -175,8 +175,8 @@ impl Repository for GixRepository {
         Ok(result)
     }
 
-    fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError> {
-        let _span = tracing::debug_span!("commit", %oid).entered();
+    fn commit_details(&self, oid: Oid, include_counts: bool) -> Result<CommitDetails, GitError> {
+        let _span = tracing::debug_span!("commit_details", %oid, include_counts).entered();
         let repo = self.thread_local();
         let gix_oid = oid_to_gix_object_id(&oid);
         let obj = repo
@@ -212,31 +212,31 @@ impl Repository for GixRepository {
             .map(|p| tree_for_oid(&repo, p).map_err(|e| GitError::Gix(e.to_string())))
             .transpose()?;
 
-        let _tree_span = tracing::debug_span!("tree_diff").entered();
         let gix_changes = repo
             .diff_tree_to_tree(from_tree.as_ref(), Some(&to_tree), None)
             .map_err(|e| GitError::Gix(e.to_string()))?;
-        let change_count = gix_changes.len();
-        drop(_tree_span);
 
-        let _line_span = tracing::debug_span!("build_file_list", count = change_count).entered();
         let changed_files: Vec<FileChange> = gix_changes
             .iter()
             .filter_map(|change| {
                 let (path, old_path, change_type, is_binary, is_submodule) =
                     change_to_file_change_parts(change)?;
+                let (additions, deletions) = if include_counts && !is_binary && !is_submodule {
+                    count_lines_for_change(&repo, change)
+                } else {
+                    (0, 0)
+                };
                 Some(FileChange {
                     path,
                     old_path,
                     change_type,
-                    additions: 0,
-                    deletions: 0,
+                    additions,
+                    deletions,
                     is_binary,
                     is_submodule,
                 })
             })
             .collect();
-        drop(_line_span);
 
         Ok(CommitDetails {
             info,
@@ -245,51 +245,6 @@ impl Repository for GixRepository {
             changed_files,
             body,
         })
-    }
-
-    fn commit_file_counts(&self, oid: Oid) -> Result<Vec<FileLineStats>, GitError> {
-        let repo = self.thread_local();
-        let gix_oid = oid_to_gix_object_id(&oid);
-        let obj = repo
-            .find_object(gix_oid)
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let commit = obj
-            .try_into_commit()
-            .map_err(|e| GitError::InvalidObject(e.to_string()))?;
-        let info = commit_to_commit_info(&oid, &commit, Vec::new());
-
-        let to_tree = tree_for_oid(&repo, oid).map_err(|e| GitError::Gix(e.to_string()))?;
-        let parent_oid = info.parent_oids.first().copied();
-        let from_tree = parent_oid
-            .map(|p| tree_for_oid(&repo, p).map_err(|e| GitError::Gix(e.to_string())))
-            .transpose()?;
-
-        let gix_changes = repo
-            .diff_tree_to_tree(from_tree.as_ref(), Some(&to_tree), None)
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-
-        let stats: Vec<FileLineStats> = gix_changes
-            .iter()
-            .filter_map(|change| {
-                let (path, _old_path, _change_type, is_binary, is_submodule) =
-                    change_to_file_change_parts(change)?;
-                if is_binary || is_submodule {
-                    return Some(FileLineStats {
-                        path,
-                        additions: 0,
-                        deletions: 0,
-                    });
-                }
-                let (additions, deletions) = count_lines_for_change(&repo, change);
-                Some(FileLineStats {
-                    path,
-                    additions,
-                    deletions,
-                })
-            })
-            .collect();
-
-        Ok(stats)
     }
 
     fn refs(&self) -> Result<Vec<Ref>, GitError> {

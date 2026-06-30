@@ -111,8 +111,8 @@ export async function cancelPatchSearch(searchId: number): Promise<void> {
 	return invoke<void>('cancel_patch_search', { searchId });
 }
 
-export async function getCommitDetails(path: string, oid: string): Promise<CommitDetails> {
-	return timedInvoke<CommitDetails>('get_commit_details', { path, oid });
+export async function getCommitDetails(path: string, oid: string, includeCounts?: boolean): Promise<CommitDetails> {
+	return timedInvoke<CommitDetails>('get_commit_details', { path, oid, include_counts: includeCounts ?? null });
 }
 
 export async function getCommitFileCounts(path: string, oid: string): Promise<FileLineStats[]> {

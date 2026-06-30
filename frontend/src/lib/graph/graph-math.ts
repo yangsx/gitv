@@ -25,12 +25,6 @@ export function isEdgeVisible(edge: Edge, startRow: number, endRow: number): boo
 	return minRow <= endRow && maxRow >= startRow;
 }
 
-export const ARROW_SEGMENT_LENGTH = 3;
-
-export function hasArrowGap(edge: Edge, threshold: number): boolean {
-	return Math.abs(edge.to_row - edge.from_row) > threshold;
-}
-
 export function isCrossColumn(edge: Edge): boolean {
 	return edge.from_col !== edge.to_col;
 }

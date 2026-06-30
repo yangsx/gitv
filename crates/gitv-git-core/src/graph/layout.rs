@@ -89,6 +89,14 @@ pub struct Edge {
     /// Empty for straight edges. Drawn as connected line segments.
     #[serde(default)]
     pub waypoints: Vec<(usize, usize)>,
+    /// When the thread was removed from the rowidlist (gitk thread lifecycle),
+    /// contains `(seg1_end_row, seg2_start_row)` — the boundary rows of the
+    /// gap. Segment 1 is near `from_row` (child), segment 2 near `to_row` (parent).
+    /// The renderer draws two short segments with arrowheads at these boundaries.
+    /// Waypoints with rows ≤ seg1_end_row belong to segment 1;
+    /// waypoints with rows ≥ seg2_start_row belong to segment 2.
+    #[serde(default)]
+    pub arrow_gap: Option<(usize, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,44 +143,73 @@ impl GraphLayout {
                 break;
             }
 
-            // Build the edge path: from → waypoints → to
-            let mut path: Vec<(usize, usize)> = vec![(edge.from_row, edge.from_col)];
-            path.extend(edge.waypoints.iter().copied());
-            path.push((edge.to_row, edge.to_col));
+            // Build path segments, splitting at arrow_gap if present.
+            // Each segment is checked independently — nodes inside the gap
+            // region are NOT pass-through violations.
+            let mut segments: Vec<Vec<(usize, usize)>> = Vec::new();
 
-            // Check each segment of the path
-            for window in path.windows(2) {
-                let (r1, c1) = window[0];
-                let (r2, c2) = window[1];
-                if c1 != c2 {
-                    continue; // Cross-column segment, skip
+            if let Some((gap_lo, gap_hi)) = edge.arrow_gap {
+                // Segment 1: from_row → waypoints with row ≤ gap_lo
+                let mut seg1 = vec![(edge.from_row, edge.from_col)];
+                for wp in &edge.waypoints {
+                    if wp.0 <= gap_lo {
+                        seg1.push(*wp);
+                    }
                 }
-                let (min_row, max_row) = (r1.min(r2), r1.max(r2));
-                for node in &self.nodes {
-                    if errors.len() >= MAX_ERRORS {
-                        break;
+                segments.push(seg1);
+
+                // Segment 2: waypoints with row ≥ gap_hi → to_row
+                let mut seg2: Vec<(usize, usize)> = Vec::new();
+                for wp in &edge.waypoints {
+                    if wp.0 >= gap_hi {
+                        seg2.push(*wp);
                     }
-                    if node.column != c1 {
-                        continue;
+                }
+                seg2.push((edge.to_row, edge.to_col));
+                segments.push(seg2);
+            } else {
+                // Single continuous path
+                let mut path = vec![(edge.from_row, edge.from_col)];
+                path.extend(edge.waypoints.iter().copied());
+                path.push((edge.to_row, edge.to_col));
+                segments.push(path);
+            }
+
+            // Check each segment for pass-through
+            for path in &segments {
+                for window in path.windows(2) {
+                    let (r1, c1) = window[0];
+                    let (r2, c2) = window[1];
+                    if c1 != c2 {
+                        continue; // Cross-column segment, skip
                     }
-                    if node.row == edge.from_row || node.row == edge.to_row {
-                        continue;
-                    }
-                    if node.row > min_row && node.row < max_row {
-                        errors.push(format!(
-                            "edge ({},{})\u{2192}({},{}) segment ({},{})\u{2192}({},{}) passes through node {} at ({},{})",
-                            edge.from_row,
-                            edge.from_col,
-                            edge.to_row,
-                            edge.to_col,
-                            r1,
-                            c1,
-                            r2,
-                            c2,
-                            node.oid.short_hex(),
-                            node.row,
-                            node.column,
-                        ));
+                    let (min_row, max_row) = (r1.min(r2), r1.max(r2));
+                    for node in &self.nodes {
+                        if errors.len() >= MAX_ERRORS {
+                            break;
+                        }
+                        if node.column != c1 {
+                            continue;
+                        }
+                        if node.row == edge.from_row || node.row == edge.to_row {
+                            continue;
+                        }
+                        if node.row > min_row && node.row < max_row {
+                            errors.push(format!(
+                                "edge ({},{})\u{2192}({},{}) segment ({},{})\u{2192}({},{}) passes through node {} at ({},{})",
+                                edge.from_row,
+                                edge.from_col,
+                                edge.to_row,
+                                edge.to_col,
+                                r1,
+                                c1,
+                                r2,
+                                c2,
+                                node.oid.short_hex(),
+                                node.row,
+                                node.column,
+                            ));
+                        }
                     }
                 }
             }

@@ -2,7 +2,6 @@
 	import { t } from '$lib/stores/locale';
 	import type { GraphLayout, NodePosition, CommitInfo } from '$lib/bindings/types';
 	import { updateGraphDrawTime } from '$lib/stores/debug';
-	import { arrowGapThreshold } from '$lib/stores/repository';
 	import {
 		colorToCSS,
 		columnCenterX,
@@ -67,15 +66,7 @@
 	let commitMap = $derived(new Map(commits.map((c) => [c.oid, c])));
 
 	let visibleEdgeData = $derived(
-		computeVisibleEdgeCoords(
-			layout,
-			visibleStart,
-			visibleEnd,
-			rowHeight,
-			laneWidth,
-			PADDING_LEFT,
-			$arrowGapThreshold
-		)
+		computeVisibleEdgeCoords(layout, visibleStart, visibleEnd, rowHeight, laneWidth, PADDING_LEFT)
 	);
 
 	function draw(l: GraphLayout) {

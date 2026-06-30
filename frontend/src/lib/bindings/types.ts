@@ -86,6 +86,10 @@ export interface Edge {
 	edge_style: EdgeStyle;
 	/** [row, col] pairs at direction changes — render as connected segments */
 	waypoints: [number, number][];
+	/** When non-null, the thread was removed from the rowidlist.
+	 * Contains [seg1_end_row, seg2_start_row] — the gap boundaries.
+	 * The renderer draws two segments with arrowheads at these boundaries. */
+	arrow_gap?: [number, number] | null;
 }
 
 export interface StashMarker {

@@ -30,7 +30,6 @@
 		GRAPH_PADDING_LEFT as PADDING_LEFT,
 		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE
 	} from '$lib/constants';
-	import { arrowGapThreshold } from '$lib/stores/repository';
 
 	interface Props {
 		layout: GraphLayout;
@@ -89,15 +88,7 @@
 	let selectedEdgeIdx = $state<number | null>(null);
 
 	let visibleEdgeData = $derived(
-		computeVisibleEdgeCoords(
-			layout,
-			visibleStart,
-			visibleEnd,
-			rowHeight,
-			sLaneWidth,
-			sPadding,
-			$arrowGapThreshold
-		)
+		computeVisibleEdgeCoords(layout, visibleStart, visibleEnd, rowHeight, sLaneWidth, sPadding)
 	);
 
 	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);

@@ -10,11 +10,29 @@ pub trait Repository {
         max_count: Option<usize>,
         extra_tips: &[Oid],
     ) -> Result<Vec<CommitInfo>, GitError>;
-    fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError>;
+    fn commit(&self, oid: Oid) -> Result<CommitDetails, GitError> {
+        self.commit_details(oid, false)
+    }
 
     /// Compute per-file line counts (additions/deletions) for a commit.
     /// This reads blob contents and is expensive — call lazily.
-    fn commit_file_counts(&self, oid: Oid) -> Result<Vec<FileLineStats>, GitError>;
+    fn commit_file_counts(&self, oid: Oid) -> Result<Vec<FileLineStats>, GitError> {
+        let details = self.commit_details(oid, true)?;
+        Ok(details
+            .changed_files
+            .into_iter()
+            .map(|f| FileLineStats {
+                path: f.path,
+                additions: f.additions,
+                deletions: f.deletions,
+            })
+            .collect())
+    }
+
+    /// Load commit details with an optional line-count pass.
+    /// When `include_counts` is true, reads blob contents for each changed
+    /// file to compute additions/deletions (expensive — use only when needed).
+    fn commit_details(&self, oid: Oid, include_counts: bool) -> Result<CommitDetails, GitError>;
     fn refs(&self) -> Result<Vec<Ref>, GitError>;
 
     /// Lightweight ref enumeration — returns ref name → OID mapping without

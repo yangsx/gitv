@@ -11,13 +11,18 @@ pub async fn get_commit_details(
     state: State<'_, AppState>,
     path: String,
     oid: String,
+    include_counts: Option<bool>,
 ) -> Result<gitv_git_core::models::CommitDetails, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || repo.commit(commit_oid).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    let include = include_counts.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.commit_details(commit_oid, include)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
