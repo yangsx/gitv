@@ -19,7 +19,6 @@ const DEFAULTS: AppPreferences = {
 	graph_hide_merges: false,
 	graph_orientation: 'top-to-bottom',
 	graph_palette: 'default',
-	renderer: 'wgpu',
 	diff_mode: 'normal',
 	diff_whitespace: 'none',
 	diff_view_mode: 'unified',
@@ -36,7 +35,6 @@ export const diffWhitespace = writable<
 	'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines'
 >(DEFAULTS.diff_whitespace);
 export const diffViewMode = writable<'unified' | 'side-by-side'>(DEFAULTS.diff_view_mode);
-export const renderer = writable<'wgpu' | 'canvas2d'>('wgpu');
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);
 
@@ -100,7 +98,6 @@ function toPreferences(): AppPreferences {
 		graph_hide_merges: get(graphHideMerges),
 		graph_orientation: get(graphOrientation),
 		graph_palette: get(graphPalette),
-		renderer: get(renderer),
 		diff_mode: get(diffMode),
 		diff_whitespace: get(diffWhitespace),
 		diff_view_mode: get(diffViewMode),
@@ -115,9 +112,6 @@ function toPreferences(): AppPreferences {
 function updateFromPreferences(p: AppPreferences) {
 	theme.set(p.theme);
 	highContrast.set(p.high_contrast);
-	if (p.renderer === 'wgpu' || p.renderer === 'canvas2d') {
-		renderer.set(p.renderer);
-	}
 	if (p.font_size >= FONT_SIZE_MIN && p.font_size <= FONT_SIZE_MAX) {
 		fontSize.set(p.font_size);
 	}

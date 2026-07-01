@@ -152,7 +152,7 @@
 
 	<!-- Flowing text: inline refs + message -->
 	<span
-		class="flex min-w-0 flex-1 items-center gap-1 truncate py-0.5 pl-1 pr-2 {rowBgClass} {rowHoverClass} {textClass}"
+		class="relative z-[1] flex min-w-0 flex-1 items-center gap-1 truncate py-0.5 pl-1 pr-2 {rowBgClass} {rowHoverClass} {textClass}"
 	>
 		{#if isVirtual}
 			<span class="truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">

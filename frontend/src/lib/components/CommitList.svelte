@@ -13,7 +13,7 @@
 		MIN_TEXT_WIDTH
 	} from '$lib/constants';
 	import CommitRow from './CommitRow.svelte';
-	import GraphRenderer from './graph/GraphRenderer.svelte';
+	import CommitGraph from './CommitGraph.svelte';
 
 	interface Props {
 		commits: CommitInfo[];
@@ -283,7 +283,7 @@
 						style="left: {HASH_COLUMN_WIDTH}px; width: {maxGraphWidth}px; height: {visibleHeight}px; z-index: 0;"
 						aria-hidden="true"
 					>
-						<GraphRenderer
+						<CommitGraph
 							{layout}
 							{commits}
 							{rowHeight}

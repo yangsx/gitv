@@ -369,7 +369,6 @@ export interface AppPreferences {
 	graph_hide_merges: boolean;
 	graph_orientation: 'top-to-bottom' | 'bottom-to-top';
 	graph_palette: 'default' | 'deuteranopia' | 'protanopia' | 'tritanopia';
-	renderer: 'wgpu' | 'canvas2d';
 	diff_mode: 'normal' | 'word-diff' | 'stat-only';
 	diff_whitespace: 'none' | 'ignore-space-change' | 'ignore-all-space' | 'ignore-blank-lines';
 	diff_view_mode: 'unified' | 'side-by-side';
@@ -378,50 +377,4 @@ export interface AppPreferences {
 	high_contrast: boolean;
 	language: string;
 	arrow_gap_threshold: number;
-}
-
-export interface RenderNode {
-	row: number;
-	column: number;
-	color_r: number;
-	color_g: number;
-	color_b: number;
-	color_a: number;
-	is_dimmed: boolean;
-	is_selected: boolean;
-	is_comparison: boolean;
-	is_merge: boolean;
-	is_stash: boolean;
-	sel_color_r: number;
-	sel_color_g: number;
-	sel_color_b: number;
-}
-
-export interface RenderEdge {
-	from_row: number;
-	from_col: number;
-	to_row: number;
-	to_col: number;
-	color_r: number;
-	color_g: number;
-	color_b: number;
-	is_dimmed: boolean;
-	edge_type: EdgeType;
-	edge_style: EdgeStyle;
-}
-
-export interface RenderGraphInput {
-	width: number;
-	height: number;
-	scale: number;
-	visible_start: number;
-	visible_end: number;
-	h_scroll_left: number;
-	total_columns: number;
-	row_height: number;
-	lane_width: number;
-	padding_left: number;
-	node_radius: number;
-	nodes: RenderNode[];
-	edges: RenderEdge[];
 }

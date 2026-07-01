@@ -32,9 +32,6 @@ export const DATE_COLUMN_WIDTH = 150;
 export const GRAPH_GAP = 12;
 export const MIN_TEXT_WIDTH = 200;
 
-// ── wgpu limits ───────────────────────────────────────────────
-export const WGPU_MAX_TEXTURE_DIMENSION = 8192;
-
 // ── Diff loading ──────────────────────────────────────────────
 export const DIFF_FILE_LIMIT = 100;
 export const DIFF_CONCURRENCY = 4;

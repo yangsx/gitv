@@ -52,7 +52,6 @@ Specify two commits, view only the ancestry path between them.
 - ~~Font size zoom (Ctrl+= / Ctrl+- / Ctrl+0)~~ — implemented (commit 746e15f)
 - Graph zoom (row height scaling) — not yet implemented
 - Horizontal/vertical scrolling for large graphs
-- Must work in both Canvas 2D and wgpu renderers
 
 ### Req 63: Mid-Stream Error Recovery
 Retain commits received before stream failure; retry button; per-file diff error handling.

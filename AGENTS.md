@@ -4,14 +4,13 @@
 **In development.** Core application has substantial source code in place:
 - **Backend** (`src-tauri/`): Tauri commands for preferences, graph layout, commits, diff, repo operations, saved searches, file watching, diagnostics
 - **Git core** (`crates/gitv-git-core/`): 99 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
-- **GPU renderer** (`crates/gitv-wgpu-renderer/`): wgpu-based GPU graph renderer with WGSL shaders, Canvas 2D fallback, and user preference toggle
 - **Frontend** (`frontend/`): Svelte 5 + TypeScript with CommitGraph (canvas-based), CommitList, CommitDetailPanel (diff/whitespace controls), PreferencesModal (draggable), InfoDialog (draggable — shortcuts, logging, app info), Toolbar, SearchBar, Sidebar, FileTree, BlamePanel, CommandPalette, ContextMenu, DebugOverlay
 - **Preferences**: Persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with debounced auto-save, applies to graph/diff/view behavior
 - Architecture design in `design.md`; full requirements in `requirements.md`
 
 ## Architecture
 - **Rust + Tauri 2.0** desktop app: Git visualization tool (modern gitk)
-- **Backend**: `src-tauri/` — Rust with `gix` (gitoxide) for Git ops, `wgpu` for GPU graph rendering
+- **Backend**: `src-tauri/` — Rust with `gix` (gitoxide) for Git ops
 - **Decoupled Git core**: `crates/gitv-git-core/` — pure Rust, no Tauri deps, independently testable
 - **Multi-instance**: each launch opens an independent window; no tab support
 - **Frontend**: `frontend/` — SvelteKit + Svelte 5 + TypeScript + Tailwind + Vite
@@ -21,7 +20,6 @@
 ```
 src-tauri/            # Rust backend (Tauri commands in src/commands/)
 crates/gitv-git-core/ # Git logic crate (repository, graph, search, stream, watcher, cache, models)
-crates/gitv-wgpu-renderer/ # GPU graph rendering (wgpu + WGSL shaders)
 frontend/             # SvelteKit frontend (src/routes/, src/lib/components/, src/lib/stores/, src/lib/actions/, src/lib/bindings/, src/lib/graph/)
 tests/                # Integration tests + fixtures
 benches/              # (in crates/gitv-git-core/benches/)
@@ -30,7 +28,7 @@ benches/              # (in crates/gitv-git-core/benches/)
 ## Key Design Decisions
 - Git backend is a separate crate (`gitv-git-core`) with trait-based interfaces for mocking
 - `Oid` is a 20-byte binary newtype (`[u8; 20]`), not a String — 3x less memory, faster hashing
-- Commit graph uses GPU-accelerated rendering via wgpu with virtualized viewport
+- Commit graph uses Canvas 2D rendering with virtualized viewport
 - Commits are streamed in batches with binary serialization (postcard) to avoid JSON IPC overhead
 - Persistent disk cache for graph layout + metadata — re-open cached repos in <200ms
 - Each window holds isolated repository state (own connection, filters, scroll position)
@@ -40,7 +38,8 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Diff viewer supports normal, word-diff, and stat-only modes with whitespace modifiers (Req 54)
 - Graph supports color-by-author mode (Req 52), merge filtering (Req 53), commit dimming (Req 56), and orientation toggle (Req 57)
 - Edge interaction: clickable graph edges with cubic bezier hit-testing, hover highlighting (thicker same-curve + endpoint rings), and click-to-navigate (commit ef495f9)
-- Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility, rendered via WGSL shaders on wgpu or Canvas 2D draw calls
+- Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility, rendered via Canvas 2D draw calls
+- Column layout uses a gitk-faithful algorithm (ordertokens + thread tracing via `trace_thread` + `propagate_branch_token`); this produces better edge routing than the old `compact_columns` approach but costs ~2× CPU on synthetic benchmarks (branchy/10k ≈ 36ms vs 17ms pre-rewrite) — still ~1.8% of the 2s layout budget, so the absolute perf targets are met with large margin
 - CLI accepts repo path arguments (`gitv /repo1 /repo2`) and `--log-level` flag (Req 42, Req 55 revision ranges not yet implemented)
 - CLI argument parsing via `clap`
 - Panel widths/heights are clamped on restore to min/max bounds — prevents unusable layouts from tiling WMs (Req 59)
@@ -50,7 +49,6 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Diff/whitespace controls in CommitDetailPanel use local `$state` overrides (not global preference saves); PreferencesModal sets global defaults
 - Preferences dialog is draggable (no backdrop) to allow flexible placement alongside the graph
 - Graph toolbar simplified — toggle buttons (color mode, hide merges, orientation) moved into Preferences dialog; gear and info (ℹ) icons remain on toolbar
-- Dual renderer: wgpu GPU (WGSL shaders) with Canvas 2D fallback, user-selectable via `renderer` preference
 - Commit messages: XSS-sanitized Markdown rendering with raw/markdown toggle (Req 48.4)
 - Light theme and high contrast mode supported alongside default dark theme (Req 11.1, Req 14.3)
 - Side-by-side diff view mode persisted as a preference (Req 54.5)
@@ -62,14 +60,12 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Repo switch: all selection state is cleared and CommitList is force-remounted via `{#key}` to prevent stale internal state from the previous repo
 - Debug overlay available in all builds via F12/Ctrl+Shift+D — no CLI flag or feature gate required (commit 996dfc2)
 - Font size zoom via Ctrl+=/Ctrl+-/Ctrl+0 (commit 746e15f)
-- wgpu hover performance: base render cached as `ImageData`, hover/selection changes use fast Canvas 2D re-blit path (no IPC/GPU roundtrip) (commit a71db87)
 
 ## Tech Stack
 | Layer | Tool |
 |-------|------|
 | App framework | Tauri 2.0 |
 | Git library | gix (gitoxide) |
-| GPU rendering | wgpu |
 | Refresh | Manual (toolbar button) |
 | Frontend | SvelteKit, Svelte 5, TypeScript, Svelte stores |
 | Virtual list | svelte-virtual-scroll-list |
@@ -90,6 +86,7 @@ benches/              # (in crates/gitv-git-core/benches/)
 | Re-open (cached, 100k commits) | < 200ms |
 | Scroll FPS | 60 |
 | Search (indexed, 100k commits) | < 100ms |
+| Graph layout (10k commits) | < 2s |
 | Binary size | < 15MB |
 | Working changes diff | < 50ms |
 
