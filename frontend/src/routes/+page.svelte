@@ -45,6 +45,7 @@
 		patchSearchActive,
 		patchSearchProgress,
 		patchSearchId,
+		searchQuery,
 		searchResults
 	} from '$lib/stores/repository';
 	import { STAGED_OID, UNSTAGED_OID, VIRTUAL_OIDS } from '$lib/constants';
@@ -258,13 +259,11 @@
 		registerCommands();
 	});
 
-	function closeRepo() {
+	function resetRepoState() {
 		if ($patchSearchId !== null) cancelPatchSearch($patchSearchId).catch(() => {});
 		patchSearchActive.set(false);
 		patchSearchId.set(null);
 		patchSearchProgress.set(null);
-		repoPath = '';
-		repoInfo.set(null);
 		selectedOid.set(null);
 		error.set(null);
 		loadError = null;
@@ -276,26 +275,30 @@
 		allRefs = [];
 		workingChangesDiff = null;
 		commitDetails = null;
+		detailsLoading = false;
 		comparisonDetails = null;
+		comparisonLoading = false;
 		selectedBranch = null;
 		selectedRemote = null;
 		selectedTag = null;
 		focusBranchOid = null;
+		historyFilePath = null;
+		historyRevision = 0;
+		searchQuery.set(null);
+		searchResults.set([]);
+	}
+
+	function closeRepo() {
+		resetRepoState();
+		repoPath = '';
+		repoInfo.set(null);
+		repoLoaded = false;
 		getRecentRepositories().then((r) => (recentRepos = r));
 	}
 
 	async function loadRepo(path: string) {
+		resetRepoState();
 		operationState.set('LoadingRepo');
-		error.set(null);
-		loadError = null;
-		selectedOid.set(null);
-		comparisonOid.set(null);
-		focusBranchOid = null;
-		selectedBranch = null;
-		selectedRemote = null;
-		selectedTag = null;
-		commitDetails = null;
-		detailsLoading = false;
 		try {
 			const data = await getInitialData(path, {
 				orientation: $graphOrientation,
@@ -315,8 +318,8 @@
 			graphLayout = data.graph_layout;
 			allRefs = data.refs;
 			workingChangesDiff = data.working_changes;
-			saveRecentRepository(repoRoot).catch(() => {});
-			getRecentRepositories().then((r) => (recentRepos = r));
+			await saveRecentRepository(repoRoot).catch(() => {});
+			recentRepos = await getRecentRepositories();
 			updateLoadPhaseTimings([
 				{ phase: 'load_commits', durationMs: data.timing.load_commits_ms },
 				{ phase: 'graph_calc', durationMs: data.timing.graph_calc_ms },
@@ -1438,7 +1441,10 @@
 				</button>
 				{#each recentRepos as repo (repo.path)}
 					<button
-						class="rounded bg-gray-700/50 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-600 hover:text-gray-100 shrink-0"
+						class={'rounded px-2 py-0.5 text-xs shrink-0 ' +
+							(repo.path === repoPath
+								? 'bg-blue-600 text-white'
+								: 'bg-gray-700/50 text-gray-300 hover:bg-gray-600 hover:text-gray-100')}
 						onclick={() => {
 							repoPath = repo.path;
 							loadRepo(repo.path);
@@ -1457,7 +1463,9 @@
 					<AuthorLegend layout={graphLayout} />
 				{/if}
 				<div class="ml-auto flex items-center gap-3">
-					<SearchBar {repoPath} />
+					{#key repoPath}
+						<SearchBar {repoPath} />
+					{/key}
 					{#if loadError}
 						<span class="flex items-center gap-2 text-xs text-amber-400">
 							{$t('page.loading_incomplete')}
@@ -1634,7 +1642,7 @@
 			</div>
 		</div>
 	{/if}
-	{#if $repoInfo}
+	{#if $repoInfo && $operationState !== 'LoadingRepo'}
 		<footer
 			class="flex items-center gap-3 border-t border-gray-800 px-4 py-1 text-xs text-gray-500 shrink-0"
 			aria-label={$t('page.statusbar_aria')}
