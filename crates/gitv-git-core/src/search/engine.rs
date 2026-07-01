@@ -95,27 +95,34 @@ impl SearchEngine {
         let mut result_bitmap: Option<RoaringBitmap> = None;
         let mut compiled_regex: Option<Regex> = None;
 
-        if let Some(ref text) = query.text
-            && !text.is_empty()
-        {
+        let has_text = query.text.as_ref().is_some_and(|t| !t.is_empty());
+        let has_sha = query.sha_prefix.as_ref().is_some_and(|p| !p.is_empty());
+
+        if has_text && has_sha {
             let text_results = if query.use_regex {
-                let re = Regex::new(text)?;
+                let re = Regex::new(query.text.as_ref().unwrap())?;
                 compiled_regex = Some(re.clone());
                 self.search_regex_with(&re)
             } else {
-                self.search_text(text)
+                self.search_text(query.text.as_ref().unwrap())
+            };
+            let sha_results = self.search_sha(query.sha_prefix.as_ref().unwrap());
+            result_bitmap = Some(text_results | sha_results);
+        } else if has_text {
+            let text_results = if query.use_regex {
+                let re = Regex::new(query.text.as_ref().unwrap())?;
+                compiled_regex = Some(re.clone());
+                self.search_regex_with(&re)
+            } else {
+                self.search_text(query.text.as_ref().unwrap())
             };
             result_bitmap = Some(Self::combine(
                 result_bitmap,
                 text_results,
                 query.combine_mode,
             ));
-        }
-
-        if let Some(ref prefix) = query.sha_prefix
-            && !prefix.is_empty()
-        {
-            let sha_results = self.search_sha(prefix);
+        } else if has_sha {
+            let sha_results = self.search_sha(query.sha_prefix.as_ref().unwrap());
             result_bitmap = Some(Self::combine(
                 result_bitmap,
                 sha_results,
@@ -469,6 +476,45 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].commit_oid, make_oid(1));
         assert_eq!(results[0].match_type, MatchType::Sha);
+    }
+
+    #[test]
+    fn text_and_sha_prefix_or_combined() {
+        let engine = SearchEngine::new(make_commits());
+        let query = SearchQuery {
+            text: Some("feature".to_string()),
+            sha_prefix: Some("01".to_string()),
+            combine_mode: CombineMode::And,
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        // "feature" matches commits 2 and 3; sha_prefix "01" matches commit 1.
+        // text+sha are Or-combined regardless of combine_mode.
+        let oids: Vec<_> = results.iter().map(|r| r.commit_oid).collect();
+        assert_eq!(oids.len(), 3);
+        assert!(oids.contains(&make_oid(1)));
+        assert!(oids.contains(&make_oid(2)));
+        assert!(oids.contains(&make_oid(3)));
+    }
+
+    #[test]
+    fn text_and_sha_prefix_or_combined_with_author_filter() {
+        let engine = SearchEngine::new(make_commits());
+        let query = SearchQuery {
+            text: Some("feature".to_string()),
+            sha_prefix: Some("01".to_string()),
+            author: Some("alice".to_string()),
+            combine_mode: CombineMode::And,
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        // (text "feature" OR sha "01") AND author "alice"
+        // text matches 2,3; sha matches 1 → union = {1,2,3}
+        // author alice → {1,3} → intersection = {1,3}
+        let oids: Vec<_> = results.iter().map(|r| r.commit_oid).collect();
+        assert_eq!(oids.len(), 2);
+        assert!(oids.contains(&make_oid(1)));
+        assert!(oids.contains(&make_oid(3)));
     }
 
     #[test]

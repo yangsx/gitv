@@ -268,7 +268,6 @@
 		"opts": "Opts",
 		"regex": "Regex",
 		"author_filter": "Author filter",
-		"sha_prefix": "SHA prefix",
 		"date_from": "From date",
 		"date_to": "To date",
 		"file_path": "File path",

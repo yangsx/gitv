@@ -270,7 +270,6 @@
 		"opts": "Optionen",
 		"regex": "Regex",
 		"author_filter": "Autorenfilter",
-		"sha_prefix": "SHA-Präfix",
 		"date_from": "Von Datum",
 		"date_to": "Bis Datum",
 		"file_path": "Dateipfad",

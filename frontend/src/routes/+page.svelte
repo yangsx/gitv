@@ -1439,28 +1439,36 @@
 				>
 					{$t('page.browse_repo')}
 				</button>
-				{#each recentRepos as repo (repo.path)}
-					<button
-						class={'rounded px-2 py-0.5 text-xs shrink-0 ' +
-							(repo.path === repoPath
-								? 'bg-blue-600 text-white'
-								: 'bg-gray-700/50 text-gray-300 hover:bg-gray-600 hover:text-gray-100')}
-						onclick={() => {
-							repoPath = repo.path;
-							loadRepo(repo.path);
-						}}
-						title={repo.path}
-					>
-						{repo.name}
-					</button>
-				{/each}
-				<Toolbar
-					onrefresh={manualRefresh}
-					onopensettings={() => openModal('preferences')}
-					onopeninfo={() => openModal('info')}
-				/>
+				<div class="flex-1 min-w-0 overflow-x-auto">
+					<div class="flex items-center gap-1.5 w-max">
+						{#each recentRepos as repo (repo.path)}
+							<button
+								class={'rounded px-2 py-0.5 text-xs shrink-0 ' +
+									(repo.path === repoPath
+										? 'bg-blue-600 text-white'
+										: 'bg-gray-700/50 text-gray-300 hover:bg-gray-600 hover:text-gray-100')}
+								onclick={() => {
+									repoPath = repo.path;
+									loadRepo(repo.path);
+								}}
+								title={repo.path}
+							>
+								{repo.name}
+							</button>
+						{/each}
+					</div>
+				</div>
+				<div class="shrink-0">
+					<Toolbar
+						onrefresh={manualRefresh}
+						onopensettings={() => openModal('preferences')}
+						onopeninfo={() => openModal('info')}
+					/>
+				</div>
 				{#if graphLayout}
-					<AuthorLegend layout={graphLayout} />
+					<div class="shrink-0">
+						<AuthorLegend layout={graphLayout} />
+					</div>
 				{/if}
 				<div class="ml-auto flex items-center gap-3">
 					{#key repoPath}

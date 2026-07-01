@@ -31,7 +31,6 @@
 	let useRegex = $state(false);
 	let searchPatch = $state(false);
 	let authorFilter = $state('');
-	let shaPrefix = $state('');
 	let dateFrom = $state('');
 	let dateTo = $state('');
 	let filePath = $state('');
@@ -88,7 +87,7 @@
 	}
 
 	async function executeSearch() {
-		if (!inputText && !authorFilter && !shaPrefix && !dateFrom && !dateTo && !filePath) {
+		if (!inputText && !authorFilter && !dateFrom && !dateTo && !filePath) {
 			searchQuery.set(null);
 			searchResults.set([]);
 			if (searchToastId !== null) {
@@ -103,13 +102,16 @@
 		const date_range =
 			dateFrom || dateTo ? { from: dateFrom || undefined, to: dateTo || undefined } : undefined;
 
+		const trimmed = inputText.trim();
+		const isHex = /^[0-9a-fA-F]{3,}$/.test(trimmed);
+
 		const query = {
 			text: inputText || undefined,
+			sha_prefix: isHex ? trimmed : undefined,
 			use_regex: useRegex,
 			search_patch: searchPatch,
 			author: authorFilter || undefined,
 			combine_mode: 'And' as const,
-			sha_prefix: shaPrefix || undefined,
 			date_range,
 			file_path: filePath || undefined
 		};
@@ -190,7 +192,6 @@
 	async function clearSearch() {
 		inputText = '';
 		authorFilter = '';
-		shaPrefix = '';
 		dateFrom = '';
 		dateTo = '';
 		filePath = '';
@@ -305,14 +306,6 @@
 				placeholder={$t('search.author_filter')}
 				aria-label={$t('search.author_filter')}
 				bind:value={authorFilter}
-				oninput={handleInput}
-			/>
-			<input
-				type="text"
-				class="w-24 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 placeholder-gray-500"
-				placeholder={$t('search.sha_prefix')}
-				aria-label={$t('search.sha_prefix')}
-				bind:value={shaPrefix}
 				oninput={handleInput}
 			/>
 			<input

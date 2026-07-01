@@ -268,7 +268,6 @@
 		"opts": "选项",
 		"regex": "正则",
 		"author_filter": "作者筛选",
-		"sha_prefix": "SHA 前缀",
 		"date_from": "起始日期",
 		"date_to": "结束日期",
 		"file_path": "文件路径",
