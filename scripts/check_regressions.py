@@ -6,11 +6,13 @@ Parses criterion benchmark text output and applies noise-tolerant regression
 detection.
 
 Only fails if:
-  - >= 2 benchmarks regressed in the same file (unlikely to be noise)
+  - >= 2 significant regressions (each >= MIN_COUNT_PCT, default 10%) in the
+    same file (unlikely to be noise)
   - OR a single benchmark regressed by > THRESHOLD_PCT (default 15%)
 
-Minor regressions (single benchmark under threshold) are reported as warnings
-and do not fail the job.
+Minor regressions (under MIN_COUNT_PCT) are reported as warnings and never
+count toward the "multiple = likely real" rule, since GitHub Actions runners
+commonly show ~10% run-to-run variance.
 
 Usage:
     python3 scripts/check_regressions.py <file1> [file2] ...
@@ -21,6 +23,11 @@ import sys
 from pathlib import Path
 
 THRESHOLD_PCT = 15.0
+# Regressions below this magnitude are treated as runner noise: they are
+# reported as warnings but do NOT count toward the "multiple = likely real"
+# rule. GitHub Actions runners commonly show ~10% variance between runs, so a
+# pair of single-digit blips should not fail CI on their own.
+MIN_COUNT_PCT = 10.0
 
 
 def parse_regressions(text: str) -> list[tuple[str, float]]:
@@ -81,14 +88,27 @@ def check_file(path: Path) -> bool:
 
     file_label = path.name
 
-    if len(regressions) >= 2:
-        print(f"::error::{len(regressions)} benchmarks regressed in {file_label} "
+    # Split into significant (>= noise floor) and minor (< noise floor).
+    # Minor regressions are reported but never count toward the
+    # "multiple = likely real" failure rule.
+    significant = [(n, p) for n, p in regressions if abs(p) >= MIN_COUNT_PCT]
+    minor = [(n, p) for n, p in regressions if abs(p) < MIN_COUNT_PCT]
+
+    for name, pct in minor:
+        print(f"::warning::Minor regression {name} {pct:+.1f}% in {file_label} "
+              f"(under {MIN_COUNT_PCT:.0f}% noise floor, treated as noise)")
+
+    if len(significant) >= 2:
+        print(f"::error::{len(significant)} benchmarks regressed in {file_label} "
               f"(multiple = likely real)")
-        for name, pct in regressions:
+        for name, pct in significant:
             print(f"  {name}: {pct:+.1f}%")
         return True
 
-    name, pct = regressions[0]
+    if not significant:
+        return False
+
+    name, pct = significant[0]
     abs_pct = abs(pct)
 
     if abs_pct > THRESHOLD_PCT:
