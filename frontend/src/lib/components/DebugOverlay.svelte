@@ -24,7 +24,7 @@
 
 {#if $debug.visible}
 	<div
-		class="fixed top-4 right-4 z-50 rounded-lg border border-gray-700 bg-gray-900/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
+		class="fixed bottom-12 left-4 z-50 rounded-lg border border-gray-700 bg-gray-900/95 p-3 text-xs font-mono text-gray-300 shadow-xl backdrop-blur-sm"
 		role="dialog"
 		aria-label="Debug overlay"
 	>
@@ -82,7 +82,7 @@
 		{#if $recentIpcTimings.length > 0}
 			<div class="mt-2 border-t border-gray-800 pt-2">
 				<div class="text-gray-500 mb-1">{$t('debug.recent_ipc')}</div>
-				<div class="max-h-32 overflow-y-auto">
+				<div class="max-h-48 overflow-y-auto">
 					{#each $recentIpcTimings as t, i (i)}
 						<div class="flex justify-between">
 							<span class="truncate max-w-[180px]">{t.command}</span>
