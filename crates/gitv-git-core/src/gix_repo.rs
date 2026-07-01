@@ -1654,12 +1654,7 @@ fn tree_index_change_to_file_change(
             } else {
                 let old_oid = gix::ObjectId::from(&**previous_id);
                 let new_oid = gix::ObjectId::from(&**id);
-                let old_lines = count_blob_lines(repo, &old_oid);
-                let new_lines = count_blob_lines(repo, &new_oid);
-                (
-                    new_lines.saturating_sub(old_lines),
-                    old_lines.saturating_sub(new_lines),
-                )
+                count_diff_lines(repo, &old_oid, &new_oid)
             };
             Some(FileChange {
                 path: PathBuf::from(location.to_string()),
@@ -1694,12 +1689,7 @@ fn tree_index_change_to_file_change(
             } else {
                 let old_oid = gix::ObjectId::from(&**source_id);
                 let new_oid = gix::ObjectId::from(&**id);
-                let old_lines = count_blob_lines(repo, &old_oid);
-                let new_lines = count_blob_lines(repo, &new_oid);
-                (
-                    new_lines.saturating_sub(old_lines),
-                    old_lines.saturating_sub(new_lines),
-                )
+                count_diff_lines(repo, &old_oid, &new_oid)
             };
             Some(FileChange {
                 path: PathBuf::from(location.to_string()),
@@ -1732,15 +1722,13 @@ fn index_worktree_item_to_file_change(
                 (0, 0)
             } else {
                 let old_oid = entry.id;
-                let old_lines = count_blob_lines(repo, &old_oid);
+                let old_data = repo
+                    .find_object(old_oid)
+                    .map(|o| o.data.as_slice().to_vec())
+                    .unwrap_or_default();
                 let worktree_path = workdir.join(rela_path.to_string());
-                let new_lines = std::fs::read(&worktree_path)
-                    .map(|d| count_lines_in_data(&d))
-                    .unwrap_or(0);
-                (
-                    new_lines.saturating_sub(old_lines),
-                    old_lines.saturating_sub(new_lines),
-                )
+                let new_data = std::fs::read(&worktree_path).unwrap_or_default();
+                count_diff_lines_from_data(&old_data, &new_data)
             };
             Some(FileChange {
                 path: PathBuf::from(rela_path.to_string()),
@@ -1757,40 +1745,39 @@ fn index_worktree_item_to_file_change(
             source,
             ..
         } => {
-            let (source_path, old_lines) = match source {
+            let (source_path, old_data) = match source {
                 gix::status::index_worktree::RewriteSource::RewriteFromIndex {
                     source_rela_path,
                     source_entry,
                     ..
                 } => {
-                    let old_oid = source_entry.id;
-                    let lines = count_blob_lines(repo, &old_oid);
-                    (PathBuf::from(source_rela_path.to_string()), lines)
+                    let data = repo
+                        .find_object(source_entry.id)
+                        .map(|o| o.data.as_slice().to_vec())
+                        .unwrap_or_default();
+                    (PathBuf::from(source_rela_path.to_string()), data)
                 }
                 gix::status::index_worktree::RewriteSource::CopyFromDirectoryEntry {
                     source_dirwalk_entry,
                     ..
                 } => {
                     let source_worktree = workdir.join(source_dirwalk_entry.rela_path.to_string());
-                    let lines = std::fs::read(&source_worktree)
-                        .map(|d| count_lines_in_data(&d))
-                        .unwrap_or(0);
+                    let data = std::fs::read(&source_worktree).unwrap_or_default();
                     (
                         PathBuf::from(source_dirwalk_entry.rela_path.to_string()),
-                        lines,
+                        data,
                     )
                 }
             };
             let worktree_path = workdir.join(dirwalk_entry.rela_path.to_string());
-            let new_lines = std::fs::read(&worktree_path)
-                .map(|d| count_lines_in_data(&d))
-                .unwrap_or(0);
+            let new_data = std::fs::read(&worktree_path).unwrap_or_default();
+            let (additions, deletions) = count_diff_lines_from_data(&old_data, &new_data);
             Some(FileChange {
                 path: PathBuf::from(dirwalk_entry.rela_path.to_string()),
                 old_path: Some(source_path),
                 change_type: ChangeType::Renamed,
-                additions: new_lines.saturating_sub(old_lines),
-                deletions: old_lines.saturating_sub(new_lines),
+                additions,
+                deletions,
                 is_binary: false,
                 is_submodule: false,
             })
@@ -2226,12 +2213,7 @@ fn count_lines_for_change(
             (source_id, id)
         }
     };
-    let old_lines = count_blob_lines(repo, source_id);
-    let new_lines = count_blob_lines(repo, dest_id);
-    (
-        new_lines.saturating_sub(old_lines),
-        old_lines.saturating_sub(new_lines),
-    )
+    count_diff_lines(repo, source_id, dest_id)
 }
 
 fn count_lines_in_data(data: &[u8]) -> usize {
@@ -2252,6 +2234,43 @@ fn count_blob_lines(repo: &gix::Repository, id: &gix::hash::ObjectId) -> usize {
         Err(_) => return 0,
     };
     count_lines_in_data(obj.data.as_slice())
+}
+
+/// Count actual added/deleted lines via a real line-level diff of two blobs.
+fn count_diff_lines(
+    repo: &gix::Repository,
+    old_id: &gix::hash::ObjectId,
+    new_id: &gix::hash::ObjectId,
+) -> (usize, usize) {
+    let old_obj = match repo.find_object(*old_id) {
+        Ok(o) => o,
+        Err(_) => return (0, 0),
+    };
+    let new_obj = match repo.find_object(*new_id) {
+        Ok(o) => o,
+        Err(_) => return (0, 0),
+    };
+    count_diff_lines_from_data(old_obj.data.as_slice(), new_obj.data.as_slice())
+}
+
+/// Count actual added/deleted lines via a real line-level diff of raw blob data.
+fn count_diff_lines_from_data(old_data: &[u8], new_data: &[u8]) -> (usize, usize) {
+    let (hunks, is_binary) = compute_hunks_from_data(old_data, new_data);
+    if is_binary {
+        return (0, 0);
+    }
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    for hunk in &hunks {
+        for line in &hunk.lines {
+            match line {
+                DiffLine::Addition { .. } => additions += 1,
+                DiffLine::Deletion { .. } => deletions += 1,
+                _ => {}
+            }
+        }
+    }
+    (additions, deletions)
 }
 
 fn compute_hunks_for_change(
@@ -3362,7 +3381,23 @@ mod tests {
             .expect("diff_summary");
         assert_eq!(summary.files.len(), 1);
         assert_eq!(summary.files[0].change_type, ChangeType::Modified);
-        assert!(summary.files[0].additions > 0 || summary.files[0].deletions > 0);
+        assert_eq!(summary.files[0].additions, 3);
+        assert_eq!(summary.files[0].deletions, 1);
+    }
+
+    #[test]
+    fn diff_summary_modification_with_equal_add_del() {
+        let temp = TempRepo::new();
+        let oid1 = temp.commit_file("a.txt", "line1\nline2\nline3", "first commit");
+        let oid2 = temp.commit_file("a.txt", "line1\nmodified\nline3", "modify a");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let summary = repo
+            .diff_summary(Some(oid1), oid2, WhitespaceMode::None)
+            .expect("diff_summary");
+        assert_eq!(summary.files.len(), 1);
+        assert_eq!(summary.files[0].change_type, ChangeType::Modified);
+        assert_eq!(summary.files[0].additions, 1);
+        assert_eq!(summary.files[0].deletions, 1);
     }
 
     #[test]
