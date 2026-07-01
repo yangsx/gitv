@@ -14,6 +14,7 @@
 		getRecentRepositories,
 		saveRecentRepository,
 		openInNewWindow,
+		setWindowTitle,
 		quitApp,
 		cancelPatchSearch
 	} from '$lib/bindings/commands';
@@ -48,7 +49,7 @@
 		searchQuery,
 		searchResults
 	} from '$lib/stores/repository';
-	import { STAGED_OID, UNSTAGED_OID, VIRTUAL_OIDS } from '$lib/constants';
+	import { STAGED_OID, VIRTUAL_OIDS } from '$lib/constants';
 	import CommitList from '$lib/components/CommitList.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
@@ -522,6 +523,12 @@
 				reloadLayout();
 			}
 		});
+	});
+
+	$effect(() => {
+		const info = $repoInfo;
+		const title = info?.path ? `${info.path.split('/').pop() ?? info.path} - gitv` : 'gitv';
+		setWindowTitle(title).catch(() => {});
 	});
 
 	$effect(() => {

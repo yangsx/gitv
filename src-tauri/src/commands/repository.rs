@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tracing::instrument;
 
 const RECENT_REPOS_FILENAME: &str = "recent_repos.json";
@@ -95,6 +95,14 @@ pub fn open_in_new_window(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("failed to spawn new instance: {e}"))?;
     Ok(())
+}
+
+#[tauri::command]
+#[instrument(skip(app), fields(command = "set_window_title"))]
+pub fn set_window_title(app: AppHandle, title: String) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(&title);
+    }
 }
 
 #[tauri::command]

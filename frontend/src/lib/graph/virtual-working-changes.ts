@@ -124,7 +124,7 @@ function makeVirtualCommit(oid: string, summary: string): CommitInfo {
 
 export function createVirtualCommitInfos(
 	workingChangesDiff: WorkingChangesDiff | null,
-	t: (key: string) => string
+	t: (_key: string) => string
 ): CommitInfo[] {
 	if (!workingChangesDiff) return [];
 	const hasStaged = workingChangesDiff.staged.length > 0;

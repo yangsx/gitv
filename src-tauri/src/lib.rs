@@ -85,6 +85,7 @@ pub fn run() {
             commands::repository::get_recent_repositories,
             commands::repository::save_recent_repository,
             commands::repository::open_in_new_window,
+            commands::repository::set_window_title,
             commands::repository::quit_app,
             commands::commits::stream_commits,
             commands::commits::get_commits,
