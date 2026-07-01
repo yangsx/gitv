@@ -73,10 +73,10 @@ export async function getInitialData(
 ): Promise<InitialData> {
 	return timedInvoke<InitialData>('get_initial_data', {
 		path,
-		hide_merges: options?.hide_merges ?? false,
+		hideMerges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
-		color_mode: options?.color_mode ?? 'by-branch',
-		arrow_gap_threshold: options?.arrow_gap_threshold ?? null,
+		colorMode: options?.color_mode ?? 'by-branch',
+		arrowGapThreshold: options?.arrow_gap_threshold ?? null,
 		palette: options?.palette ?? null
 	});
 }
@@ -94,12 +94,12 @@ export async function getGraphLayout(
 ): Promise<GraphLayout> {
 	return timedInvoke<GraphLayout>('get_graph_layout', {
 		path,
-		hide_merges: options?.hide_merges ?? false,
+		hideMerges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
-		color_mode: options?.color_mode ?? 'by-branch',
+		colorMode: options?.color_mode ?? 'by-branch',
 		palette: options?.palette ?? null,
-		arrow_gap_threshold: options?.arrow_gap_threshold ?? null,
-		focus_branch_oid: options?.focus_branch_oid ?? null
+		arrowGapThreshold: options?.arrow_gap_threshold ?? null,
+		focusBranchOid: options?.focus_branch_oid ?? null
 	});
 }
 
