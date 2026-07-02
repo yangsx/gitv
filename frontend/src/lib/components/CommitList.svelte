@@ -53,6 +53,8 @@
 	let rafId = 0;
 	let pendingScrollTop = 0;
 
+	let graphTooltip = $state<{ x: number; y: number; text: string } | null>(null);
+
 	const BUFFER = 10;
 
 	let commitsByOid = $derived(new Map(commits.map((c) => [c.oid, c])));
@@ -259,6 +261,10 @@
 		const idx = orderedCommits.findIndex((c) => c?.oid === oid);
 		if (idx >= 0) scrollToIndex(idx, true);
 	}
+
+	function handleGraphTooltip(data: { x: number; y: number; text: string } | null) {
+		graphTooltip = data;
+	}
 </script>
 
 <div class="flex h-full min-h-0" role="listbox" aria-label={$t('commit_list.aria')}>
@@ -293,6 +299,7 @@
 							{comparisonOid}
 							{onSelect}
 							onEdgeNavigate={onEdgeNavigate ?? handleEdgeNavigate}
+							onTooltip={handleGraphTooltip}
 							visibleWidth={maxGraphWidth}
 						/>
 					</div>
@@ -335,3 +342,12 @@
 		</div>
 	</div>
 </div>
+
+{#if graphTooltip}
+	<div
+		class="pointer-events-none fixed z-50 max-w-[250px] rounded bg-gray-800 px-2 py-1 text-xs text-gray-200 shadow-lg border border-gray-700"
+		style="left: {graphTooltip.x}px; top: {graphTooltip.y}px;"
+	>
+		{graphTooltip.text}
+	</div>
+{/if}

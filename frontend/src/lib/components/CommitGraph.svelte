@@ -23,6 +23,12 @@
 		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE
 	} from '$lib/constants';
 
+	interface TooltipData {
+		x: number;
+		y: number;
+		text: string;
+	}
+
 	interface Props {
 		layout: GraphLayout;
 		commits: CommitInfo[];
@@ -35,6 +41,7 @@
 		comparisonOid?: string | null;
 		onSelect?: (_oid: string, _ctrlKey: boolean) => void;
 		onEdgeNavigate?: (_oid: string) => void;
+		onTooltip?: (_data: TooltipData | null) => void;
 		visibleWidth?: number;
 	}
 
@@ -50,11 +57,11 @@
 		comparisonOid = null,
 		onSelect,
 		onEdgeNavigate,
+		onTooltip,
 		visibleWidth = 200
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
-	let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
 	let scale = $state(1.0);
 	let prevCanvasW = 0;
 	let prevCanvasH = 0;
@@ -195,19 +202,19 @@
 				if (Math.abs(xScaled - nx) < hitRadius && Math.abs(y - ny) < hitRadius) {
 					if (node.is_stash) {
 						const stash = layout.stash_markers.find((s) => s.stash_oid === node.oid);
-						tooltip = {
-							x: e.clientX - rect.left + 12,
-							y: e.clientY - rect.top - 8,
+						onTooltip?.({
+							x: e.clientX + 12,
+							y: e.clientY - 8,
 							text: stash?.message ?? node.oid.substring(0, 7) + ' stash'
-						};
+						});
 					} else {
 						const ci = commitMap.get(node.oid);
 						if (ci) {
-							tooltip = {
-								x: e.clientX - rect.left + 12,
-								y: e.clientY - rect.top - 8,
+							onTooltip?.({
+								x: e.clientX + 12,
+								y: e.clientY - 8,
 								text: `${ci.short_oid} ${ci.summary}`
-							};
+							});
 						}
 					}
 					hoveredEdgeIdx = null;
@@ -224,11 +231,11 @@
 			}
 		}
 		hoveredEdgeIdx = newHovered;
-		tooltip = null;
+		onTooltip?.(null);
 	}
 
 	function handleMouseLeave() {
-		tooltip = null;
+		onTooltip?.(null);
 		hoveredEdgeIdx = null;
 	}
 
@@ -373,12 +380,3 @@
 	onmouseleave={handleMouseLeave}
 	onwheel={handleWheel}
 ></canvas>
-
-{#if tooltip}
-	<div
-		class="pointer-events-none absolute z-50 max-w-[250px] rounded bg-gray-800 px-2 py-1 text-xs text-gray-200 shadow-lg border border-gray-700"
-		style="left: {tooltip.x}px; top: {tooltip.y}px;"
-	>
-		{tooltip.text}
-	</div>
-{/if}
