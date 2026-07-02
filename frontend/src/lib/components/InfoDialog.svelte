@@ -3,7 +3,7 @@
 	import { commands as commandsStore } from '$lib/stores/commands';
 	import { t } from '$lib/stores/locale';
 	import { logPath } from '$lib/stores/debug';
-	import { openLogDirectory } from '$lib/bindings/commands';
+	import { openLogDirectory, getCommitSha } from '$lib/bindings/commands';
 	import { draggable } from '$lib/actions/draggable';
 	import { dialogStackOffset } from '$lib/stores/dialog';
 
@@ -14,11 +14,15 @@
 	let { onclose }: Props = $props();
 
 	let appVersion = $state('…');
+	let commitSha = $state('…');
 
 	$effect(() => {
 		getVersion()
 			.then((v) => (appVersion = v))
 			.catch(() => (appVersion = '?'));
+		getCommitSha()
+			.then((s) => (commitSha = s))
+			.catch(() => (commitSha = '?'));
 	});
 
 	let commands = $derived($commandsStore.filter((c) => c.shortcut));
@@ -130,7 +134,12 @@
 			<section>
 				<div class="flex items-center gap-2">
 					<span class="text-base font-bold text-gray-100">gitv</span>
-					<span class="text-xs text-gray-400">{$t('info.version')} {appVersion}</span>
+					<span class="text-xs text-gray-400">
+						{$t('info.version')}
+						{appVersion}{#if commitSha && commitSha !== '?' && commitSha !== '…'}
+							({commitSha})
+						{/if}
+					</span>
 				</div>
 				<div class="mt-1 space-y-0.5 text-xs text-gray-400">
 					<p>{$t('info.license')}: MIT</p>

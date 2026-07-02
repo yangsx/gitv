@@ -2,7 +2,11 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "gitv", about = "Modern Git repository visualizer")]
+#[command(
+    name = "gitv",
+    about = "Modern Git repository visualizer",
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GITV_COMMIT_SHA"), ")")
+)]
 pub struct Cli {
     pub repo_paths: Vec<PathBuf>,
 

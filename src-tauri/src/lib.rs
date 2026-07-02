@@ -96,6 +96,7 @@ pub fn run() {
         .manage(wgpu_state::WgpuState::new())
         .invoke_handler(tauri::generate_handler![
             commands::args::get_startup_info,
+            commands::args::get_commit_sha,
             commands::repository::open_repository,
             commands::repository::get_refs,
             commands::repository::get_recent_repositories,

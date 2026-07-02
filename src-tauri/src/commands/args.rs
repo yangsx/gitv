@@ -39,3 +39,9 @@ pub fn get_startup_info() -> StartupInfo {
 pub fn get_log_path_str() -> String {
     LOG_PATH.get().cloned().unwrap_or_default()
 }
+
+#[tauri::command]
+#[instrument(fields(command = "get_commit_sha"))]
+pub fn get_commit_sha() -> String {
+    env!("GITV_COMMIT_SHA").to_string()
+}

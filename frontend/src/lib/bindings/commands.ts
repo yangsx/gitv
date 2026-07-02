@@ -256,6 +256,10 @@ export async function getStartupInfo(): Promise<StartupInfo> {
 	return timedInvoke<StartupInfo>('get_startup_info');
 }
 
+export async function getCommitSha(): Promise<string> {
+	return timedInvoke<string>('get_commit_sha');
+}
+
 export async function openLogDirectory(): Promise<string> {
 	return timedInvoke<string>('open_log_directory');
 }
