@@ -48,6 +48,9 @@ impl GixRepository {
             .workdir()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| repo.path().to_path_buf());
+        // Canonicalize so that `gitv .` or relative paths resolve to absolute
+        // before being stored in RepositoryInfo.
+        let root = root.canonicalize().unwrap_or(root);
         Ok(Self {
             inner: repo.into_sync(),
             path: root,

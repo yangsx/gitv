@@ -65,13 +65,29 @@ pub fn run() {
     init_tracing(cli.log_level.as_deref());
     commands::diagnostics::install_panic_hook(env!("CARGO_PKG_VERSION"));
 
-    commands::args::init_startup_paths(
-        cli.repo_paths
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect(),
-    );
+    // Canonicalize CLI paths so that `gitv .` resolves to the absolute path
+    // before the frontend ever sees it.
+    let canonical_paths: Vec<PathBuf> = cli
+        .repo_paths
+        .iter()
+        .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
+        .collect();
+
+    // The first path (if any) is loaded in the main window.
+    let startup_paths: Vec<String> = canonical_paths
+        .first()
+        .map(|p| vec![p.to_string_lossy().to_string()])
+        .unwrap_or_default();
+    commands::args::init_startup_paths(startup_paths);
     commands::args::set_debug_overlay(cli.debug_overlay);
+
+    // Spawn additional windows for extra repo paths (Req 42.4).
+    // Each path gets its own independent gitv process.
+    for path in canonical_paths.iter().skip(1) {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).arg(path).spawn();
+        }
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
