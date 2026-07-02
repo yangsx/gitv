@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Ref } from '$lib/bindings/types';
 	import { t } from '$lib/stores/locale';
+	import { parseSemver, compareSemverDesc } from '$lib/semver';
 
 	let {
 		refs,
@@ -35,7 +36,14 @@
 		refs
 			.filter((r) => 'Tag' in r)
 			.map((r) => r.Tag!)
-			.sort((a, b) => a.name.localeCompare(b.name))
+			.sort((a, b) => {
+				const va = parseSemver(a.name);
+				const vb = parseSemver(b.name);
+				if (va && vb) return compareSemverDesc(va, vb);
+				if (va) return -1;
+				if (vb) return 1;
+				return a.name.localeCompare(b.name);
+			})
 	);
 
 	let remotes = $derived(
