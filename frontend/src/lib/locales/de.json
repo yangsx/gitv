@@ -14,7 +14,9 @@
 		"version": "Version",
 		"author": "Autor",
 		"license": "Lizenz",
-		"close_aria": "Info-Dialog schließen"
+		"close_aria": "Info-Dialog schließen",
+		"nav_context": "Navigationstasten funktionieren, wenn die Commit-Liste fokussiert ist",
+		"dismiss_hint": "Drücke Esc zum Schließen"
 	},
 	"preferences": {
 		"title": "Einstellungen",

@@ -14,7 +14,9 @@
 		"version": "版本",
 		"author": "作者",
 		"license": "许可证",
-		"close_aria": "关闭信息对话框"
+		"close_aria": "关闭信息对话框",
+		"nav_context": "导航快捷键在提交列表获得焦点时生效",
+		"dismiss_hint": "按下 Esc 关闭"
 	},
 	"preferences": {
 		"title": "偏好设置",

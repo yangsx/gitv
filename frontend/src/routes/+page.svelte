@@ -84,7 +84,6 @@
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
-	import ShortcutHelp from '$lib/components/ShortcutHelp.svelte';
 	import InfoDialog from '$lib/components/InfoDialog.svelte';
 	import {
 		initPreferences,
@@ -133,15 +132,13 @@
 	let selectedRemote = $state<string | null>(null);
 	let selectedTag = $state<string | null>(null);
 	let showPreferences = $state(false);
-	let showShortcutHelp = $state(false);
 	let showInfo = $state(false);
 
 	let savedFocus: HTMLElement | null = null;
 
-	function openModal(modal: 'preferences' | 'shortcutHelp' | 'info' | 'commandPalette') {
+	function openModal(modal: 'preferences' | 'info' | 'commandPalette') {
 		savedFocus = document.activeElement as HTMLElement | null;
 		if (modal === 'preferences') showPreferences = true;
-		else if (modal === 'shortcutHelp') showShortcutHelp = true;
 		else if (modal === 'info') showInfo = true;
 		else if (modal === 'commandPalette') showCommandPalette = true;
 	}
@@ -819,12 +816,11 @@
 		}
 		if (e.key === 'F1' || (e.key === '/' && (e.ctrlKey || e.metaKey))) {
 			e.preventDefault();
-			openModal('shortcutHelp');
+			openModal('info');
 			return;
 		}
 		if (e.key === 'Escape') {
-			if (showCommandPalette || contextMenu || showShortcutHelp || showPreferences || showInfo)
-				return;
+			if (showCommandPalette || contextMenu || showPreferences || showInfo) return;
 			if (isFullscreen) {
 				isFullscreen = false;
 				return;
@@ -1039,15 +1035,6 @@
 			}
 		});
 		registerCommand({
-			id: 'show-shortcuts',
-			label: translate('page.cmd_shortcuts'),
-			shortcut: 'F1, Ctrl+/',
-			category: 'Help',
-			action: () => {
-				openModal('shortcutHelp');
-			}
-		});
-		registerCommand({
 			id: 'open-preferences',
 			label: translate('page.cmd_preferences'),
 			shortcut: 'Ctrl+,',
@@ -1085,6 +1072,7 @@
 		registerCommand({
 			id: 'show-info',
 			label: translate('toolbar.info'),
+			shortcut: 'F1, Ctrl+/',
 			category: 'Help',
 			action: () => {
 				openModal('info');
@@ -1380,7 +1368,7 @@
 						>
 						<span
 							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">F1</kbd>
-							{$t('page.cmd_shortcuts')}</span
+							{$t('toolbar.info')}</span
 						>
 					</div>
 					<div class="flex justify-center gap-1">
@@ -1733,14 +1721,6 @@
 		<PreferencesModal
 			onclose={() => {
 				showPreferences = false;
-				restoreFocus();
-			}}
-		/>
-	{/if}
-	{#if showShortcutHelp}
-		<ShortcutHelp
-			onclose={() => {
-				showShortcutHelp = false;
 				restoreFocus();
 			}}
 		/>

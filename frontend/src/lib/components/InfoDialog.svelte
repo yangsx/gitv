@@ -172,6 +172,11 @@
 										</kbd>
 									</div>
 								{/each}
+								{#if cat === 'Navigation'}
+									<p class="text-xs text-gray-500 italic pt-1">
+										{$t('info.nav_context')}
+									</p>
+								{/if}
 							</div>
 						</div>
 					{/each}
@@ -204,6 +209,8 @@
 					<p class="text-sm text-gray-500 italic">{$t('preferences.log_unavailable')}</p>
 				{/if}
 			</section>
+
+			<p class="text-xs text-gray-500 text-center pt-2">{$t('info.dismiss_hint')}</p>
 		</div>
 	</div>
 </div>

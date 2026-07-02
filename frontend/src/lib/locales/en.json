@@ -14,7 +14,9 @@
 		"version": "Version",
 		"author": "Author",
 		"license": "License",
-		"close_aria": "Close info dialog"
+		"close_aria": "Close info dialog",
+		"nav_context": "Navigation shortcuts work when the commit list is focused",
+		"dismiss_hint": "Press Esc to dismiss"
 	},
 	"preferences": {
 		"title": "Preferences",
