@@ -6,7 +6,6 @@ pub mod diff;
 pub mod graph;
 pub mod preferences;
 pub mod reflog_stash;
-pub mod render;
 pub mod repository;
 pub mod saved_searches;
 pub mod search;

@@ -129,17 +129,15 @@ graph TB
 2. Implement missing functionality directly in gitv
 3. Shell out to `git` CLI as a last resort (clearly documented per Req 30.4)
 
-#### ADR-003: GPU-Accelerated Graph Rendering
+#### ADR-003: Canvas 2D Graph Rendering
 
-**Decision**: Use wgpu for GPU-accelerated commit graph rendering.
+**Decision**: Use Canvas 2D for commit graph rendering.
 
 **Rationale**:
-- Requirement for GPU-accelerated rendering (Req 24.1)
-- Cross-platform: Vulkan, Metal, DirectX 12, WebGPU support
-- Pure Rust with no C dependencies
+- Canvas 2D provides excellent performance for virtualized graph rendering
+- No native dependencies or GPU driver concerns
 - Works within Tauri window context
-
-**Alternative Considered**: femtovg was considered but wgpu provides more control for custom graph rendering with virtualization.
+- Simple, reliable rendering pipeline
 
 #### ADR-004: Multi-Instance Architecture
 
@@ -796,7 +794,6 @@ pub struct AppPreferences {
     pub graph_hide_merges: bool,
     pub graph_orientation: GraphOrientation,
     pub graph_palette: ColorPalette,
-    pub renderer: String,           // "wgpu" | "canvas2d"
     pub diff_mode: DiffMode,
     pub diff_whitespace: DiffWhitespace,
     pub diff_view_mode: DiffViewMode,
@@ -875,7 +872,7 @@ frontend/
 │       │   ├── BlamePanel.svelte         (git blame view)
 │       │   ├── CommandPalette.svelte     (fuzzy-search command palette)
 │       │   ├── CommitDetailPanel.svelte  (unified detail panel; two-commit comparison mode, Req 35)
-│       │   ├── CommitGraph.svelte        (Canvas 2D graph renderer, shared with wgpu via graph-math.ts)
+│       │   ├── CommitGraph.svelte        (Canvas 2D graph renderer)
 │       │   ├── CommitList.svelte         (virtualized commit list, scroll-synced with graph)
 │       │   ├── CommitRow.svelte          (single commit row rendering)
 │       │   ├── ContextMenu.svelte        (right-click actions for commits, files, branches)
@@ -891,9 +888,6 @@ frontend/
 │       │   ├── ToastContainer.svelte     (Req 66: transient toast notifications)
 │       │   ├── Toolbar.svelte            (toolbar — search, refresh, open repo, gear, info buttons)
 │       │   ├── Tooltip.svelte            (generic tooltip component)
-│       │   ├── graph/
-│       │   │   ├── GraphRenderer.svelte  (wgpu renderer with Canvas 2D fallback on failure)
-│       │   │   └── WgpuGraph.svelte      (GPU-rendered via wgpu offscreen pipeline)
 │       │   └── Sidebar/
 │       │       ├── Sidebar.svelte        (sidebar container with tabs)
 │       │       ├── RefList.svelte        (branches, tags, remotes — unified list, Req 3)
@@ -905,7 +899,7 @@ frontend/
 │       │   ├── dialog.ts             # Dialog stack management
 │       │   ├── layout.ts             # Panel layout dimensions (Req 59)
 │       │   ├── locale.ts             # i18n / language selection (Req 21)
-│       │   ├── preferences.ts        # Persisted preferences (theme, graph, diff, renderer)
+│       │   ├── preferences.ts        # Persisted preferences (theme, graph, diff)
 │       │   ├── repository.ts         # Repository state: commits, graph, refs, selection, filters
 │       │   └── toast.ts              # Toast notification state (Req 66)
 │       ├── graph/
@@ -962,32 +956,11 @@ The welcome screen is the first thing users see. It adapts based on whether rece
 <!-- Shortcut modifier adapts to platform (Ctrl vs Cmd) -->
 ```
 
-##### GraphRenderer / CommitGraph / WgpuGraph Components
+##### CommitGraph Component
 
-The commit graph is rendered by one of two backends selected via the `renderer` preference store:
+The commit graph is rendered by **CommitGraph**, which draws directly on a `<canvas>` element using the Canvas 2D API. Position math, color constants, and hit-testing logic are shared from `graph-math.ts`.
 
-- **WgpuGraph** — GPU-accelerated via a Rust wgpu offscreen pipeline. Node/edge positions are sent to the Rust backend (`render_graph` Tauri command), which renders to an RGBA texture and returns pixel data via binary IPC. Edge interaction (hover/click) handled client-side via shared `edge-interaction.ts` module. Lazy GPU init; falls back to Canvas 2D on failure.
-- **CommitGraph** — Canvas 2D fallback, draws directly on a `<canvas>` element using the Canvas 2D API.
-
-Both share position math, color constants, and hit-testing logic from `graph-math.ts`.
-
-**GraphRenderer** (router):
-```svelte
-<script lang="ts">
-  let { layout, commits, rowHeight, laneWidth, nodeRadius,
-        visibleStart, visibleEnd, selectedOid, comparisonOid,
-        onSelect, onStashSelect }: Props = $props();
-  let useWgpu = $derived($renderer === 'wgpu');
-</script>
-
-{#if useWgpu}
-  <WgpuGraph {layout} {commits} {rowHeight} ... />
-{:else}
-  <CommitGraph {layout} {commits} {rowHeight} ... />
-{/if}
-```
-
-**Shared props across both graph components** (from `graph-math.ts`):
+**Props** (from `graph-math.ts`):
 ```
 columnCenterX, nodeCenterY                        — position math
 colorToCSS, SELECT_RGB, COMPARISON_RGB,           — color constants
@@ -998,7 +971,7 @@ filterVisibleEdges
 
 **Key behaviors**:
 - Virtualized: only draws nodes/edges within `[visibleStart, visibleEnd]`
-- Tooltip on hover: shows `short_oid summary` for commits, stash message for stash markers (implemented internally in each component, no `oncommithover` callback)
+- Tooltip on hover: shows `short_oid summary` for commits, stash message for stash markers
 - Click on node: routes through `onSelect(oid, ctrlKey)` callback
 - Dimmed commits rendered at reduced opacity (Req 56)
 - Stash markers rendered as "S{index}" labels on parent commit rows (Req 38)
@@ -1007,7 +980,6 @@ filterVisibleEdges
 **Edge geometry**:
 - Same-column edges: straight vertical lines
 - Cross-column edges: cubic bezier curves with control points at `(midX, y1 + 0.25·dy)` and `(midX, y2 - 0.25·dy)`, producing a symmetric S-curve
-- Unified across all three render paths: Canvas 2D (`CommitGraph.svelte`), wgpu tessellation (`render.rs`), and hit-testing (`edge-interaction.ts`)
 - Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility
 
 **Edge interaction** (hover/click/highlight):
@@ -1016,12 +988,6 @@ filterVisibleEdges
 - Endpoint rings: when an edge is hovered or selected, a thin ring (`nodeRadius + 3`, 1.5px) is drawn around both endpoint nodes using the edge's own color
 - Click on a selected edge navigates to the "far" endpoint (the end not currently selected); click on an unselected edge selects it
 - Hit-testing: samples the bezier curve at 12 points and checks point-to-segment distance with configurable tolerance
-
-**wgpu base render caching**:
-- The wgpu base render (all nodes + edges at normal width) is cached as an `ImageData` after each full render
-- Hover/selection changes use a fast path: `putImageData(cached)` + Canvas 2D overdraw of highlighted edges — no IPC or GPU roundtrip
-- A dimension guard skips the cache if canvas dimensions have changed (e.g. during resize), falling back to a full re-render
-- This makes hover/leave response time equivalent to Canvas 2D
 
 ##### CommitList Component
 
@@ -1188,7 +1154,7 @@ Comparison is triggered by Ctrl+Click (or Cmd+Click) on a second commit, or via 
   // Draggable modal (no backdrop) accessible from toolbar gear button
   // Sections:
   // Appearance: theme (dark/light/auto), font size, high contrast toggle, color palette (Req 49.3)
-  // Graph: orientation, color mode (by-branch / by-author), hide merges, renderer (wgpu/canvas2d)
+  // Graph: orientation, color mode (by-branch / by-author), hide merges
   // Diff: default diff mode, whitespace mode, side-by-side toggle
   // Language: language selection dropdown (Req 21.3)
   // Focus trap: Escape closes modal, Tab cycles within modal (Req 67.3)
@@ -1591,7 +1557,7 @@ The actual store files:
 | Store | Responsibility |
 |-------|---------------|
 | `repository.ts` | Repo state, commits, graph layout, refs, selection, search, filters, operations |
-| `preferences.ts` | Persisted preferences (theme, font size, graph/diff options, renderer) |
+| `preferences.ts` | Persisted preferences (theme, font size, graph/diff options) |
 | `layout.ts` | Panel dimensions, sidebar/detail height, clamped restore (Req 59) |
 | `debug.ts` | Debug overlay: FPS, memory, graph stats, IPC timings, load phases (Req 69) |
 | `commands.ts` | Tauri IPC wrapper with `timedInvoke` for automatic timing capture |
@@ -2286,7 +2252,7 @@ fn install_panic_hook(app_version: &str) {
 
 ### Testing Approach Overview
 
-This feature involves a GUI application with Git operations, GPU rendering, and cross-platform concerns. Property-based testing is appropriate for the pure logic components (graph algorithms, search, data transformations), while integration tests and E2E tests handle the UI and platform layers.
+This feature involves a GUI application with Git operations, Canvas 2D rendering, and cross-platform concerns. Property-based testing is appropriate for the pure logic components (graph algorithms, search, data transformations), while integration tests and E2E tests handle the UI and platform layers.
 
 ### Test Categories
 
@@ -2295,7 +2261,6 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 | Property-based | Graph algorithms, search, data transformations | proptest |
 | Unit Tests | Individual functions, edge cases | cargo test |
 | Integration Tests | Git backend, IPC commands, cache round-trips | cargo test + temp repositories |
-| GPU Tests | Rendering correctness | wgpu validation |
 | E2E Tests | Full user workflows | Tauri testing + Playwright |
 | Performance Benchmarks | Load times, FPS, memory, cache hit/miss | criterion |
 
@@ -2354,7 +2319,7 @@ This feature involves a GUI application with Git operations, GPU rendering, and 
 - Color-by-author produces no duplicate colors in small author sets
 
 **Not applicable for**:
-- GPU rendering (visual output)
+- Canvas 2D rendering (visual output)
 - Tauri IPC (external service behavior)
 - Fullscreen mode toggle (UI wiring)
 - Tab switching keyboard shortcuts (UI wiring)
@@ -2491,9 +2456,8 @@ graph LR
 Unlike gitk (which re-renders the entire commit list on every pixel of a column drag), gitv ensures resize operations never swamp the CPU:
 
 1. **Virtual scroll for alignment**: The graph canvas and commit rows share the same `translateY` transform inside a flex layout inside `CommitList.svelte`. The graph receives `visibleStart`/`visibleEnd` and `rowHeight` as props, and draws nodes at viewport-relative positions using `(node.row - visibleStart) * rowHeight + rowHeight/2`. Both graph and commit rows scroll together via a single `overflow-y-auto` container.
-2. **GPU viewport resize is cheap**: Changing panel width only updates the wgpu projection matrix (camera frustum), not the vertex buffer. No graph recalculation, no data re-upload.
-3. **requestAnimationFrame gating**: Resize events are throttled to at most one reflow per frame (16ms budget). Intermediate positions are discarded.
-4. **Deferred persistence**: Panel dimensions are written to disk only when the drag gesture ends (`mouseup`), not during intermediate `mousemove` events.
+2. **requestAnimationFrame gating**: Resize events are throttled to at most one reflow per frame (16ms budget). Intermediate positions are discarded.
+3. **Deferred persistence**: Panel dimensions are written to disk only when the drag gesture ends (`mouseup`), not during intermediate `mousemove` events.
 
 ```typescript
 // Resize handler pattern
@@ -2759,7 +2723,6 @@ pub struct KeyBinding {
 |-----------|------------|-----------|
 | Application Framework | Tauri 2.0 | Small bundle size, native performance, Rust backend |
 | Git Library | gix (gitoxide) | Pure Rust, production-grade, no C dependencies |
-| GPU Rendering | wgpu | Cross-platform, pure Rust, WebGPU compatible |
 | Refresh | Manual refresh via toolbar button | User-initiated status reload |
 | Date/Time | chrono | Comprehensive timezone support |
 | Serialization | serde + postcard | serde for JSON IPC; postcard for batch streaming and cache |
@@ -2918,7 +2881,6 @@ gitv/
 
 ### Phase 2: Graph and Visualization
 - Graph layout algorithm implementation
-- wgpu rendering pipeline
 - Virtualized commit list (Svelte action)
 - Synchronized scrolling (Req 28)
 - Persistent graph cache (write + incremental update)
@@ -3263,15 +3225,13 @@ No redundant properties were found. Each provides unique validation value.
 1. [Gitoxide (gix) Repository](https://github.com/GitoxideLabs/gitoxide) - Pure Rust Git implementation
 2. [Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) - Pierre Vigier's algorithm research
 3. [Git Commit-Graph Design](https://raw.githubusercontent.com/git/git/master/Documentation/technical/commit-graph.adoc) - Git's internal commit-graph format
-4. [wgpu - Cross-platform GPU API](https://wgpu.rs/) - GPU rendering in pure Rust
-5. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
+4. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
 7. [postcard](https://docs.rs/postcard) - Binary serialization for Rust
 
 ### Technology Documentation
 
 - [Tauri 2.0 Documentation](https://tauri.app/)
 - [gix crate documentation](https://docs.rs/gix/)
-- [wgpu documentation](https://docs.rs/wgpu/)
 - [chrono documentation](https://docs.rs/chrono/)
 - [Svelte 5 Runes](https://svelte-5-preview.vercel.app/)
 - [Vite Documentation](https://vitejs.dev/)

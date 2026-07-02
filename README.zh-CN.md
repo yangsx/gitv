@@ -2,13 +2,13 @@
 
 [**English version**](README.md)
 
-一款现代化的跨平台 Git 仓库可视化工具。GPU 加速的提交图、流式数据加载和持久化缓存——基于 Rust + Tauri 构建。
+一款现代化的跨平台 Git 仓库可视化工具。Canvas 2D 渲染的提交图、流式数据加载和持久化缓存——基于 Rust + Tauri 构建。
 
-可以把它看作是 gitk 的替代品：支持 wgpu 渲染、存储节点以图节点形式展示、亚 100 毫秒搜索，以及缓存仓库的即时重开。
+可以把它看作是 gitk 的替代品：支持 Canvas 2D 渲染、存储节点以图节点形式展示、亚 100 毫秒搜索，以及缓存仓库的即时重开。
 
 ## 特性
 
-- **GPU 加速的提交图** — wgpu 渲染器（Vulkan/Metal/DX12），支持 Canvas 2D 回退；虚拟化视口，10 万+ 提交下保持 60 FPS
+- **Canvas 2D 渲染的提交图** — 虚拟化视口，10 万+ 提交下保持 60 FPS
 - **配色模式** — 按分支或按作者着色；色盲安全调色板（绿色盲、红色盲、蓝色盲、高对比度）
 - **连线样式** — 实线/虚线/点线作为非颜色分支标识
 - **存储浏览** — 存储节点作为独立图节点显示，带有分支边线，而非 gitk 的双节点双差异显示
@@ -22,7 +22,7 @@
 - **持久化缓存** — 磁盘缓存（postcard 序列化）实现已访问仓库的即时重开；引用变更时增量更新
 - **键盘导航** — 完整的键盘控制：方向键、J/K、Page Up/Down、Home/End、作者跳转、分支切换
 - **多实例** — 每次启动打开独立窗口；无标签页复杂度，无共享状态
-- **首选项** — 持久化 JSON 配置于 `$XDG_CONFIG_HOME/gitv/preferences.json`，带防抖自动保存；主题（深色/浅色/自动）、字体大小、图/差异默认设置、渲染器选择
+- **首选项** — 持久化 JSON 配置于 `$XDG_CONFIG_HOME/gitv/preferences.json`，带防抖自动保存；主题（深色/浅色/自动）、字体大小、图/差异默认设置
 - **国际化** — 英文、简体中文、德文（社区贡献；在 `locales/` 中添加 JSON 文件即可增加语言）
 - **命令行** — `gitv /仓库路径`、`gitv /仓库1 /仓库2`
 - **调试叠加层** — F12 切换实时 FPS、内存、图统计信息、IPC 时序和加载阶段时序
@@ -32,7 +32,6 @@
 - **Rust** — 最新稳定版（edition 2024）
 - **Node.js** — 20+ 和 npm
 - **Linux** — GTK 3+ 开发库（`libgtk-3-dev`、`libwebkit2gtk-4.1-dev`、`libxdo-dev` 等——参见 [Tauri 文档](https://v2.tauri.app/start/prerequisites/)）
-- **GPU** — Vulkan（Linux/Windows）、Metal（macOS）或 DirectX 12（Windows）。若 wgpu 无法初始化，自动回退到 Canvas 2D
 
 ## 快速开始
 
@@ -105,7 +104,7 @@ gitv /path/to/repo --log-level=debug
 
 | 特性 | gitv | gitk |
 |------|------|------|
-| 渲染 | GPU 加速（wgpu + Canvas 2D 回退） | Tk 画布（CPU） |
+| 渲染 | Canvas 2D（GPU 加速） | Tk 画布（CPU） |
 | 存储显示 | 单图节点带分支边 + 合并差异 | 双节点双差异显示 |
 | 搜索 | RoaringBitmap 索引（10 万提交亚 100ms） | 线性扫描 |
 | 差异模式 | 普通、词差异、仅统计；空白符修饰符 | 仅普通 |
@@ -134,10 +133,6 @@ gitv/
 │   │       ├── stream/         # 流式提交迭代器
 │   │       ├── cache/          # 持久化磁盘缓存
 │   │       └── models.rs       # 核心类型（Oid、CommitInfo、Diff 等）
-│   └── gitv-wgpu-renderer/     # 离屏 wgpu 渲染器（WGSL 着色器）
-│       └── src/
-│           ├── lib.rs          # WgpuRenderer（初始化、渲染、回读）
-│           └── vertex.rs       # 顶点类型（NodeInstance、EdgeVertex）
 ├── frontend/                   # Svelte 5 + TypeScript
 │   ├── src/
 │   │   ├── routes/             # +layout.svelte、+page.svelte
@@ -159,16 +154,13 @@ gitv/
 - **Oid**：20 字节二进制 newtype（`[u8; 20]`），而非字符串——节省 3 倍内存，哈希更快
 - **二进制 IPC**：postcard 序列化传输提交批次（体积小 3-5 倍，速度快 5-10 倍于 JSON）
 - **虚拟滚动**：仅渲染可见提交；图画布和提交列表共享同步滚动容器
-- **双渲染器**：wgpu GPU 管线 + Canvas 2D 回退，用户可选
 
 ## 故障排除
 
 | 问题 | 可能原因 | 解决方法 |
 |------|----------|----------|
-| 窗口显示但图为空白 | wgpu 初始化失败，回退到 Canvas 2D | 检查终端中的 GPU 错误；尝试 `--log-level=debug` |
 | 大型仓库首次打开缓慢 | 无缓存——需要完整遍历 | 正常现象；再次打开将 < 200ms |
 | 有效路径提示"不是 Git 仓库" | 位于仓库子目录？ | gitv 会自动发现根目录——请尝试仓库根路径 |
-| GPU 加速不可用 | Linux/WSL 缺少 Vulkan/DX12 驱动 | 安装 GPU 驱动，或在首选项中使用 `--renderer=canvas2d` |
 | 缓存过期或错误 | 远程推送了新提交 | 点击刷新按钮（Ctrl+R） |
 | 键盘快捷键无效 | 焦点在输入框中 | Ctrl 快捷键仍可用；纯字母快捷键（J、K）需要焦点不在输入框内 |
 
@@ -215,7 +207,6 @@ cargo tauri dev
 |------|------|
 | `src-tauri/` | Rust 后端（Tauri 命令） |
 | `crates/gitv-git-core/` | 纯 Rust Git 逻辑（无 Tauri 依赖） |
-| `crates/gitv-wgpu-renderer/` | 离屏 wgpu GPU 渲染器 |
 | `frontend/src/lib/components/` | Svelte 5 组件（约 20 个，扁平结构） |
 | `frontend/src/lib/stores/` | Svelte 状态存储（8 个文件） |
 | `frontend/src/lib/locales/` | 国际化 JSON 文件 |

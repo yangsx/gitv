@@ -5,13 +5,13 @@
 A modern, cross-platform Git repository visualizer. GPU-accelerated commit graph,
 streaming data, and persistent cache — built with Rust + Tauri.
 
-Think gitk, but with wgpu rendering, stash-as-graph-node display, sub-100ms
+Think gitk, but with Canvas 2D rendering, stash-as-graph-node display, sub-100ms
 search, and instant re-open for cached repos.
 
 ## Features
 
-- **GPU-accelerated commit graph** — wgpu renderer (Vulkan/Metal/DX12) with
-  Canvas 2D fallback; virtualized viewport for 100k+ commits at 60 FPS
+- **Canvas 2D rendered commit graph** — virtualized viewport for 100k+ commits
+  at 60 FPS
 - **Color modes** — color graph by branch or by author; colorblind-safe palettes
   (deuteranopia, protanopia, tritanopia, high contrast)
 - **Edge styles** — solid/dashed/dotted lines as non-color branch indicators
@@ -40,7 +40,7 @@ search, and instant re-open for cached repos.
   complexity, no shared state
 - **Preferences** — persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json`
   with debounced auto-save; theme (dark/light/auto), font size, graph/diff
-  defaults, renderer selection
+  defaults
 - **i18n** — English, Simplified Chinese, German (community-contributed;
   drop a JSON in `locales/` to add a language)
 - **CLI** — `gitv /path/to/repo`, `gitv /repo1 /repo2`
@@ -53,8 +53,6 @@ search, and instant re-open for cached repos.
 - **Node.js** — 20+ and npm
 - **Linux** — GTK 3+ development libraries (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`,
   `libxdo-dev`, etc. — see [Tauri docs](https://v2.tauri.app/start/prerequisites/))
-- **GPU** — Vulkan (Linux/Windows), Metal (macOS), or DirectX 12 (Windows).
-  Falls back to Canvas 2D if wgpu cannot initialize.
 
 ## Quick Start
 
@@ -127,7 +125,7 @@ gitv /path/to/repo --log-level=debug
 
 | Feature | gitv | gitk |
 |---------|------|------|
-| Rendering | GPU-accelerated (wgpu + Canvas 2D fallback) | Tk canvas (CPU) |
+| Rendering | Canvas 2D (GPU-accelerated) | Tk canvas (CPU) |
 | Stash display | Single graph node with branch-out edge + combined diff | Two-node double-diff display |
 | Search | RoaringBitmap indexed (sub-100ms on 100k commits) | Linear scan |
 | Diff modes | Normal, word-diff, stat-only; whitespace modifiers | Normal only |
@@ -156,10 +154,6 @@ gitv/
 │   │       ├── stream/         # Streaming commit iterator
 │   │       ├── cache/          # Persistent disk cache
 │   │       └── models.rs       # Core types (Oid, CommitInfo, Diff, etc.)
-│   └── gitv-wgpu-renderer/     # Offscreen wgpu renderer (WGSL shaders)
-│       └── src/
-│           ├── lib.rs          # WgpuRenderer (init, render, readback)
-│           └── vertex.rs       # Vertex types (NodeInstance, EdgeVertex)
 ├── frontend/                   # Svelte 5 + TypeScript
 │   ├── src/
 │   │   ├── routes/             # +layout.svelte, +page.svelte
@@ -185,16 +179,13 @@ gitv/
   5-10x faster than JSON)
 - **Virtual scroll**: only visible commits rendered; graph canvas and commit
   list share a synchronized scroll container
-- **Dual renderer**: wgpu GPU pipeline with Canvas 2D fallback, user-selectable
 
 ## Troubleshooting
 
 | Problem | Likely cause | Fix |
 |---------|-------------|-----|
-| Window shows but graph is blank | wgpu init failed, fell back to Canvas 2D | Check terminal for GPU errors; try `--log-level=debug` |
 | Large repo feels slow on first open | No cache yet — full traversal required | Normal; second open will be < 200ms |
 | "Not a Git repository" on valid path | Subdirectory of a repo? | gitv discovers the root — try the repo root |
-| GPU acceleration not available | Missing Vulkan/DX12 drivers on Linux/WSL | Install GPU drivers or use `--renderer=canvas2d` in preferences |
 | Cache is stale or wrong | Remote pushed new commits | Click the refresh button (Ctrl+R) |
 | Keyboard shortcuts don't work | Focus is in an input field | Ctrl shortcuts still work; plain key shortcuts (J, K) require focus outside inputs |
 
@@ -248,7 +239,6 @@ See [Architecture](#architecture) above. Key directories:
 |-----------|---------|
 | `src-tauri/` | Rust backend (Tauri commands) |
 | `crates/gitv-git-core/` | Pure-Rust Git logic (no Tauri deps) |
-| `crates/gitv-wgpu-renderer/` | Offscreen wgpu GPU renderer |
 | `frontend/src/lib/components/` | Svelte 5 components (~20, flat) |
 | `frontend/src/lib/stores/` | Svelte stores (8 files) |
 | `frontend/src/lib/locales/` | i18n JSON files |
