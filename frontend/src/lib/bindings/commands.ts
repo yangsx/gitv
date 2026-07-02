@@ -127,6 +127,18 @@ export async function getCommitDetails(
 	});
 }
 
+export async function getCombinedCommitDetails(
+	path: string,
+	oid: string,
+	includeCounts?: boolean
+): Promise<CommitDetails> {
+	return timedInvoke<CommitDetails>('get_combined_commit_details', {
+		path,
+		oid,
+		include_counts: includeCounts ?? null
+	});
+}
+
 export async function getCommitFileCounts(path: string, oid: string): Promise<FileLineStats[]> {
 	return timedInvoke<FileLineStats[]>('get_commit_file_counts', { path, oid });
 }
@@ -161,6 +173,24 @@ export async function getFileDiff(
 		path,
 		from,
 		to,
+		filePath,
+		diffMode: diffMode ?? null,
+		whitespace: whitespace ?? null,
+		full: full ?? false
+	});
+}
+
+export async function getCombinedFileDiff(
+	path: string,
+	oid: string,
+	filePath: string,
+	diffMode?: string,
+	whitespace?: string,
+	full?: boolean
+): Promise<FileDiff> {
+	return timedInvoke<FileDiff>('get_combined_file_diff', {
+		path,
+		oid,
 		filePath,
 		diffMode: diffMode ?? null,
 		whitespace: whitespace ?? null,

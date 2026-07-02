@@ -179,6 +179,10 @@ pub struct FileChange {
     pub deletions: usize,
     pub is_binary: bool,
     pub is_submodule: bool,
+    /// For merge commit combined diffs: the parent OID (as hex) against which
+    /// the per-file diff produces a meaningful result.  `None` means use the
+    /// commit's first parent (the default for non-merge commits).
+    pub diff_parent: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -266,19 +270,27 @@ pub enum DiffLine {
         content: String,
         old_line: usize,
         new_line: usize,
+        #[serde(default)]
+        combined_prefix: Option<String>,
     },
     Addition {
         content: String,
         new_line: usize,
+        #[serde(default)]
+        combined_prefix: Option<String>,
     },
     Deletion {
         content: String,
         old_line: usize,
+        #[serde(default)]
+        combined_prefix: Option<String>,
     },
     WordDiff {
         content: String,
         old_line: usize,
         new_line: usize,
+        #[serde(default)]
+        combined_prefix: Option<String>,
         segments: Vec<WordDiffSegment>,
     },
 }

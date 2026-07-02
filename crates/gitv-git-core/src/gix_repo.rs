@@ -237,6 +237,7 @@ impl Repository for GixRepository {
                     deletions,
                     is_binary,
                     is_submodule,
+                    diff_parent: None,
                 })
             })
             .collect();
@@ -247,6 +248,475 @@ impl Repository for GixRepository {
             signature: None,
             changed_files,
             body,
+        })
+    }
+
+    fn combined_diff(&self, oid: Oid, include_counts: bool) -> Result<CommitDetails, GitError> {
+        let repo = self.thread_local();
+        let gix_oid = oid_to_gix_object_id(&oid);
+        let obj = repo
+            .find_object(gix_oid)
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let commit = obj
+            .try_into_commit()
+            .map_err(|e| GitError::InvalidObject(e.to_string()))?;
+
+        let parent_oids: Vec<Oid> = commit.parent_ids().map(|id| gix_id_to_oid(&id)).collect();
+        if parent_oids.len() < 2 {
+            return self.commit_details(oid, include_counts);
+        }
+
+        let tree_id = commit.tree_id().map_err(|e| GitError::Gix(e.to_string()))?;
+        let tree_oid = gix_id_to_oid(&tree_id);
+        let info = commit_to_commit_info(&oid, &commit, Vec::new());
+        let to_tree = tree_for_oid(&repo, oid).map_err(|e| GitError::Gix(e.to_string()))?;
+
+        let message = commit
+            .message_raw()
+            .map_err(|e| GitError::Gix(e.to_string()))?
+            .to_string();
+        let body = if message.lines().count() > 1 {
+            Some(
+                message
+                    .lines()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim_start_matches('\n')
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
+        // Build per-parent path sets and diff results.
+        let mut parent_path_sets: Vec<HashSet<std::path::PathBuf>> =
+            Vec::with_capacity(parent_oids.len());
+        let mut parent_diffs: Vec<Vec<gix::object::tree::diff::ChangeDetached>> =
+            Vec::with_capacity(parent_oids.len());
+
+        for &poid in &parent_oids {
+            let p_tree = tree_for_oid(&repo, poid).map_err(|e| GitError::Gix(e.to_string()))?;
+            let changes = repo
+                .diff_tree_to_tree(Some(&p_tree), Some(&to_tree), None)
+                .map_err(|e| GitError::Gix(e.to_string()))?;
+            let paths: HashSet<std::path::PathBuf> = changes
+                .iter()
+                .filter_map(|c| change_to_file_change_parts(c).map(|(path, ..)| path))
+                .collect();
+            parent_path_sets.push(paths);
+            parent_diffs.push(changes);
+            // keep p_tree alive (it's dropped at end of scope)
+        }
+
+        // Intersection: files that differ from ALL parents.
+        let mut per_parent_iter = parent_path_sets.iter();
+        let mut combined: HashSet<std::path::PathBuf> =
+            per_parent_iter.next().cloned().unwrap_or_default();
+        for paths in per_parent_iter {
+            combined = combined.intersection(paths).cloned().collect();
+        }
+
+        if combined.is_empty() {
+            return Ok(CommitDetails {
+                info,
+                tree_oid,
+                signature: None,
+                changed_files: vec![],
+                body,
+            });
+        }
+
+        // Filter tree-level intersection by actual combined hunks.
+        // A file only belongs in a --cc combined diff if it has at least one
+        // hunk that passes the mixed-prefix filter.
+        let mut combined_filtered: HashSet<std::path::PathBuf> = HashSet::new();
+        for path in &combined {
+            match self.combined_file_diff(oid, path, DiffMode::Normal, WhitespaceMode::None, None) {
+                Ok(fd) => {
+                    if !fd.hunks.is_empty() || fd.is_binary || fd.is_submodule {
+                        combined_filtered.insert(path.clone());
+                    }
+                }
+                Err(_) => {
+                    // Keep file on error to avoid hiding problems
+                    combined_filtered.insert(path.clone());
+                }
+            }
+        }
+        let combined = combined_filtered;
+
+        if combined.is_empty() {
+            return Ok(CommitDetails {
+                info,
+                tree_oid,
+                signature: None,
+                changed_files: vec![],
+                body,
+            });
+        }
+
+        // For each file in the filtered intersection, find the first parent whose diff contains it.
+        let mut changed_files: Vec<FileChange> = Vec::with_capacity(combined.len());
+        for path in &combined {
+            let mut found = false;
+            for (i, changes) in parent_diffs.iter().enumerate() {
+                if let Some(change) = changes.iter().find(|c| {
+                    change_to_file_change_parts(c)
+                        .map(|(p, ..)| p == *path)
+                        .unwrap_or(false)
+                }) {
+                    let (fpath, old_path, change_type, is_binary, is_submodule) =
+                        change_to_file_change_parts(change).unwrap_or((
+                            path.clone(),
+                            None,
+                            ChangeType::Modified,
+                            false,
+                            false,
+                        ));
+                    let (additions, deletions) = if include_counts && !is_binary && !is_submodule {
+                        count_lines_for_change(&repo, change)
+                    } else {
+                        (0, 0)
+                    };
+                    changed_files.push(FileChange {
+                        path: fpath,
+                        old_path,
+                        change_type,
+                        additions,
+                        deletions,
+                        is_binary,
+                        is_submodule,
+                        diff_parent: if i == 0 {
+                            None
+                        } else {
+                            Some(parent_oids[i].to_hex())
+                        },
+                    });
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                tracing::warn!(
+                    "file in combined diff intersection not found in any parent diff: {:?}",
+                    path
+                );
+            }
+        }
+
+        Ok(CommitDetails {
+            info,
+            tree_oid,
+            signature: None,
+            changed_files,
+            body,
+        })
+    }
+
+    fn combined_file_diff(
+        &self,
+        merge_oid: Oid,
+        path: &std::path::Path,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+        line_limit: Option<usize>,
+    ) -> Result<FileDiff, DiffError> {
+        let repo = self.thread_local();
+        let gix_oid = oid_to_gix_object_id(&merge_oid);
+        let obj = repo
+            .find_object(gix_oid)
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+        let commit = obj
+            .try_into_commit()
+            .map_err(|e| DiffError::Gix(e.to_string()))?;
+
+        let parent_oids: Vec<Oid> = commit.parent_ids().map(|id| gix_id_to_oid(&id)).collect();
+        if parent_oids.len() < 2 {
+            return self.file_diff(
+                parent_oids.first().copied(),
+                merge_oid,
+                path,
+                mode,
+                whitespace,
+            );
+        }
+
+        let merge_data = match blob_bytes_at_commit(&repo, merge_oid, path) {
+            Ok(data) => data,
+            Err(DiffError::ObjectNotFound(_)) => Vec::new(),
+            Err(e) => return Err(e),
+        };
+
+        let file_is_binary = merge_data
+            .iter()
+            .take(crate::BINARY_SCAN_SIZE)
+            .any(|&b| b == 0);
+        if file_is_binary {
+            return Ok(FileDiff {
+                path: path.to_path_buf(),
+                old_path: None,
+                hunks: Vec::new(),
+                is_binary: true,
+                is_submodule: false,
+                old_size: None,
+                new_size: None,
+                truncated_at: None,
+            });
+        }
+
+        let num_parents = parent_oids.len();
+
+        // Per-parent: extract additions, context (within hunks), and deletions
+        struct ParentInfo {
+            additions: std::collections::BTreeSet<usize>,
+            context: std::collections::BTreeSet<usize>,
+            deletions: Vec<(usize, String, usize)>,
+        }
+
+        let mut per_parent: Vec<ParentInfo> = Vec::with_capacity(num_parents);
+        let mut is_combined_binary = false;
+
+        for &poid in &parent_oids {
+            let parent_data = match blob_bytes_at_commit(&repo, poid, path) {
+                Ok(data) => data,
+                Err(DiffError::ObjectNotFound(_)) => Vec::new(),
+                Err(e) => return Err(e),
+            };
+
+            let (hunks, bin) = compute_hunks_from_data(&parent_data, &merge_data);
+            is_combined_binary = is_combined_binary || bin;
+
+            let mut info = ParentInfo {
+                additions: std::collections::BTreeSet::new(),
+                context: std::collections::BTreeSet::new(),
+                deletions: Vec::new(),
+            };
+
+            for hunk in &hunks {
+                let mut new_line = hunk.new_start;
+                for line in &hunk.lines {
+                    match line {
+                        DiffLine::Addition { new_line: nl, .. } => {
+                            info.additions.insert(*nl);
+                            new_line = *nl + 1;
+                        }
+                        DiffLine::Deletion {
+                            content,
+                            old_line: ol,
+                            ..
+                        } => {
+                            info.deletions.push((new_line, content.clone(), *ol));
+                        }
+                        DiffLine::Context { new_line: nl, .. } => {
+                            info.context.insert(*nl);
+                            new_line += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            per_parent.push(info);
+        }
+
+        if is_combined_binary {
+            return Ok(FileDiff {
+                path: path.to_path_buf(),
+                old_path: None,
+                hunks: Vec::new(),
+                is_binary: true,
+                is_submodule: false,
+                old_size: None,
+                new_size: None,
+                truncated_at: None,
+            });
+        }
+
+        // Build per-parent interesting position maps
+        let mut per_parent_positions: Vec<std::collections::BTreeSet<usize>> =
+            Vec::with_capacity(num_parents);
+        for info in &per_parent {
+            let mut positions = std::collections::BTreeSet::new();
+            for &pos in &info.additions {
+                positions.insert(pos);
+            }
+            for &(pos, _, _) in &info.deletions {
+                positions.insert(pos);
+            }
+            per_parent_positions.push(positions);
+        }
+
+        let merge_text = String::from_utf8_lossy(&merge_data);
+        let merge_lines: Vec<&str> = merge_text.lines().collect();
+        let num_lines = merge_lines.len();
+
+        let any_interesting: std::collections::BTreeSet<usize> = per_parent_positions
+            .iter()
+            .flat_map(|s| s.iter().copied())
+            .collect();
+
+        if any_interesting.is_empty() {
+            return Ok(FileDiff {
+                path: path.to_path_buf(),
+                old_path: None,
+                hunks: Vec::new(),
+                is_binary: false,
+                is_submodule: false,
+                old_size: None,
+                new_size: None,
+                truncated_at: None,
+            });
+        }
+
+        // Build combined hunks from interesting positions with context.
+        // Only include a hunk region if ALL parents have at least one interesting position in it.
+        const CONTEXT_SIZE: usize = 3;
+        let mut hunks: Vec<Hunk> = Vec::new();
+
+        let mut is_interesting = vec![false; num_lines + 2];
+        for &pos in &any_interesting {
+            if pos >= 1 && pos <= num_lines {
+                is_interesting[pos] = true;
+            }
+        }
+
+        // Build per-parent boolean arrays for quick overlap checking
+        let mut parent_has = Vec::with_capacity(num_parents);
+        for pp in &per_parent_positions {
+            let mut arr = vec![false; num_lines + 2];
+            for &pos in pp {
+                if pos >= 1 && pos <= num_lines {
+                    arr[pos] = true;
+                }
+            }
+            parent_has.push(arr);
+        }
+
+        let mut i = 1;
+        while i <= num_lines {
+            if is_interesting[i] {
+                let region_start = i.saturating_sub(CONTEXT_SIZE).max(1);
+                let mut j = i;
+                while j <= num_lines && is_interesting[j] {
+                    j += 1;
+                }
+                let region_end = std::cmp::min(j + CONTEXT_SIZE, num_lines + 1);
+
+                // Check: does this consecutive interesting run contain positions from ALL parents?
+                // Using (i..j) instead of (region_start..region_end) matches git's --cc
+                // dense filter: hunks where only one parent has changes are omitted.
+                let all_parents_represented =
+                    parent_has.iter().all(|arr| (i..j).any(|pos| arr[pos]));
+
+                if !all_parents_represented {
+                    // Skip this hunk — it doesn't have changes from all parents,
+                    // so it would not appear in a true combined diff.
+                    i = j;
+                    continue;
+                }
+
+                let mut lines = Vec::new();
+
+                for pos in region_start..region_end {
+                    if pos > num_lines {
+                        break;
+                    }
+
+                    // Group deletions at this position by content
+                    let mut del_by_content: std::collections::BTreeMap<&str, Vec<usize>> =
+                        std::collections::BTreeMap::new();
+                    for (pi, info) in per_parent.iter().enumerate() {
+                        for (del_pos, del_content, _) in &info.deletions {
+                            if *del_pos == pos {
+                                del_by_content
+                                    .entry(del_content.as_str())
+                                    .or_default()
+                                    .push(pi);
+                            }
+                        }
+                    }
+
+                    // Output deletion lines first (one per unique content)
+                    for (del_content, parent_indices) in &del_by_content {
+                        let mut pfx: Vec<char> = vec![' '; num_parents];
+                        for &pi in parent_indices {
+                            pfx[pi] = '-';
+                        }
+                        let prefix: String = pfx.iter().collect();
+                        lines.push(DiffLine::Deletion {
+                            content: del_content.to_string(),
+                            old_line: 0,
+                            combined_prefix: Some(prefix),
+                        });
+                    }
+
+                    // Output the merge line at this position
+                    let content = merge_lines[pos - 1].to_string();
+                    let mut pfx: Vec<char> = vec![' '; num_parents];
+                    for (pi, info) in per_parent.iter().enumerate() {
+                        if info.additions.contains(&pos) {
+                            pfx[pi] = '+';
+                        }
+                    }
+                    let prefix: String = pfx.iter().collect();
+                    let is_any_addition = pfx.contains(&'+');
+
+                    if is_any_addition {
+                        lines.push(DiffLine::Addition {
+                            content,
+                            new_line: pos,
+                            combined_prefix: Some(prefix),
+                        });
+                    } else {
+                        lines.push(DiffLine::Context {
+                            content,
+                            old_line: pos,
+                            new_line: pos,
+                            combined_prefix: Some(prefix),
+                        });
+                    }
+                }
+
+                hunks.push(Hunk {
+                    old_start: region_start,
+                    old_count: region_end - region_start,
+                    new_start: region_start,
+                    new_count: region_end - region_start,
+                    lines,
+                });
+
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+
+        let hunks = apply_diff_options(hunks, &mode, &whitespace);
+
+        let limit = line_limit.unwrap_or(usize::MAX);
+        let mut total_lines = 0usize;
+        let mut kept_hunks = Vec::new();
+        let mut truncated_at: Option<usize> = None;
+        for hunk in hunks {
+            let hunk_lines = hunk.lines.len();
+            if total_lines + hunk_lines > limit {
+                truncated_at = Some(total_lines);
+                break;
+            }
+            total_lines += hunk_lines;
+            kept_hunks.push(hunk);
+        }
+
+        Ok(FileDiff {
+            path: path.to_path_buf(),
+            old_path: None,
+            hunks: kept_hunks,
+            is_binary: is_combined_binary,
+            is_submodule: false,
+            old_size: None,
+            new_size: None,
+            truncated_at,
         })
     }
 
@@ -937,6 +1407,7 @@ impl Repository for GixRepository {
                     lines: vec![DiffLine::Addition {
                         content: msg,
                         new_line: 1,
+                        combined_prefix: None,
                     }],
                 }],
                 is_binary: false,
@@ -1228,13 +1699,14 @@ impl Repository for GixRepository {
                             content,
                             old_line,
                             new_line,
+                            ..
                         } => (content.as_str(), Some(*old_line), Some(*new_line)),
-                        DiffLine::Addition { content, new_line } => {
-                            (content.as_str(), None, Some(*new_line))
-                        }
-                        DiffLine::Deletion { content, old_line } => {
-                            (content.as_str(), Some(*old_line), None)
-                        }
+                        DiffLine::Addition {
+                            content, new_line, ..
+                        } => (content.as_str(), None, Some(*new_line)),
+                        DiffLine::Deletion {
+                            content, old_line, ..
+                        } => (content.as_str(), Some(*old_line), None),
                         DiffLine::WordDiff {
                             content,
                             old_line,
@@ -1462,6 +1934,53 @@ fn tree_for_oid(repo: &gix::Repository, oid: Oid) -> Result<gix::Tree<'_>, DiffE
     commit.tree().map_err(|e| DiffError::Gix(e.to_string()))
 }
 
+fn blob_bytes_at_commit(
+    repo: &gix::Repository,
+    oid: Oid,
+    path: &Path,
+) -> Result<Vec<u8>, DiffError> {
+    let gix_oid = oid_to_gix_object_id(&oid);
+    let obj = repo
+        .find_object(gix_oid)
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+    let commit = obj
+        .try_into_commit()
+        .map_err(|e| DiffError::Gix(e.to_string()))?;
+    let mut tree = commit.tree().map_err(|e| DiffError::Gix(e.to_string()))?;
+
+    let parts: Vec<std::ffi::OsString> = path.iter().map(|p| p.to_os_string()).collect();
+    for (i, part) in parts.iter().enumerate() {
+        let lossy = part.to_string_lossy();
+        let name = gix::bstr::BStr::new(lossy.as_bytes());
+        let entry = tree
+            .iter()
+            .find_map(|e| {
+                let e = e.ok()?;
+                if e.filename() == name { Some(e) } else { None }
+            })
+            .ok_or_else(|| DiffError::ObjectNotFound(path.display().to_string()))?;
+
+        if i == parts.len() - 1 {
+            let blob = repo
+                .find_object(entry.oid())
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            let blob_obj = blob
+                .try_into_blob()
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            return Ok(blob_obj.data.to_vec());
+        } else {
+            let obj = repo
+                .find_object(entry.oid())
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+            tree = obj
+                .try_into_tree()
+                .map_err(|e| DiffError::Gix(e.to_string()))?;
+        }
+    }
+
+    Err(DiffError::ObjectNotFound(path.display().to_string()))
+}
+
 fn change_to_file_change_parts(
     change: &gix::object::tree::diff::ChangeDetached,
 ) -> Option<(
@@ -1609,6 +2128,7 @@ fn tree_index_change_to_file_change(
                 deletions: 0,
                 is_binary: false,
                 is_submodule: sub,
+                diff_parent: None,
             })
         }
         gix_diff::index::ChangeRef::Deletion {
@@ -1638,6 +2158,7 @@ fn tree_index_change_to_file_change(
                 },
                 is_binary: false,
                 is_submodule: sub,
+                diff_parent: None,
             })
         }
         gix_diff::index::ChangeRef::Modification {
@@ -1671,6 +2192,7 @@ fn tree_index_change_to_file_change(
                 deletions,
                 is_binary: false,
                 is_submodule: sub,
+                diff_parent: None,
             })
         }
         gix_diff::index::ChangeRef::Rewrite {
@@ -1706,6 +2228,7 @@ fn tree_index_change_to_file_change(
                 deletions,
                 is_binary: false,
                 is_submodule: sub,
+                diff_parent: None,
             })
         }
     }
@@ -1741,6 +2264,7 @@ fn index_worktree_item_to_file_change(
                 deletions,
                 is_binary: false,
                 is_submodule: sub,
+                diff_parent: None,
             })
         }
         gix::status::index_worktree::Item::Rewrite {
@@ -1783,6 +2307,7 @@ fn index_worktree_item_to_file_change(
                 deletions,
                 is_binary: false,
                 is_submodule: false,
+                diff_parent: None,
             })
         }
         gix::status::index_worktree::Item::DirectoryContents { .. } => None,
@@ -2008,6 +2533,7 @@ fn compute_hunks_for_addition_from_data(data: &[u8]) -> Vec<Hunk> {
         diff_lines.push(DiffLine::Addition {
             content: String::from_utf8_lossy(line).into_owned(),
             new_line: line_num,
+            combined_prefix: None,
         });
     }
     if diff_lines.is_empty() {
@@ -2032,6 +2558,7 @@ fn compute_hunks_for_deletion_from_data(data: &[u8]) -> Vec<Hunk> {
         diff_lines.push(DiffLine::Deletion {
             content: String::from_utf8_lossy(line).into_owned(),
             old_line: line_num,
+            combined_prefix: None,
         });
     }
     if diff_lines.is_empty() {
@@ -2342,6 +2869,7 @@ fn compute_hunks_for_addition(
         diff_lines.push(DiffLine::Addition {
             content: String::from_utf8_lossy(line).into_owned(),
             new_line: line_num,
+            combined_prefix: None,
         });
     }
     if diff_lines.is_empty() {
@@ -2376,6 +2904,7 @@ fn compute_hunks_for_deletion(
         diff_lines.push(DiffLine::Deletion {
             content: String::from_utf8_lossy(line).into_owned(),
             old_line: line_num,
+            combined_prefix: None,
         });
     }
     if diff_lines.is_empty() {
@@ -2421,6 +2950,7 @@ impl gix_diff::blob::unified_diff::ConsumeHunk for HunkCollector {
                         content: content_str,
                         old_line,
                         new_line,
+                        combined_prefix: None,
                     });
                     old_line += 1;
                     new_line += 1;
@@ -2431,6 +2961,7 @@ impl gix_diff::blob::unified_diff::ConsumeHunk for HunkCollector {
                     diff_lines.push(DiffLine::Deletion {
                         content: content_str,
                         old_line,
+                        combined_prefix: None,
                     });
                     old_line += 1;
                     old_count += 1;
@@ -2439,6 +2970,7 @@ impl gix_diff::blob::unified_diff::ConsumeHunk for HunkCollector {
                     diff_lines.push(DiffLine::Addition {
                         content: content_str,
                         new_line,
+                        combined_prefix: None,
                     });
                     new_line += 1;
                     new_count += 1;
@@ -2711,20 +3243,30 @@ fn hunks_to_word_diff(hunks: Vec<Hunk>) -> Vec<Hunk> {
             let lines = hunk.lines;
             while i < lines.len() {
                 match &lines[i] {
-                    DiffLine::Deletion { content, old_line } => {
+                    DiffLine::Deletion {
+                        content,
+                        old_line,
+                        combined_prefix,
+                        ..
+                    } => {
                         let old_line = *old_line;
                         let old_content = content.clone();
+                        let prefix = combined_prefix.clone();
                         if i + 1 < lines.len()
                             && let DiffLine::Addition {
                                 content: new_content,
                                 new_line,
+                                combined_prefix: add_prefix,
+                                ..
                             } = &lines[i + 1]
                         {
                             let segments = compute_word_segments(&old_content, new_content);
+                            let cp = prefix.or_else(|| add_prefix.clone());
                             word_lines.push(DiffLine::WordDiff {
                                 content: new_content.clone(),
                                 old_line,
                                 new_line: *new_line,
+                                combined_prefix: cp,
                                 segments,
                             });
                             i += 2;
@@ -2738,11 +3280,17 @@ fn hunks_to_word_diff(hunks: Vec<Hunk>) -> Vec<Hunk> {
                             content: String::new(),
                             old_line,
                             new_line: 0,
+                            combined_prefix: prefix,
                             segments,
                         });
                         i += 1;
                     }
-                    DiffLine::Addition { content, new_line } => {
+                    DiffLine::Addition {
+                        content,
+                        new_line,
+                        combined_prefix,
+                        ..
+                    } => {
                         let segments = vec![WordDiffSegment {
                             text: content.clone(),
                             kind: WordDiffKind::Added,
@@ -2751,6 +3299,7 @@ fn hunks_to_word_diff(hunks: Vec<Hunk>) -> Vec<Hunk> {
                             content: content.clone(),
                             old_line: 0,
                             new_line: *new_line,
+                            combined_prefix: combined_prefix.clone(),
                             segments,
                         });
                         i += 1;
@@ -4081,5 +4630,261 @@ mod tests {
             .iter()
             .any(|l| matches!(l, DiffLine::Context { .. }));
         assert!(has_context, "staged diff should have context lines");
+    }
+
+    fn get_head_oid(path: &Path) -> String {
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(path)
+            .output()
+            .expect("git rev-parse");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn commit_tree(path: &Path, tree: &str, parents: &[&str], msg: &str) -> String {
+        let mut args = vec!["commit-tree", tree, "-m", msg];
+        for p in parents {
+            args.push("-p");
+            args.push(p);
+        }
+        let output = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(path)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .env("GIT_AUTHOR_DATE", "2025-01-01T00:00:00+0000")
+            .env("GIT_COMMITTER_DATE", "2025-01-01T00:00:00+0000")
+            .output()
+            .expect("git commit-tree");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn write_tree(path: &Path) -> String {
+        let output = std::process::Command::new("git")
+            .args(["write-tree"])
+            .current_dir(path)
+            .output()
+            .expect("git write-tree");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn combined_diff_non_merge_delegates_to_commit_details() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        let oid = temp.commit_file("b.txt", "world", "second commit");
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let details = repo.combined_diff(oid, true).expect("combined diff");
+        assert_eq!(details.changed_files.len(), 1);
+        assert_eq!(details.changed_files[0].path, PathBuf::from("b.txt"));
+        assert!(
+            details.changed_files[0].diff_parent.is_none(),
+            "non-merge file should have diff_parent None"
+        );
+        assert!(details.changed_files[0].additions > 0 || details.changed_files[0].deletions > 0);
+    }
+
+    #[test]
+    fn combined_diff_with_merge_commit() {
+        let temp = TempRepo::new();
+        let _base = temp.commit_file("file.txt", "base\n", "base");
+
+        // branch1: change file.txt to "branch1\n"
+        run_git(temp.path(), &["checkout", "-b", "branch1"]);
+        std::fs::write(temp.path().join("file.txt"), "branch1\n").expect("write");
+        run_git(temp.path(), &["add", "file.txt"]);
+        run_git(temp.path(), &["commit", "-m", "branch1"]);
+        let branch1 = get_head_oid(temp.path());
+
+        // branch2 (from base): change file.txt to "branch2\n"
+        run_git(temp.path(), &["checkout", "main"]);
+        run_git(temp.path(), &["checkout", "-b", "branch2"]);
+        std::fs::write(temp.path().join("file.txt"), "branch2\n").expect("write");
+        run_git(temp.path(), &["add", "file.txt"]);
+        run_git(temp.path(), &["commit", "-m", "branch2"]);
+        let branch2 = get_head_oid(temp.path());
+
+        // Create a merge tree with different content from both parents
+        std::fs::write(temp.path().join("file.txt"), "merged\n").expect("write");
+        run_git(temp.path(), &["add", "file.txt"]);
+        let merge_tree = write_tree(temp.path());
+
+        // Create merge commit via commit-tree
+        let merge_hex = commit_tree(temp.path(), &merge_tree, &[&branch1, &branch2], "merge");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let merge_oid = Oid::from_hex(&merge_hex).expect("valid oid");
+        let details = repo.combined_diff(merge_oid, true).expect("combined diff");
+
+        assert_eq!(
+            details.changed_files.len(),
+            1,
+            "merge should show file differing from all parents"
+        );
+        let file = &details.changed_files[0];
+        assert_eq!(file.path, PathBuf::from("file.txt"));
+        // For first parent (i=0) diff_parent is None, for others it's Some(hex)
+        assert!(
+            file.diff_parent.is_none() || file.diff_parent.as_ref().is_some_and(|h| !h.is_empty()),
+            "diff_parent should be None for first parent or valid hex for others"
+        );
+        assert!(
+            file.additions > 0 || file.deletions > 0,
+            "merge file should have changes"
+        );
+    }
+
+    #[test]
+    fn combined_diff_empty_intersection() {
+        // Create a merge where no file differs from ALL parents.
+        // Each parent changes a DIFFERENT file — intersection is empty.
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("shared.txt", "shared\n", "base");
+
+        run_git(temp.path(), &["checkout", "-b", "branch1"]);
+        let _ = temp.commit_file("only1.txt", "branch1\n", "branch1 change");
+        let branch1 = get_head_oid(temp.path());
+
+        run_git(temp.path(), &["checkout", "main"]);
+        run_git(temp.path(), &["checkout", "-b", "branch2"]);
+        let _ = temp.commit_file("only2.txt", "branch2\n", "branch2 change");
+        let branch2 = get_head_oid(temp.path());
+
+        // Merge tree: combine both files
+        let merge_tree = write_tree(temp.path());
+        let merge_hex = commit_tree(temp.path(), &merge_tree, &[&branch1, &branch2], "merge");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let merge_oid = Oid::from_hex(&merge_hex).expect("valid oid");
+        let details = repo.combined_diff(merge_oid, true).expect("combined diff");
+
+        assert!(
+            details.changed_files.is_empty(),
+            "merge with no overlapping changes should have empty changed_files"
+        );
+    }
+
+    #[test]
+    fn combined_file_diff_returns_combined_hunks_for_merge_conflict() {
+        let temp = TempRepo::new();
+        // Create a scenario where both parents change the SAME region (modeling a real conflict).
+        // Base: A-B-C-D-E
+        // Parent1: A-B-C1-D-E (modifies line3)
+        // Parent2: A-B-C2-D-E (modifies line3 differently)
+        // Merge: A-B-CM-D-E (merge resolution differs from both)
+        let content = "A\nB\nC\nD\nE\n";
+        let _base = temp.commit_file("f.txt", content, "base");
+
+        run_git(temp.path(), &["checkout", "-b", "branch1"]);
+        std::fs::write(temp.path().join("f.txt"), "A\nB\nC1\nD\nE\n").expect("write");
+        run_git(temp.path(), &["add", "f.txt"]);
+        run_git(temp.path(), &["commit", "-m", "branch1 change"]);
+        let branch1 = get_head_oid(temp.path());
+
+        run_git(temp.path(), &["checkout", "main"]);
+        run_git(temp.path(), &["checkout", "-b", "branch2"]);
+        std::fs::write(temp.path().join("f.txt"), "A\nB\nC2\nD\nE\n").expect("write");
+        run_git(temp.path(), &["add", "f.txt"]);
+        run_git(temp.path(), &["commit", "-m", "branch2 change"]);
+        let branch2 = get_head_oid(temp.path());
+
+        // Merge: resolves conflict with different content from both parents
+        std::fs::write(temp.path().join("f.txt"), "A\nB\nCM\nD\nE\n").expect("write");
+        run_git(temp.path(), &["add", "f.txt"]);
+        let merge_tree = write_tree(temp.path());
+        let merge_hex = commit_tree(temp.path(), &merge_tree, &[&branch1, &branch2], "merge");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let merge_oid = Oid::from_hex(&merge_hex).expect("valid oid");
+        let diff = repo
+            .combined_file_diff(
+                merge_oid,
+                std::path::Path::new("f.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::None,
+                None,
+            )
+            .expect("combined_file_diff");
+
+        assert!(!diff.is_binary);
+        assert!(
+            !diff.hunks.is_empty(),
+            "combined_file_diff returned empty hunks for merge where file differs from both parents; diff={:?}",
+            diff
+        );
+        for hunk in &diff.hunks {
+            for line in &hunk.lines {
+                match line {
+                    DiffLine::Deletion {
+                        combined_prefix, ..
+                    }
+                    | DiffLine::Addition {
+                        combined_prefix, ..
+                    }
+                    | DiffLine::Context {
+                        combined_prefix, ..
+                    } => {
+                        if let Some(prefix) = combined_prefix {
+                            assert_eq!(
+                                prefix.len(),
+                                2,
+                                "2-parent merge should have 2-char prefix, got {:?} for line {:?}",
+                                prefix,
+                                line
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn combined_file_diff_for_merged_file_matching_one_parent() {
+        let temp = TempRepo::new();
+        let content = "line1\nline2\nline3\nline4\nline5\n";
+        let _base = temp.commit_file("g.txt", content, "base");
+
+        run_git(temp.path(), &["checkout", "-b", "branch1"]);
+        let b1_cont = "line1\nBRANCH1\nline3\nline4\nline5\n";
+        std::fs::write(temp.path().join("g.txt"), b1_cont).expect("write");
+        run_git(temp.path(), &["add", "g.txt"]);
+        run_git(temp.path(), &["commit", "-m", "branch1 change"]);
+        let branch1 = get_head_oid(temp.path());
+
+        run_git(temp.path(), &["checkout", "main"]);
+        run_git(temp.path(), &["checkout", "-b", "branch2"]);
+        let b2_cont = "line1\nBRANCH2\nline3\nline4\nline5\n";
+        std::fs::write(temp.path().join("g.txt"), b2_cont).expect("write");
+        run_git(temp.path(), &["add", "g.txt"]);
+        run_git(temp.path(), &["commit", "-m", "branch2 change"]);
+        let branch2 = get_head_oid(temp.path());
+
+        // Merge takes branch1's version entirely — merge matches parent 1 exactly
+        std::fs::write(temp.path().join("g.txt"), b1_cont).expect("write");
+        run_git(temp.path(), &["add", "g.txt"]);
+        let merge_tree = write_tree(temp.path());
+        let merge_hex = commit_tree(temp.path(), &merge_tree, &[&branch1, &branch2], "merge");
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let merge_oid = Oid::from_hex(&merge_hex).expect("valid oid");
+        let diff = repo
+            .combined_file_diff(
+                merge_oid,
+                std::path::Path::new("g.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::None,
+                None,
+            )
+            .expect("combined_file_diff");
+
+        assert!(!diff.is_binary);
+        assert!(
+            diff.hunks.is_empty(),
+            "merge matching one parent should have no combined hunks"
+        );
     }
 }

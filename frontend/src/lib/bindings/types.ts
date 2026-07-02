@@ -199,6 +199,8 @@ export interface FileChange {
 	deletions: number;
 	is_binary: boolean;
 	is_submodule: boolean;
+	/** For merge commits: hex OID of the parent to diff against, null for first parent */
+	diff_parent?: string | null;
 }
 
 export interface FileLineStats {
@@ -256,9 +258,16 @@ export interface Hunk {
 }
 
 export type DiffLine =
-	| { Context: { content: string; old_line: number; new_line: number } }
-	| { Addition: { content: string; new_line: number } }
-	| { Deletion: { content: string; old_line: number } }
+	| {
+			Context: {
+				content: string;
+				old_line: number;
+				new_line: number;
+				combined_prefix?: string | null;
+			};
+	  }
+	| { Addition: { content: string; new_line: number; combined_prefix?: string | null } }
+	| { Deletion: { content: string; old_line: number; combined_prefix?: string | null } }
 	| {
 			WordDiff: {
 				content: string;

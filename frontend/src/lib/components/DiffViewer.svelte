@@ -27,11 +27,43 @@
 		return dl.WordDiff.content;
 	}
 
+	function linePrefix(dl: DiffLine): string {
+		if (!dl || typeof dl !== 'object') return '\u00a0';
+		let cp: string | null | undefined;
+		if ('Context' in dl) {
+			cp = dl.Context.combined_prefix;
+			if (cp != null) return cp;
+			return '\u00a0';
+		}
+		if ('Addition' in dl) {
+			cp = dl.Addition.combined_prefix;
+			if (cp != null) return cp;
+			return '+';
+		}
+		if ('Deletion' in dl) {
+			cp = dl.Deletion.combined_prefix;
+			if (cp != null) return cp;
+			return '-';
+		}
+		return '~';
+	}
+
+	let maxPrefixLen = $derived.by(() => {
+		let max = 1;
+		for (const hunk of hunks) {
+			for (const line of hunk.lines) {
+				const p = linePrefix(line);
+				if (p.length > max) max = p.length;
+			}
+		}
+		return max;
+	});
+
 	function oldLineNum(dl: DiffLine): string {
 		if (!dl || typeof dl !== 'object') return '';
-		if ('Context' in dl) return String(dl.Context.old_line);
-		if ('Deletion' in dl) return String(dl.Deletion.old_line);
-		if ('WordDiff' in dl) return String(dl.WordDiff.old_line);
+		if ('Context' in dl) return String(dl.Context.old_line || '');
+		if ('Deletion' in dl) return String(dl.Deletion.old_line || '');
+		if ('WordDiff' in dl) return String(dl.WordDiff.old_line || '');
 		return '';
 	}
 
@@ -173,20 +205,27 @@
 				right.push(splitWordDiff(line, 'right'));
 				i++;
 			} else if (kind === 'deletion') {
-				const deletions: DiffLine[] = [];
-				while (i < lines.length && lineKind(lines[i]) === 'deletion') {
-					deletions.push(lines[i]);
+				const isCombined = 'Deletion' in line && line.Deletion.combined_prefix != null;
+				if (isCombined) {
+					left.push(line);
+					right.push(null);
 					i++;
-				}
-				const additions: DiffLine[] = [];
-				while (i < lines.length && lineKind(lines[i]) === 'addition') {
-					additions.push(lines[i]);
-					i++;
-				}
-				const maxLen = Math.max(deletions.length, additions.length);
-				for (let j = 0; j < maxLen; j++) {
-					left.push(j < deletions.length ? deletions[j] : null);
-					right.push(j < additions.length ? additions[j] : null);
+				} else {
+					const deletions: DiffLine[] = [];
+					while (i < lines.length && lineKind(lines[i]) === 'deletion') {
+						deletions.push(lines[i]);
+						i++;
+					}
+					const additions: DiffLine[] = [];
+					while (i < lines.length && lineKind(lines[i]) === 'addition') {
+						additions.push(lines[i]);
+						i++;
+					}
+					const maxLen = Math.max(deletions.length, additions.length);
+					for (let j = 0; j < maxLen; j++) {
+						left.push(j < deletions.length ? deletions[j] : null);
+						right.push(j < additions.length ? additions[j] : null);
+					}
 				}
 			} else if (kind === 'addition') {
 				left.push(null);
@@ -257,13 +296,12 @@
 							>{leftLine ? oldLineNum(leftLine) : ''}</span
 						>
 						<span
-							class="w-4 shrink-0 select-none text-center {leftLine &&
+							class="shrink-0 select-none text-center {leftLine &&
 							(lineKind(leftLine) === 'deletion' || lineKind(leftLine) === 'worddiff')
 								? 'text-red-400'
 								: 'text-gray-500'}"
-							>{leftLine && (lineKind(leftLine) === 'deletion' || lineKind(leftLine) === 'worddiff')
-								? '-'
-								: '\u00a0'}</span
+							style="width: {Math.max(maxPrefixLen, 1)}ch"
+							>{leftLine ? linePrefix(leftLine) : '\u00a0'}</span
 						>
 						{#if leftLine && wordDiffSegments(leftLine)}
 							<pre
@@ -296,14 +334,12 @@
 							>{rightLine ? newLineNum(rightLine) : ''}</span
 						>
 						<span
-							class="w-4 shrink-0 select-none text-center {rightLine &&
+							class="shrink-0 select-none text-center {rightLine &&
 							(lineKind(rightLine) === 'addition' || lineKind(rightLine) === 'worddiff')
 								? 'text-green-400'
 								: 'text-gray-500'}"
-							>{rightLine &&
-							(lineKind(rightLine) === 'addition' || lineKind(rightLine) === 'worddiff')
-								? '+'
-								: '\u00a0'}</span
+							style="width: {Math.max(maxPrefixLen, 1)}ch"
+							>{rightLine ? linePrefix(rightLine) : '\u00a0'}</span
 						>
 						{#if rightLine && wordDiffSegments(rightLine)}
 							<pre
@@ -354,6 +390,13 @@
 			</div>
 			{#each hunk.lines as line, li (li)}
 				{@const kind = lineKind(line)}
+				{@const prefix = linePrefix(line)}
+				{@const isGreen =
+					kind === 'addition' ||
+					(kind !== 'deletion' && kind !== 'worddiff' && prefix.includes('+'))}
+				{@const isRed =
+					kind === 'deletion' ||
+					(kind !== 'addition' && kind !== 'worddiff' && prefix.includes('-'))}
 				{@const matched = isMatched(line)}
 				{@const bgClass =
 					kind === 'addition'
@@ -371,13 +414,14 @@
 					<span class="w-12 shrink-0 select-none text-right text-gray-600">{oldLineNum(line)}</span>
 					<span class="w-12 shrink-0 select-none text-right text-gray-600">{newLineNum(line)}</span>
 					<span
-						class="shrink-0 w-4 text-center select-none"
-						class:text-green-400={kind === 'addition'}
-						class:text-red-400={kind === 'deletion'}
+						class="shrink-0 select-none text-center"
+						style="width: {Math.max(maxPrefixLen, 1)}ch"
+						class:text-green-400={isGreen}
+						class:text-red-400={isRed}
 						class:text-yellow-400={kind === 'worddiff'}
-						class:text-gray-500={kind === 'context'}
+						class:text-gray-500={!isGreen && !isRed && kind !== 'worddiff'}
 					>
-						{#if kind === 'addition'}+{:else if kind === 'deletion'}-{:else if kind === 'worddiff'}~{:else}&nbsp;{/if}
+						{prefix}
 					</span>
 					{#if matched}
 						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
