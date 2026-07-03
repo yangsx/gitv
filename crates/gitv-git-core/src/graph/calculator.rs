@@ -1029,7 +1029,12 @@ impl GraphCalculator {
             entries.push((token.clone(), curr_oid));
         }
 
-        // Phase 4: upcoming commits and their parents (row..rb) — pre-insertion
+        // Phase 4: upcoming commits and their parents (row..rb) — pre-insertion.
+        // gitk: for each r in row..rb, add parents of r whose first_child row < row,
+        // then also add displayorder[r+1] if its first_child row < row.
+        // "first_child" in gitk = children[p][0] in display order = earliest-displayed child.
+        // gitv's children_sorted puts the fpc first (may have a later row), so we use
+        // the child with the minimum row instead.
         #[allow(clippy::needless_range_loop)]
         for r in row..rb {
             if r >= n {
@@ -1042,14 +1047,32 @@ impl GraphCalculator {
                 }
                 let should_add = children_sorted
                     .get(&p_oid)
-                    .map(|kids| {
-                        kids.iter().any(|&kid| {
-                            row_assignments.get(&kid).copied().unwrap_or(usize::MAX) < row
-                        })
+                    .and_then(|kids| {
+                        kids.iter()
+                            .filter_map(|k| row_assignments.get(k).copied())
+                            .min()
                     })
-                    .unwrap_or(false);
+                    .is_some_and(|min_row| min_row < row);
                 if should_add {
                     entries.push((ordertokens[&p_oid].clone(), p_oid));
+                }
+            }
+            // gitk also checks displayorder[r+1] directly
+            let next_r = r + 1;
+            if next_r < n {
+                let next_oid = commits[displayorder_idx[next_r]].oid;
+                if ordertokens.contains_key(&next_oid) {
+                    let should_add = children_sorted
+                        .get(&next_oid)
+                        .and_then(|kids| {
+                            kids.iter()
+                                .filter_map(|k| row_assignments.get(k).copied())
+                                .min()
+                        })
+                        .is_some_and(|min_row| min_row < row);
+                    if should_add {
+                        entries.push((ordertokens[&next_oid].clone(), next_oid));
+                    }
                 }
             }
         }
@@ -1204,15 +1227,18 @@ impl GraphCalculator {
                 let mut hint = curr_col;
                 for &p_oid in &pre_commit.parent_oids {
                     if !idlist.contains(&p_oid) {
-                        // Only insert if any child has already been displayed
+                        // gitk checks children[p][0] (first/earliest-displayed child) < row.
+                        // gitv's children_sorted puts the fpc first, which may have a later
+                        // row than other children. Use the child with the minimum row instead,
+                        // matching gitk's "first child in display order" semantics.
                         let should_insert = children_sorted
                             .get(&p_oid)
-                            .map(|kids| {
-                                kids.iter().any(|&kid| {
-                                    row_assignments.get(&kid).copied().unwrap_or(usize::MAX) < row
-                                })
+                            .and_then(|kids| {
+                                kids.iter()
+                                    .filter_map(|k| row_assignments.get(k).copied())
+                                    .min()
                             })
-                            .unwrap_or(false);
+                            .is_some_and(|min_row| min_row < row);
                         if should_insert {
                             let col = Self::idcol(&idlist, p_oid, ordertokens, hint);
                             idlist.insert(col, p_oid);
@@ -1225,14 +1251,15 @@ impl GraphCalculator {
                     let next_ci = displayorder_idx[pre_row + 1];
                     let next_oid = commits[next_ci].oid;
                     if !idlist.contains(&next_oid) {
+                        // Same earliest-displayed-child check
                         let should_insert = children_sorted
                             .get(&next_oid)
-                            .map(|kids| {
-                                kids.iter().any(|&kid| {
-                                    row_assignments.get(&kid).copied().unwrap_or(usize::MAX) < row
-                                })
+                            .and_then(|kids| {
+                                kids.iter()
+                                    .filter_map(|k| row_assignments.get(k).copied())
+                                    .min()
                             })
-                            .unwrap_or(false);
+                            .is_some_and(|min_row| min_row < row);
                         if should_insert {
                             let col = Self::idcol(&idlist, next_oid, ordertokens, hint);
                             idlist.insert(col, next_oid);
