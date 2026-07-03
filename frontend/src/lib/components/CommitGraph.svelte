@@ -137,7 +137,7 @@
 
 	function handleEdgeClick(mx: number, my: number): boolean {
 		for (const { edge, idx, coords, arrow } of visibleEdgeData) {
-			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE)) {
+			if (edgeHitTest(mx, my, coords, EDGE_HIT_TOLERANCE, arrow)) {
 				if (selectedEdgeIdx === idx) {
 					const farOid = edgeFarOid(edge, layout, selectedOid ?? null, arrow);
 					if (farOid) {
@@ -224,8 +224,8 @@
 		}
 
 		let newHovered: number | null = null;
-		for (const { idx, coords } of visibleEdgeData) {
-			if (edgeHitTest(xUnscaled, y, coords, EDGE_HIT_TOLERANCE)) {
+		for (const { idx, coords, arrow } of visibleEdgeData) {
+			if (edgeHitTest(xUnscaled, y, coords, EDGE_HIT_TOLERANCE, arrow)) {
 				newHovered = idx;
 				break;
 			}

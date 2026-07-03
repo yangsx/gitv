@@ -64,7 +64,13 @@ function pointToSegmentDist(
 	return Math.hypot(px - (ax + t * dx), my - (ay + t * dy));
 }
 
-export function edgeHitTest(mx: number, my: number, coords: EdgeCoords, tolerance = 6): boolean {
+export function edgeHitTest(
+	mx: number,
+	my: number,
+	coords: EdgeCoords,
+	tolerance = 6,
+	arrow: 'up' | 'down' | null = null
+): boolean {
 	// Build the list of points to test (from → waypoints → to)
 	const points: Array<{ x: number; y: number }> = [
 		{ x: coords.x1, y: coords.y1 },
@@ -77,7 +83,6 @@ export function edgeHitTest(mx: number, my: number, coords: EdgeCoords, toleranc
 		const a = points[i];
 		const b = points[i + 1];
 		if (a.x === b.x) {
-			// Vertical segment
 			if (
 				Math.abs(mx - a.x) <= tolerance &&
 				my >= Math.min(a.y, b.y) - tolerance &&
@@ -86,7 +91,6 @@ export function edgeHitTest(mx: number, my: number, coords: EdgeCoords, toleranc
 				return true;
 			}
 		} else if (a.y === b.y) {
-			// Horizontal segment
 			if (
 				Math.abs(my - a.y) <= tolerance &&
 				mx >= Math.min(a.x, b.x) - tolerance &&
@@ -100,6 +104,21 @@ export function edgeHitTest(mx: number, my: number, coords: EdgeCoords, toleranc
 			}
 		}
 	}
+
+	// Arrowhead hit test: the arrowhead (4px triangle) sits at the segment
+	// endpoint. For 'down' arrows it's at (x2, y2) extending below; for 'up'
+	// arrows it's at (x1, y1) extending above.  Use a circular check with
+	// extra tolerance so clicking the arrow tip always registers.
+	if (arrow === 'down') {
+		const dx = mx - coords.x2;
+		const dy = my - coords.y2;
+		if (dx * dx + dy * dy <= (tolerance + 4) * (tolerance + 4)) return true;
+	} else if (arrow === 'up') {
+		const dx = mx - coords.x1;
+		const dy = my - coords.y1;
+		if (dx * dx + dy * dy <= (tolerance + 4) * (tolerance + 4)) return true;
+	}
+
 	return false;
 }
 
