@@ -888,27 +888,42 @@ impl GraphCalculator {
     /// Find the next row >= `from_row` where `oid` is referenced (by a child
     /// or the commit itself). Returns None if not found.
     /// Matches gitk's `nextuse` function.
+    ///
+    /// gitk iterates children in display-row order (ascending) and returns the
+    /// first child with row > from_row. Since gitv's `children_sorted` puts the
+    /// fpc first (which may have a later row than other children), we scan all
+    /// children and return the minimum row that is > from_row.
     fn nextuse(
         oid: Oid,
         from_row: usize,
         children_sorted: &HashMap<Oid, Vec<Oid>>,
         row_assignments: &HashMap<Oid, usize>,
     ) -> Option<usize> {
+        let mut nearest: Option<usize> = None;
         if let Some(kids) = children_sorted.get(&oid) {
             for &kid in kids {
                 if let Some(&kid_row) = row_assignments.get(&kid)
                     && kid_row > from_row
                 {
-                    return Some(kid_row);
+                    nearest = Some(match nearest {
+                        Some(prev) => prev.min(kid_row),
+                        None => kid_row,
+                    });
                 }
             }
         }
-        row_assignments.get(&oid).copied()
+        // Fall back to the commit's own row if no child is further down
+        nearest.or_else(|| row_assignments.get(&oid).copied())
     }
 
     /// Find the most recent row < `from_row` where `oid` is referenced by a
     /// child. Returns None if not found.
     /// Matches gitk's `prevuse` function.
+    ///
+    /// gitk iterates children in display-row order and accumulates the last
+    /// one with row < from_row. Since gitv's `children_sorted` puts the fpc
+    /// first (which may have a later row than other children), we scan all
+    /// children and return the maximum row that is < from_row.
     fn prevuse(
         oid: Oid,
         from_row: usize,
@@ -916,14 +931,15 @@ impl GraphCalculator {
         row_assignments: &HashMap<Oid, usize>,
     ) -> Option<usize> {
         let kids = children_sorted.get(&oid)?;
-        let mut ret = None;
+        let mut ret: Option<usize> = None;
         for &kid in kids {
-            if let Some(&kid_row) = row_assignments.get(&kid) {
-                if kid_row < from_row {
-                    ret = Some(kid_row);
-                } else {
-                    break;
-                }
+            if let Some(&kid_row) = row_assignments.get(&kid)
+                && kid_row < from_row
+            {
+                ret = Some(match ret {
+                    Some(prev) => prev.max(kid_row),
+                    None => kid_row,
+                });
             }
         }
         ret
