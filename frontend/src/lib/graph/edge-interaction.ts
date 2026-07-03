@@ -278,9 +278,13 @@ export function computeVisibleEdgeCoords(
 				isEdgeEnd: true
 			});
 		} else {
-			// Cross-column edge: 3-segment chamfered orthogonal path
-			// Horizontal-first at child's row, then vertical at parent's
-			// column (matches gitk's drawlineseg bottom jog).
+			// Cross-column edge: distinguish merge back edges from branch edges.
+			// Merge back edges (second+ parent of a merge commit) render gitk-style:
+			//   neighboring cols → direct diagonal (trunk-to-branch intuition)
+			//   non-neighboring  → horizontal-first chamfer (horizontal at merge row,
+			//                        then diagonal, then vertical at parent col)
+			// Branch edges render vertical-first chamfer (vertical at child col,
+			// avoids overlapping mainline nodes at parent col).
 			const cX = columnCenterX(edge.from_col, laneWidth, paddingLeft);
 			const pX = columnCenterX(edge.to_col, laneWidth, paddingLeft);
 			const cY = nodeCenterY(edge.from_row, startRow, rowHeight);
@@ -289,54 +293,128 @@ export function computeVisibleEdgeCoords(
 			const dxSign = edge.to_col > edge.from_col ? 1 : -1;
 			const drSign = edge.to_row > edge.from_row ? 1 : -1;
 
-			// Segment 1: horizontal at child's row toward parent's column
-			pushSegPx(
-				result,
-				edge,
-				i,
-				cX,
-				cY,
-				pX - dxSign * chamfer,
-				cY,
-				edge.from_row,
-				edge.from_col,
-				edge.from_row,
-				edge.to_col,
-				true,
-				false
-			);
-			// Segment 2: chamfer corner
-			pushSegPx(
-				result,
-				edge,
-				i,
-				pX - dxSign * chamfer,
-				cY,
-				pX,
-				cY + drSign * chamfer,
-				edge.from_row,
-				edge.to_col,
-				edge.to_row,
-				edge.to_col,
-				false,
-				false
-			);
-			// Segment 3: vertical at parent's column
-			pushSegPx(
-				result,
-				edge,
-				i,
-				pX,
-				cY + drSign * chamfer,
-				pX,
-				pY,
-				edge.from_row,
-				edge.to_col,
-				edge.to_row,
-				edge.to_col,
-				false,
-				true
-			);
+			if (edge.edge_type === 'Merge') {
+				// Merge back edge: gitk-style rendering
+				const colDiff = Math.abs(edge.to_col - edge.from_col);
+				if (colDiff <= 1) {
+					// Neighboring columns: direct diagonal
+					pushSegPx(
+						result,
+						edge,
+						i,
+						cX,
+						cY,
+						pX,
+						pY,
+						edge.from_row,
+						edge.from_col,
+						edge.to_row,
+						edge.to_col,
+						true,
+						true
+					);
+				} else {
+					// Non-neighboring: horizontal-first chamfer (gitk style)
+					// Seg 1: horizontal at merge row toward parent column
+					pushSegPx(
+						result,
+						edge,
+						i,
+						cX,
+						cY,
+						pX - dxSign * chamfer,
+						cY,
+						edge.from_row,
+						edge.from_col,
+						edge.from_row,
+						edge.to_col,
+						true,
+						false
+					);
+					// Seg 2: diagonal corner
+					pushSegPx(
+						result,
+						edge,
+						i,
+						pX - dxSign * chamfer,
+						cY,
+						pX,
+						cY + drSign * chamfer,
+						edge.from_row,
+						edge.to_col,
+						edge.to_row,
+						edge.to_col,
+						false,
+						false
+					);
+					// Seg 3: vertical at parent column
+					pushSegPx(
+						result,
+						edge,
+						i,
+						pX,
+						cY + drSign * chamfer,
+						pX,
+						pY,
+						edge.from_row,
+						edge.to_col,
+						edge.to_row,
+						edge.to_col,
+						false,
+						true
+					);
+				}
+			} else if (edge.edge_type === 'Branch') {
+				// Branch edge: vertical-first chamfer
+				// Seg 1: vertical at child's column toward parent's row
+				pushSegPx(
+					result,
+					edge,
+					i,
+					cX,
+					cY,
+					cX,
+					pY - drSign * chamfer,
+					edge.from_row,
+					edge.from_col,
+					edge.from_row,
+					edge.from_col,
+					true,
+					false
+				);
+				// Seg 2: chamfer corner
+				pushSegPx(
+					result,
+					edge,
+					i,
+					cX,
+					pY - drSign * chamfer,
+					cX + dxSign * chamfer,
+					pY,
+					edge.from_row,
+					edge.from_col,
+					edge.to_row,
+					edge.to_col,
+					false,
+					false
+				);
+				// Seg 3: horizontal at parent's row toward parent's column
+				pushSegPx(
+					result,
+					edge,
+					i,
+					cX + dxSign * chamfer,
+					pY,
+					pX,
+					pY,
+					edge.from_row,
+					edge.to_col,
+					edge.to_row,
+					edge.to_col,
+					false,
+					true
+				);
+			}
 		}
 	}
 	return result;
