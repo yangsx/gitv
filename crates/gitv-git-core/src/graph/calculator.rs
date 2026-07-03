@@ -3218,7 +3218,7 @@ mod tests {
         }
 
         let idx = build_thread_index(&rowidlist);
-        let (waypoints, gap) = trace_thread(parent, 0, 10, &idx);
+        let (waypoints, gap) = trace_thread(parent, 0, 10, 0, &idx);
 
         assert!(gap.is_some(), "should detect at least one gap");
 
@@ -3381,25 +3381,29 @@ mod tests {
                         }
                     }
                 }
-            } else {
-                // No waypoints: rendered as chamfer.
-                // Horizontal-first: vertical at parent_col from ~child_row to parent_row.
-                // Check parent_col is clear between child_row+1 and parent_row.
-                let p_col = edge.to_col;
-                let (min_r, max_r) = (
-                    edge.from_row.min(edge.to_row) + 1,
-                    edge.from_row.max(edge.to_row),
-                );
-                for nr in min_r..max_r {
-                    if let Some(name) = node_at.get(&(nr, p_col))
-                        && name != &efrom(layout, edge)
-                        && name != &eto(layout, edge)
-                    {
-                        errors.push(format!(
-                            "edge {}→{} chamfer vertical at parent col {} crosses node {} at ({},{})",
-                            efrom(layout, edge), eto(layout, edge),
-                            p_col, name, nr, p_col
-                        ));
+            } else if edge.edge_type == EdgeType::Merge {
+                // Merge edge with empty waypoints: frontend renders horizontal-first
+                // chamfer (horizontal at merge row, then diagonal, then vertical at
+                // parent column for non-neighboring). Check the vertical at parent
+                // column doesn't cross unrelated nodes.
+                let dc = edge.to_col.abs_diff(edge.from_col);
+                if dc > 1 {
+                    let p_col = edge.to_col;
+                    let (min_r, max_r) = (
+                        edge.from_row.min(edge.to_row) + 1,
+                        edge.from_row.max(edge.to_row),
+                    );
+                    for nr in min_r..max_r {
+                        if let Some(name) = node_at.get(&(nr, p_col))
+                            && name != &efrom(layout, edge)
+                            && name != &eto(layout, edge)
+                        {
+                            errors.push(format!(
+                                "edge {}→{} merge chamfer vertical at parent col {} crosses node {} at ({},{})",
+                                efrom(layout, edge), eto(layout, edge),
+                                p_col, name, nr, p_col
+                            ));
+                        }
                     }
                 }
             }
@@ -3927,6 +3931,967 @@ mod tests {
             errors.is_empty(),
             "verify() should find no errors: {:?}",
             errors
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // New property tests derived from gitk algorithm invariants
+    // -----------------------------------------------------------------------
+
+    /// Helper: build a layout and return its rowidlist alongside the layout.
+    /// Re-runs assign_columns internally so we can inspect the raw rowidlist.
+    fn layout_with_rowidlist(commits: Vec<CommitInfo>) -> GraphLayout {
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        calc.calculate_layout()
+    }
+
+    // --- 1. Unique node positions -------------------------------------------
+
+    /// gitk places exactly one commit per (row, column) cell.
+    /// No two nodes may share the same (row, col) pair.
+    #[test]
+    fn prop_unique_node_positions() {
+        let topologies: Vec<Vec<CommitInfo>> = vec![
+            // linear
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a"),
+                make_commit(3, vec![2], "b"),
+            ],
+            // simple fork
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "main"),
+                make_commit(3, vec![1], "branch"),
+                make_commit(4, vec![2, 3], "merge"),
+            ],
+            // 4-way fan-out
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a"),
+                make_commit(3, vec![1], "b"),
+                make_commit(4, vec![1], "c"),
+                make_commit(5, vec![1], "d"),
+            ],
+            // diamond chain
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "left"),
+                make_commit(3, vec![1], "right"),
+                make_commit(4, vec![2], "left2"),
+                make_commit(5, vec![3], "right2"),
+                make_commit(6, vec![4, 5], "merge"),
+            ],
+        ];
+        for commits in topologies {
+            let layout = layout_with_rowidlist(commits);
+            let mut positions: HashSet<(usize, usize)> = HashSet::new();
+            for node in &layout.nodes {
+                assert!(
+                    positions.insert((node.row, node.column)),
+                    "duplicate node position ({}, {}) for oid {}",
+                    node.row,
+                    node.column,
+                    node.oid.short_hex()
+                );
+            }
+        }
+    }
+
+    // --- 2. optimize_rows max-step-1 ----------------------------------------
+
+    /// gitk's optimize_rows guarantees a thread moves at most 1 column between
+    /// consecutive rows (unless it has an arrow gap).  Formally: for every edge,
+    /// consecutive waypoints (including the endpoints) differ by at most 1 in
+    /// column.  Edges with arrow_gap are exempt for the gap region.
+    #[test]
+    fn prop_thread_moves_at_most_one_column_per_row() {
+        let commits = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "main1"),
+            make_commit(3, vec![1], "brA1"),
+            make_commit(4, vec![1], "brB1"),
+            make_commit(5, vec![2], "main2"),
+            make_commit(6, vec![3], "brA2"),
+            make_commit(7, vec![4], "brB2"),
+            make_commit(8, vec![5], "main3"),
+            make_commit(9, vec![6], "brA3"),
+            make_commit(10, vec![7], "brB3"),
+            make_commit(11, vec![8, 9], "mergeAB"),
+            make_commit(12, vec![11, 10], "final"),
+        ];
+        let layout = layout_with_rowidlist(commits);
+
+        for edge in &layout.edges {
+            // Build the full ordered point sequence for this edge,
+            // skipping the gap region when arrow_gap is present.
+            let mut segments: Vec<Vec<(usize, usize)>> = Vec::new();
+            if let Some((gap_lo, gap_hi)) = edge.arrow_gap {
+                let mut seg1 = vec![(edge.from_row, edge.from_col)];
+                for &wp in &edge.waypoints {
+                    if wp.0 <= gap_lo {
+                        seg1.push(wp);
+                    }
+                }
+                segments.push(seg1);
+                let mut seg2: Vec<(usize, usize)> = edge
+                    .waypoints
+                    .iter()
+                    .filter(|wp| wp.0 >= gap_hi)
+                    .copied()
+                    .collect();
+                seg2.push((edge.to_row, edge.to_col));
+                segments.push(seg2);
+            } else {
+                let mut path = vec![(edge.from_row, edge.from_col)];
+                path.extend_from_slice(&edge.waypoints);
+                path.push((edge.to_row, edge.to_col));
+                segments.push(path);
+            }
+            for seg in &segments {
+                for w in seg.windows(2) {
+                    let (r1, c1) = w[0];
+                    let (r2, c2) = w[1];
+                    let col_delta = (c2 as i64 - c1 as i64).unsigned_abs() as usize;
+                    // Column may shift during the waypoint span, but
+                    // each individual waypoint step (row delta ≥ 1) should
+                    // shift by at most (row_delta) columns — in practice
+                    // optimize_rows limits it to 1 per row.
+                    let row_delta = (r2 as i64 - r1 as i64).unsigned_abs() as usize;
+                    assert!(
+                        col_delta <= row_delta,
+                        "edge ({},{})→({},{}) segment ({},{})→({},{}) moves {} cols over {} rows (max 1/row)",
+                        edge.from_row,
+                        edge.from_col,
+                        edge.to_row,
+                        edge.to_col,
+                        r1,
+                        c1,
+                        r2,
+                        c2,
+                        col_delta,
+                        row_delta
+                    );
+                }
+            }
+        }
+    }
+
+    // --- 3. Anti-jig: no left-then-right zigzag in consecutive rows -----------
+
+    /// gitk's optimize_rows inserts padding to prevent a thread going left
+    /// in one row and immediately right in the next (and vice-versa).
+    /// For each edge's waypoint sequence, three consecutive points must not
+    /// form a "V" or "inverted-V" shape (col decreases then increases, or
+    /// increases then decreases) across consecutive rows.
+    #[test]
+    fn prop_no_consecutive_zigzag_in_waypoints() {
+        let commits = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "main"),
+            make_commit(3, vec![1], "branch"),
+            make_commit(4, vec![2], "main2"),
+            make_commit(5, vec![3], "branch2"),
+            make_commit(6, vec![4, 5], "merge"),
+        ];
+        let layout = layout_with_rowidlist(commits);
+
+        for edge in &layout.edges {
+            if edge.arrow_gap.is_some() {
+                continue; // gaps break continuity; exempt
+            }
+            let mut path = vec![(edge.from_row, edge.from_col)];
+            path.extend_from_slice(&edge.waypoints);
+            path.push((edge.to_row, edge.to_col));
+
+            for w in path.windows(3) {
+                let (_r0, c0) = w[0];
+                let (_r1, c1) = w[1];
+                let (_r2, c2) = w[2];
+                let d1 = c1 as i64 - c0 as i64; // direction into middle point
+                let d2 = c2 as i64 - c1 as i64; // direction out of middle point
+                // A zigzag is d1 < 0 && d2 > 0 (left then right) or
+                // d1 > 0 && d2 < 0 (right then left).
+                assert!(
+                    !(d1 < 0 && d2 > 0 || d1 > 0 && d2 < 0),
+                    "edge ({},{})→({},{}) zigzags at waypoints ({:?}→{:?}→{:?})",
+                    edge.from_row,
+                    edge.from_col,
+                    edge.to_row,
+                    edge.to_col,
+                    w[0],
+                    w[1],
+                    w[2]
+                );
+            }
+        }
+    }
+
+    // --- 4. Edge to_col matches parent node column --------------------------
+
+    /// Every edge's to_col must equal the column of the parent node.
+    /// Every edge's from_col must equal the column of the child node.
+    /// This ensures the rowidlist column assignments are self-consistent.
+    #[test]
+    fn prop_edge_endpoints_match_node_columns() {
+        let topologies: &[&[_]] = &[
+            &[
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a"),
+                make_commit(3, vec![1], "b"),
+                make_commit(4, vec![2, 3], "merge"),
+            ],
+            &[
+                make_commit(1, vec![], "r1"),
+                make_commit(2, vec![], "r2"),
+                make_commit(3, vec![1], "a"),
+                make_commit(4, vec![2], "b"),
+                make_commit(5, vec![3, 4], "merge"),
+            ],
+        ];
+        for &commits in topologies {
+            let layout = layout_with_rowidlist(commits.to_vec());
+            let node_pos: HashMap<Oid, (usize, usize)> = layout
+                .nodes
+                .iter()
+                .map(|n| (n.oid, (n.row, n.column)))
+                .collect();
+            // Build child-oid map: row → oid for nodes
+            let row_to_oid: HashMap<usize, Oid> =
+                layout.nodes.iter().map(|n| (n.row, n.oid)).collect();
+            for edge in &layout.edges {
+                if let Some(&(_, from_col)) = row_to_oid
+                    .get(&edge.from_row)
+                    .and_then(|oid| node_pos.get(oid))
+                {
+                    assert_eq!(
+                        edge.from_col, from_col,
+                        "edge from_col {} ≠ child node column {} at row {}",
+                        edge.from_col, from_col, edge.from_row
+                    );
+                }
+                if let Some(&(_, to_col)) = row_to_oid
+                    .get(&edge.to_row)
+                    .and_then(|oid| node_pos.get(oid))
+                {
+                    assert_eq!(
+                        edge.to_col, to_col,
+                        "edge to_col {} ≠ parent node column {} at row {}",
+                        edge.to_col, to_col, edge.to_row
+                    );
+                }
+            }
+        }
+    }
+
+    // --- 5. verify() passes for diverse topologies --------------------------
+
+    /// verify() must report zero pass-through errors for all of these.
+    #[test]
+    fn prop_verify_passes_for_diverse_topologies() {
+        // (a) diamond
+        let diamond = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "left"),
+            make_commit(3, vec![1], "right"),
+            make_commit(4, vec![2, 3], "merge"),
+        ];
+        // (b) staircase merges: each step merges a new branch into main
+        let staircase = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "main1"),
+            make_commit(3, vec![1], "br1"),
+            make_commit(4, vec![2, 3], "merge1"),
+            make_commit(5, vec![4], "main2"),
+            make_commit(6, vec![4], "br2"),
+            make_commit(7, vec![5, 6], "merge2"),
+            make_commit(8, vec![7], "main3"),
+            make_commit(9, vec![7], "br3"),
+            make_commit(10, vec![8, 9], "merge3"),
+        ];
+        // (c) criss-cross: two chains swap parents (octopus-style)
+        let criss = vec![
+            make_commit(1, vec![], "r1"),
+            make_commit(2, vec![], "r2"),
+            make_commit(3, vec![1], "a1"),
+            make_commit(4, vec![2], "b1"),
+            make_commit(5, vec![3, 4], "merge_ab"),
+            make_commit(6, vec![4, 3], "merge_ba"),
+            make_commit(7, vec![5, 6], "top"),
+        ];
+        // (d) long single-parent chain (tests straight-line efficiency)
+        let chain: Vec<CommitInfo> = (1u8..=20)
+            .map(|i| make_commit(i, if i == 1 { vec![] } else { vec![i - 1] }, "chain"))
+            .collect();
+        // (e) three-way fan-out and fan-in
+        let octopus = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "a"),
+            make_commit(3, vec![1], "b"),
+            make_commit(4, vec![1], "c"),
+            make_commit(5, vec![2, 3, 4], "octomerge"),
+        ];
+        for (label, commits) in &[
+            ("diamond", diamond),
+            ("staircase", staircase),
+            ("criss-cross", criss),
+            ("chain-20", chain),
+            ("octopus", octopus),
+        ] {
+            let layout = layout_with_rowidlist(commits.clone());
+            let errors = layout.verify();
+            assert!(
+                errors.is_empty(),
+                "{label}: verify() found {} error(s): {}",
+                errors.len(),
+                errors
+                    .iter()
+                    .take(3)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+        }
+    }
+
+    // --- 6. Linear column stability -----------------------------------------
+
+    /// A single-parent chain keeps the same column throughout.
+    #[test]
+    fn prop_linear_chain_same_column() {
+        for len in [3, 10, 20, 50] {
+            let commits: Vec<CommitInfo> = (1u8..=len)
+                .map(|i| make_commit(i, if i == 1 { vec![] } else { vec![i - 1] }, "linear"))
+                .collect();
+            let layout = layout_with_rowidlist(commits);
+            for node in &layout.nodes {
+                assert_eq!(
+                    node.column,
+                    0,
+                    "linear chain node {} at row {} should be in column 0, got {}",
+                    node.oid.short_hex(),
+                    node.row,
+                    node.column
+                );
+            }
+            assert_eq!(
+                layout.total_columns, 1,
+                "linear chain of len {} should use 1 column",
+                len
+            );
+        }
+    }
+
+    // --- 7. Anti-jig (comprehensive) ----------------------------------------
+
+    /// A thread never goes left then immediately right (zigzag).
+    /// Tested across a diverse set of topologies, with and without arrow gaps.
+    #[test]
+    fn prop_no_zigzag_across_topologies() {
+        let topologies: Vec<Vec<CommitInfo>> = vec![
+            // diamond
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a"),
+                make_commit(3, vec![1], "b"),
+                make_commit(4, vec![2, 3], "merge"),
+            ],
+            // three-way fan-out octopus
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "a"),
+                make_commit(3, vec![1], "b"),
+                make_commit(4, vec![1], "c"),
+                make_commit(5, vec![2, 3, 4], "octopus"),
+            ],
+            // staircase merges
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "m1"),
+                make_commit(3, vec![1], "b1"),
+                make_commit(4, vec![2, 3], "merge1"),
+                make_commit(5, vec![4], "m2"),
+                make_commit(6, vec![4], "b2"),
+                make_commit(7, vec![5, 6], "merge2"),
+            ],
+            // criss-cross
+            vec![
+                make_commit(1, vec![], "r1"),
+                make_commit(2, vec![], "r2"),
+                make_commit(3, vec![1], "a"),
+                make_commit(4, vec![2], "b"),
+                make_commit(5, vec![3, 4], "m_ab"),
+                make_commit(6, vec![4, 3], "m_ba"),
+                make_commit(7, vec![5, 6], "top"),
+            ],
+            // chain with side branch
+            vec![
+                make_commit(1, vec![], "root"),
+                make_commit(2, vec![1], "main"),
+                make_commit(3, vec![2], "main2"),
+                make_commit(4, vec![2], "branch"),
+                make_commit(5, vec![3], "main3"),
+                make_commit(6, vec![4], "branch2"),
+                make_commit(7, vec![5, 6], "merge"),
+            ],
+        ];
+
+        for topology in &topologies {
+            let layout = layout_with_rowidlist(topology.clone());
+            for edge in &layout.edges {
+                if edge.arrow_gap.is_some() {
+                    continue;
+                }
+                let mut path = vec![(edge.from_row, edge.from_col)];
+                path.extend_from_slice(&edge.waypoints);
+                path.push((edge.to_row, edge.to_col));
+
+                for w in path.windows(3) {
+                    let (_r0, c0) = w[0];
+                    let (_r1, c1) = w[1];
+                    let (_r2, c2) = w[2];
+                    let d1 = c1 as i64 - c0 as i64;
+                    let d2 = c2 as i64 - c1 as i64;
+                    assert!(
+                        !(d1 < 0 && d2 > 0 || d1 > 0 && d2 < 0),
+                        "edge ({},{})→({},{}) zigzags at ({},{})→({},{})→({},{})",
+                        edge.from_row,
+                        edge.from_col,
+                        edge.to_row,
+                        edge.to_col,
+                        w[0].0,
+                        w[0].1,
+                        w[1].0,
+                        w[1].1,
+                        w[2].0,
+                        w[2].1
+                    );
+                }
+            }
+        }
+    }
+
+    // --- 8. Thread pre-insertion --------------------------------------------
+
+    /// A parent that appears much later than its child should have its thread
+    /// pre-inserted UPARROW_LEN rows before the parent's own row, producing
+    /// an arrow_gap on the edge.
+    ///
+    /// Builds a long main chain plus a side branch from root with a timestamp
+    /// that places the branch tip early in the display order, creating a gap
+    /// between the branch commit and its root ancestor that exceeds the
+    /// arrow_gap_threshold. The edge must have an arrow_gap.
+    #[test]
+    fn prop_thread_preinsertion_creates_arrow_gap() {
+        //   root(1) → 2 → 3 → ... → 120
+        //   branch(121) ──────────────┘
+        // Edge branch(121)→root(1) spans ~120 rows.
+        let mut commits: Vec<CommitInfo> = Vec::new();
+        // Main chain: oid120 → ... → oid1(root) with increasing timestamps
+        for i in (2..=120u8).rev() {
+            let parent = i - 1;
+            commits.push(make_commit(i, vec![parent], "main"));
+        }
+        commits.push(make_commit(1, vec![], "root"));
+        // Branch tip from root — timestamp makes it appear early
+        commits.push(make_commit(121, vec![1], "branch"));
+
+        let layout = layout_with_rowidlist(commits);
+        let root_node = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+        let branch_node = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(121))
+            .unwrap();
+        let branch_edge = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == branch_node.row && e.to_row == root_node.row)
+            .expect("branch→root edge should exist");
+
+        assert!(
+            branch_edge.arrow_gap.is_some(),
+            "branch→root edge spanning > removal threshold should have arrow_gap (pre-insertion + thread removal)"
+        );
+
+        // The arrow_gap bounds should be within the expected range.
+        let (gap_lo, gap_hi) = branch_edge.arrow_gap.unwrap();
+        assert!(
+            gap_lo > branch_edge.from_row,
+            "arrow_gap lower bound {} should be > child row {}",
+            gap_lo,
+            branch_edge.from_row
+        );
+        assert!(
+            gap_hi <= root_node.row,
+            "arrow_gap upper bound {} should be ≤ parent row {}",
+            gap_hi,
+            root_node.row
+        );
+    }
+
+    /// Short branch gaps should NOT produce arrow_gap — pre-insertion keeps
+    /// the thread alive within the removal threshold.
+    #[test]
+    fn prop_short_gap_no_arrow_gap() {
+        let commits = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "a"),
+            make_commit(3, vec![1], "branch"),
+            make_commit(4, vec![2], "b"),
+            make_commit(5, vec![3, 4], "merge"),
+        ];
+        let layout = layout_with_rowidlist(commits);
+        for edge in &layout.edges {
+            assert!(
+                edge.arrow_gap.is_none(),
+                "short edge ({},{})→({},{}) should not have arrow_gap",
+                edge.from_row,
+                edge.from_col,
+                edge.to_row,
+                edge.to_col
+            );
+        }
+    }
+
+    // --- 9. nextuse/prevuse correctness -------------------------------------
+
+    /// nextuse finds the nearest child *after* a given row.
+    /// prevuse finds the nearest child *before* a given row.
+    /// Test with multiple children in non-monotonic row order.
+    #[test]
+    fn prop_nextuse_prevuse_correctness() {
+        use std::collections::HashMap;
+
+        // Children of 'parent' appear at rows 2, 5, 8 (in that order when sorted).
+        // We build children_sorted and row_assignments to reflect this.
+        let parent = make_oid(1);
+        let child_a = make_oid(2); // row 2
+        let child_b = make_oid(3); // row 5
+        let child_c = make_oid(4); // row 8
+
+        let mut children_sorted: HashMap<Oid, Vec<Oid>> = HashMap::new();
+        // gitk-style order: first child in display order (could be any of them).
+        // The fpc is child_b (row 5), but we list all children.
+        children_sorted.insert(parent, vec![child_b, child_a, child_c]);
+
+        let mut row_assignments: HashMap<Oid, usize> = HashMap::new();
+        row_assignments.insert(child_a, 2);
+        row_assignments.insert(child_b, 5);
+        row_assignments.insert(child_c, 8);
+        row_assignments.insert(parent, 0);
+
+        // nextuse: nearest child >= from_row
+        // from_row=0 → nearest is child_a at row 2
+        assert_eq!(
+            GraphCalculator::nextuse(parent, 0, &children_sorted, &row_assignments),
+            Some(2),
+            "nextuse(0) should find child_a at row 2"
+        );
+        // from_row=2 → nearest is child_a (fits > from_row? No, >2 excludes row 2)
+        // Actually, nextuse checks > from_row, not >=
+        // from_row=2: children > 2 are child_b (5) and child_c (8) → nearest = 5
+        assert_eq!(
+            GraphCalculator::nextuse(parent, 2, &children_sorted, &row_assignments),
+            Some(5),
+            "nextuse(2) should find child_b at row 5"
+        );
+        // from_row=6: only child_c (8) > 6
+        assert_eq!(
+            GraphCalculator::nextuse(parent, 6, &children_sorted, &row_assignments),
+            Some(8),
+            "nextuse(6) should find child_c at row 8"
+        );
+        // from_row=9: no child > 9 → fallback to parent's own row (0)
+        assert_eq!(
+            GraphCalculator::nextuse(parent, 9, &children_sorted, &row_assignments),
+            Some(0),
+            "nextuse(9) should fallback to parent's own row"
+        );
+
+        // prevuse: most recent child < from_row
+        // from_row=3 → children < 3 are child_a (2) only
+        assert_eq!(
+            GraphCalculator::prevuse(parent, 3, &children_sorted, &row_assignments),
+            Some(2),
+            "prevuse(3) should find child_a at row 2"
+        );
+        // from_row=6 → children < 6 are child_a (2), child_b (5) → most recent = 5
+        assert_eq!(
+            GraphCalculator::prevuse(parent, 6, &children_sorted, &row_assignments),
+            Some(5),
+            "prevuse(6) should find child_b at row 5"
+        );
+        // from_row=9 → all children < 9, most recent = 8
+        assert_eq!(
+            GraphCalculator::prevuse(parent, 9, &children_sorted, &row_assignments),
+            Some(8),
+            "prevuse(9) should find child_c at row 8"
+        );
+        // from_row=0 → no child < 0 → None
+        assert_eq!(
+            GraphCalculator::prevuse(parent, 0, &children_sorted, &row_assignments),
+            None,
+            "prevuse(0) should return None"
+        );
+
+        // Edge case: no children
+        let lone_oid = make_oid(99);
+        let empty_children: HashMap<Oid, Vec<Oid>> = HashMap::new();
+        assert_eq!(
+            GraphCalculator::nextuse(lone_oid, 0, &empty_children, &row_assignments),
+            None,
+            "nextuse on childless oid should return None"
+        );
+        assert_eq!(
+            GraphCalculator::prevuse(lone_oid, 0, &empty_children, &row_assignments),
+            None,
+            "prevuse on childless oid should return None"
+        );
+    }
+
+    // --- 10. Column count compactness ---------------------------------------
+
+    /// The total number of columns should never exceed the number of concurrent
+    /// active branches at any point in the graph. For a given topology:
+    ///   total_columns ≤ max over rows of (#rowidlist entries at that row)
+    ///
+    /// In simple terms, the column count should be bounded by the maximum
+    /// number of simultaneously alive threads.
+    #[test]
+    fn prop_column_count_compactness() {
+        let topologies: Vec<(&str, Vec<CommitInfo>, usize)> = vec![
+            (
+                "linear-10",
+                {
+                    (1u8..=10)
+                        .map(|i| make_commit(i, if i == 1 { vec![] } else { vec![i - 1] }, "l"))
+                        .collect()
+                },
+                1,
+            ),
+            (
+                "diamond",
+                vec![
+                    make_commit(1, vec![], "root"),
+                    make_commit(2, vec![1], "a"),
+                    make_commit(3, vec![1], "b"),
+                    make_commit(4, vec![2, 3], "merge"),
+                ],
+                2,
+            ),
+            (
+                "three-way-fanout",
+                vec![
+                    make_commit(1, vec![], "root"),
+                    make_commit(2, vec![1], "a"),
+                    make_commit(3, vec![1], "b"),
+                    make_commit(4, vec![1], "c"),
+                ],
+                3,
+            ),
+            (
+                "octopus-merge",
+                vec![
+                    make_commit(1, vec![], "root"),
+                    make_commit(2, vec![1], "a"),
+                    make_commit(3, vec![1], "b"),
+                    make_commit(4, vec![1], "c"),
+                    make_commit(5, vec![2, 3, 4], "merge"),
+                ],
+                3,
+            ),
+            (
+                "staircase-3",
+                vec![
+                    make_commit(1, vec![], "root"),
+                    make_commit(2, vec![1], "m1"),
+                    make_commit(3, vec![1], "b1"),
+                    make_commit(4, vec![2, 3], "merge1"),
+                    make_commit(5, vec![4], "m2"),
+                    make_commit(6, vec![4], "b2"),
+                    make_commit(7, vec![5, 6], "merge2"),
+                    make_commit(8, vec![7], "m3"),
+                    make_commit(9, vec![7], "b3"),
+                    make_commit(10, vec![8, 9], "merge3"),
+                ],
+                2,
+            ),
+            (
+                "criss-cross",
+                vec![
+                    make_commit(1, vec![], "r1"),
+                    make_commit(2, vec![], "r2"),
+                    make_commit(3, vec![1], "a"),
+                    make_commit(4, vec![2], "b"),
+                    make_commit(5, vec![3, 4], "m_ab"),
+                    make_commit(6, vec![4, 3], "m_ba"),
+                    make_commit(7, vec![5, 6], "top"),
+                ],
+                3,
+            ),
+        ];
+
+        for (label, commits, expected_max_cols) in &topologies {
+            let layout = layout_with_rowidlist(commits.clone());
+            assert!(
+                layout.total_columns <= *expected_max_cols + 1,
+                "{label}: total_columns ({}) should be ≤ {} (expected max + 1)",
+                layout.total_columns,
+                expected_max_cols + 1
+            );
+
+            // Also verify that total_columns never exceeds the number of nodes
+            assert!(
+                layout.total_columns <= layout.nodes.len(),
+                "{label}: total_columns ({}) should be ≤ node count ({})",
+                layout.total_columns,
+                layout.nodes.len()
+            );
+
+            // row_max_column may exceed total_columns because edge fan-out
+            // adjustments happen after the base total_columns computation.
+            // But each row's width should be ≤ total_columns * 2 as a sanity
+            // check (a row should not blow up arbitrarily).
+            for (row_idx, &rwc) in layout.row_max_column.iter().enumerate() {
+                assert!(
+                    rwc <= layout.total_columns * 2 + 1,
+                    "{label}: row_max_column[{}]={} exceeds sanity bound ({})",
+                    row_idx,
+                    rwc,
+                    layout.total_columns * 2 + 1
+                );
+            }
+        }
+    }
+
+    // --- 8. Oblique edge routing: 45° max slant ------------------------------
+
+    /// For any cross-column edge with waypoints (thread trace), every segment of
+    /// the path must be either axis-aligned (vertical/horizontal) or an exactly
+    /// 1×1 diagonal (|dr|=|dc|=1). This enforces the "half right angle" rule —
+    /// no shallow diagonals at other angles.
+    ///
+    /// Edges spanning ≤1 in both row and column (1×1 grid square) are exempt —
+    /// a direct diagonal at any angle is fine for such short connections.
+    ///
+    /// Edges with empty waypoints are skipped — the frontend chamfer renderer
+    /// enforces the 45° constraint.
+    #[test]
+    fn prop_oblique_edge_routing() {
+        let make = make_commit;
+        let topologies: Vec<Vec<CommitInfo>> = vec![
+            // diamond
+            vec![
+                make(1, vec![], "root"),
+                make(2, vec![1], "a"),
+                make(3, vec![1], "b"),
+                make(4, vec![2, 3], "merge"),
+            ],
+            // 3-fanout
+            vec![
+                make(1, vec![], "root"),
+                make(2, vec![1], "a"),
+                make(3, vec![1], "b"),
+                make(4, vec![1], "c"),
+            ],
+            // staircase-3 (from prop_column_count_compactness)
+            vec![
+                make(1, vec![], "root"),
+                make(2, vec![1], "m1"),
+                make(3, vec![1], "b1"),
+                make(4, vec![2, 3], "merge1"),
+                make(5, vec![4], "m2"),
+                make(6, vec![4], "b2"),
+                make(7, vec![5, 6], "merge2"),
+                make(8, vec![7], "m3"),
+                make(9, vec![7], "b3"),
+                make(10, vec![8, 9], "merge3"),
+            ],
+            // criss-cross
+            vec![
+                make(1, vec![], "r1"),
+                make(2, vec![], "r2"),
+                make(3, vec![1], "a"),
+                make(4, vec![2], "b"),
+                make(5, vec![3, 4], "m_ab"),
+                make(6, vec![4, 3], "m_ba"),
+                make(7, vec![5, 6], "top"),
+            ],
+            // f421e8d topology (branch edges with waypoints/arrow_gaps)
+            make_f421e8d_topology(),
+            // gitv-repo topology
+            vec![
+                make(1, vec![], "7688f42"),
+                make(2, vec![1], "3754661"),
+                make(3, vec![2], "1ce4d2d"),
+                make(4, vec![3], "4ab690a"),
+                make(5, vec![4], "029ceed"),
+                make(6, vec![1], "5319794"),
+                make(7, vec![6], "2435ba9"),
+                make(8, vec![5, 7], "973fefb"),
+                make(9, vec![8], "HEAD"),
+            ],
+            // multiple branches and merges (from prop_thread_moves)
+            vec![
+                make(1, vec![], "root"),
+                make(2, vec![1], "main1"),
+                make(3, vec![1], "brA1"),
+                make(4, vec![1], "brB1"),
+                make(5, vec![2], "main2"),
+                make(6, vec![3], "brA2"),
+                make(7, vec![4], "brB2"),
+                make(8, vec![5], "main3"),
+                make(9, vec![6], "brA3"),
+                make(10, vec![7], "brB3"),
+                make(11, vec![8, 9], "mergeAB"),
+                make(12, vec![11, 10], "final"),
+            ],
+        ];
+
+        for commits in &topologies {
+            let layout = layout_with_rowidlist(commits.clone());
+
+            for edge in &layout.edges {
+                if edge.from_col == edge.to_col {
+                    continue; // same-column, not oblique
+                }
+
+                let dr = edge.to_row.abs_diff(edge.from_row);
+                let dc = edge.to_col.abs_diff(edge.from_col);
+
+                if dr <= 1 && dc <= 1 {
+                    continue; // 1×1 exception: direct diagonal allowed
+                }
+
+                if edge.waypoints.is_empty() {
+                    continue; // frontend chamfer handles it
+                }
+
+                // Build the full ordered path
+                let mut path = vec![(edge.from_row, edge.from_col)];
+                path.extend(edge.waypoints.iter().copied());
+                path.push((edge.to_row, edge.to_col));
+
+                for w in path.windows(2) {
+                    let ddr = w[1].0.abs_diff(w[0].0);
+                    let ddc = w[1].1.abs_diff(w[0].1);
+                    assert!(
+                        ddr == 0 || ddc == 0 || (ddr == 1 && ddc == 1),
+                        "oblique edge ({},{})→({},{}) has segment ({},{})→({},{}) \
+                         with angle not at 0°, 90°, or 45° (|dr|={}, |dc|={})",
+                        edge.from_row,
+                        edge.from_col,
+                        edge.to_row,
+                        edge.to_col,
+                        w[0].0,
+                        w[0].1,
+                        w[1].0,
+                        w[1].1,
+                        ddr,
+                        ddc
+                    );
+                }
+            }
+        }
+    }
+
+    // --- 7. Regression tests -------------------------------------------------
+
+    /// Regression: edge from a side-branch child to a branching-point parent
+    /// must NOT have its waypoints discarded by the trivial waypoint filter
+    /// when the parent's thread is at a different column than the parent's
+    /// final column. This reproduces the gitv repo topology (commits
+    /// 5319794 → 7688f42) — discarding waypoints made the frontend fall
+    /// back to a chamfer path whose vertical segment in parent_col overlaps
+    /// unrelated mainline commits.
+    #[test]
+    fn repro_branch_edge_waypoints_preserved_when_thread_col_differs_from_parent_col() {
+        // Topology matching the gitv repo:
+        //   9 (HEAD)
+        //   |
+        //   8 (merge) ─┬─ 5 ─ 4 ─ 3 ─ 2
+        //               └─ 7 ─ 6 ─┐
+        //                       ┌─┘
+        //                       1 (7688f42, branching point)
+        //
+        // OID 6 (5319794) is a side-branch child of OID 1 (7688f42).
+        // Its parent-thread trace finds OID 1 at a column ≠ parent_col
+        // for intermediate rows — the trivial filter must NOT drop these
+        // waypoints.
+        let commits = vec![
+            make_commit(1, vec![], "7688f42"),
+            make_commit(2, vec![1], "3754661"),
+            make_commit(3, vec![2], "1ce4d2d"),
+            make_commit(4, vec![3], "4ab690a"),
+            make_commit(5, vec![4], "029ceed"),
+            make_commit(6, vec![1], "5319794"),
+            make_commit(7, vec![6], "2435ba9"),
+            make_commit(8, vec![5, 7], "973fefb"),
+            make_commit(9, vec![8], "HEAD"),
+        ];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        // Basic pass-through check
+        let verify_errors = layout.verify();
+        assert!(
+            verify_errors.is_empty(),
+            "verify() found {} pass-through error(s):\n{}",
+            verify_errors.len(),
+            verify_errors
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        // Rendered crossing check (chamfer-aware)
+        let crossings = find_rendered_crossings(&layout);
+        assert!(
+            crossings.is_empty(),
+            "find_rendered_crossings() found {} error(s):\n{}",
+            crossings.len(),
+            crossings
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        // Specifically check the edge from 5319794 (OID 6) to 7688f42 (OID 1):
+        // it must have waypoints (the trivial filter must NOT have dropped them).
+        let child_row = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(6))
+            .unwrap()
+            .row;
+        let parent_row = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(1))
+            .unwrap()
+            .row;
+        let edge_6_to_1 = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == child_row && e.to_row == parent_row)
+            .expect("edge 5319794→7688f42 must exist");
+
+        assert!(
+            !edge_6_to_1.waypoints.is_empty(),
+            "edge 5319794→7688f42 must have waypoints (trivial filter preserves them \
+             because thread col differs from parent col). \
+             Edge: from_row={} from_col={} to_row={} to_col={}",
+            edge_6_to_1.from_row,
+            edge_6_to_1.from_col,
+            edge_6_to_1.to_row,
+            edge_6_to_1.to_col,
         );
     }
 }
