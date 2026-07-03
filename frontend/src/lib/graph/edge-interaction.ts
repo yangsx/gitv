@@ -364,47 +364,47 @@ export function computeVisibleEdgeCoords(
 						true
 					);
 				}
-			} else if (edge.edge_type === 'Branch') {
-				// Branch edge: vertical-first chamfer
-				// Seg 1: vertical at child's column toward parent's row
+			} else {
+				// Branch edge: horizontal-first chamfer (gitk parent-link style)
+				// Seg 1: horizontal at child row toward parent column
 				pushSegPx(
 					result,
 					edge,
 					i,
 					cX,
 					cY,
-					cX,
-					pY - drSign * chamfer,
+					pX - dxSign * chamfer,
+					cY,
 					edge.from_row,
 					edge.from_col,
 					edge.from_row,
-					edge.from_col,
+					edge.to_col,
 					true,
 					false
 				);
-				// Seg 2: chamfer corner
+				// Seg 2: diagonal corner
 				pushSegPx(
 					result,
 					edge,
 					i,
-					cX,
-					pY - drSign * chamfer,
-					cX + dxSign * chamfer,
-					pY,
+					pX - dxSign * chamfer,
+					cY,
+					pX,
+					cY + drSign * chamfer,
 					edge.from_row,
-					edge.from_col,
+					edge.to_col,
 					edge.to_row,
 					edge.to_col,
 					false,
 					false
 				);
-				// Seg 3: horizontal at parent's row toward parent's column
+				// Seg 3: vertical at parent column
 				pushSegPx(
 					result,
 					edge,
 					i,
-					cX + dxSign * chamfer,
-					pY,
+					pX,
+					cY + drSign * chamfer,
 					pX,
 					pY,
 					edge.from_row,

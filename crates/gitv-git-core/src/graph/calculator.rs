@@ -335,7 +335,8 @@ impl GraphCalculator {
         let first_parent_chain: HashSet<Oid> =
             Self::compute_first_parent_chain(head_oid, &commits, &oid_index);
 
-        // Sort children: first_parent_chain members first, then by row ascending.
+        // Sort children with FPC preference then by row, so children[p][0]
+        // is the mainline child matching gitk display-order.
         let children_sorted =
             Self::sort_children_by_row(&children, &row_assignments, &first_parent_chain);
 
@@ -704,10 +705,18 @@ impl GraphCalculator {
         chain
     }
 
-    /// Sort each commit's children list so that first-parent-chain children
-    /// come first, then by row ascending (youngest first). This ensures the
-    /// ordertoken "chosen" continuation is the one on HEAD's mainline when
-    /// fork-point children share the same timestamp.
+    /// Sort each commit's children list with first-parent-chain preference,
+    /// then by row ascending.
+    ///
+    /// FPC children sort first so `children_sorted[p][0]` is always the
+    /// mainline child (matching gitk's display-order where the FPC child
+    /// appears first in `git rev-list --topo-order`). Within each group
+    /// (FPC vs non-FPC), children are sorted by row ascending (youngest
+    /// first), which matches gitk's reverse-topological display order.
+    ///
+    /// This ordering is used throughout the algorithm for ordertoken walk,
+    /// fork-point differentiation, makeupline trigger, and optimize_rows
+    /// arrow detection.
     fn sort_children_by_row(
         children: &HashMap<Oid, Vec<Oid>>,
         row_assignments: &HashMap<Oid, usize>,
@@ -716,18 +725,18 @@ impl GraphCalculator {
         let mut sorted = children.clone();
         for kids in sorted.values_mut() {
             kids.sort_by(|a, b| {
-                let a_is_fpc = first_parent_chain.contains(a);
-                let b_is_fpc = first_parent_chain.contains(b);
-                if a_is_fpc != b_is_fpc {
-                    return if a_is_fpc {
-                        std::cmp::Ordering::Less
-                    } else {
-                        std::cmp::Ordering::Greater
-                    };
+                let a_fpc = first_parent_chain.contains(a);
+                let b_fpc = first_parent_chain.contains(b);
+                // FPC children first (false < true in sort)
+                match (a_fpc, b_fpc) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => {
+                        let a_row = row_assignments.get(a).copied().unwrap_or(usize::MAX);
+                        let b_row = row_assignments.get(b).copied().unwrap_or(usize::MAX);
+                        a_row.cmp(&b_row)
+                    }
                 }
-                let a_row = row_assignments.get(a).copied().unwrap_or(usize::MAX);
-                let b_row = row_assignments.get(b).copied().unwrap_or(usize::MAX);
-                a_row.cmp(&b_row)
             });
         }
         sorted
@@ -890,9 +899,9 @@ impl GraphCalculator {
     /// Matches gitk's `nextuse` function.
     ///
     /// gitk iterates children in display-row order (ascending) and returns the
-    /// first child with row > from_row. Since gitv's `children_sorted` puts the
-    /// fpc first (which may have a later row than other children), we scan all
-    /// children and return the minimum row that is > from_row.
+    /// first child with row > from_row. gitv's `children_sorted` is sorted by
+    /// row ascending (matching gitk's display order), but we scan all children
+    /// and return the minimum row that is > from_row for consistency.
     fn nextuse(
         oid: Oid,
         from_row: usize,
@@ -921,9 +930,9 @@ impl GraphCalculator {
     /// Matches gitk's `prevuse` function.
     ///
     /// gitk iterates children in display-row order and accumulates the last
-    /// one with row < from_row. Since gitv's `children_sorted` puts the fpc
-    /// first (which may have a later row than other children), we scan all
-    /// children and return the maximum row that is < from_row.
+    /// one with row < from_row. gitv's `children_sorted` is sorted by row
+    /// ascending (matching gitk's display order), but we scan all children
+    /// and return the maximum row that is < from_row for consistency.
     fn prevuse(
         oid: Oid,
         from_row: usize,
@@ -970,7 +979,7 @@ impl GraphCalculator {
 
         let r_start = row.saturating_sub(mingap_len + DOWNARROW_LEN + 1);
         let ra = row.saturating_sub(DOWNARROW_LEN);
-        let rb = (row + UPARROW_LEN + 1).min(n);
+        let rb = (row + UPARROW_LEN).min(n);
 
         let mut entries: Vec<(String, Oid)> = Vec::new();
 
@@ -1032,9 +1041,9 @@ impl GraphCalculator {
         // Phase 4: upcoming commits and their parents (row..rb) — pre-insertion.
         // gitk: for each r in row..rb, add parents of r whose first_child row < row,
         // then also add displayorder[r+1] if its first_child row < row.
-        // "first_child" in gitk = children[p][0] in display order = earliest-displayed child.
-        // gitv's children_sorted puts the fpc first (may have a later row), so we use
-        // the child with the minimum row instead.
+        // "first_child" in gitk = children[p][0] in display order = youngest child.
+        // gitv's children_sorted is sorted by row ascending (same semantics), but we
+        // use the child with the minimum row to be safe.
         #[allow(clippy::needless_range_loop)]
         for r in row..rb {
             if r >= n {
@@ -1190,10 +1199,11 @@ impl GraphCalculator {
                 continue;
             }
 
-            // Ensure curr is in idlist. Use end-of-list as hint so newly
-            // appearing branch tips don't displace established threads.
+            // Ensure curr is in idlist. Use default hint 0 (matching gitk's
+            // idcol default) so newly appearing branch tips go to the leftmost
+            // matching position when ordertokens are equal.
             if !idlist.contains(&curr.oid) {
-                let col = Self::idcol(&idlist, curr.oid, ordertokens, idlist.len());
+                let col = Self::idcol(&idlist, curr.oid, ordertokens, 0);
                 idlist.insert(col, curr.oid);
                 // If curr has children and was thread-removed, patch its
                 // thread back into prior rows so edges from children have
@@ -1227,10 +1237,9 @@ impl GraphCalculator {
                 let mut hint = curr_col;
                 for &p_oid in &pre_commit.parent_oids {
                     if !idlist.contains(&p_oid) {
-                        // gitk checks children[p][0] (first/earliest-displayed child) < row.
-                        // gitv's children_sorted puts the fpc first, which may have a later
-                        // row than other children. Use the child with the minimum row instead,
-                        // matching gitk's "first child in display order" semantics.
+                    // gitk checks children[p][0] (first/youngest child in display order) < row.
+                    // gitv's children_sorted is sorted by row ascending (same semantics), but we
+                    // use the child with the minimum row for safety.
                         let should_insert = children_sorted
                             .get(&p_oid)
                             .and_then(|kids| {
@@ -1533,11 +1542,21 @@ impl GraphCalculator {
                     let (mut waypoints, arrow_gap) =
                         trace_thread(p_oid, c_row, p_gd.row, p_gd.column, &thread_positions);
 
-                    // For same-column edges with no arrow gap, waypoints would
-                    // create zigzags (thread briefly at another column). A
-                    // straight vertical line is the correct rendering.
+                    // For same-column edges, drop all waypoints — a straight
+                    // vertical line is the correct rendering (zigzag-free).
                     if c_col == p_gd.column && arrow_gap.is_none() {
                         waypoints = Vec::new();
+                    }
+
+                    // For cross-column edges without a gap, waypoints at the
+                    // parent column are redundant — the chamfer handles routing.
+                    // Only keep waypoints when they span multiple columns.
+                    if arrow_gap.is_none() && c_col != p_gd.column && !waypoints.is_empty() {
+                        let all_at_parent_col =
+                            waypoints.iter().all(|(_, c)| *c == p_gd.column);
+                        if all_at_parent_col {
+                            waypoints = Vec::new();
+                        }
                     }
 
                     edges.push(Edge {
@@ -1590,10 +1609,19 @@ fn propagate_branch_token(
     suffix: &str,
     first_parent_chain: &HashSet<Oid>,
 ) {
+    // Never modify ordertokens of commits on the first-parent chain.
+    if first_parent_chain.contains(&start_oid) {
+        return;
+    }
     let mut stack = vec![start_oid];
     let mut visited = HashSet::new();
     while let Some(oid) = stack.pop() {
         if !visited.insert(oid) {
+            continue;
+        }
+        // Also guard every visited node against FPC membership
+        // (e.g. a merge with both FPC and non-FPC parents on its children).
+        if first_parent_chain.contains(&oid) {
             continue;
         }
         if let Some(token) = ordertokens.get_mut(&oid) {
@@ -1601,10 +1629,6 @@ fn propagate_branch_token(
         }
         if let Some(kids) = children_sorted.get(&oid) {
             for &kid in kids.iter().rev() {
-                // Skip children on the first-parent chain (mainline) —
-                // they should not receive a side branch's suffix. This
-                // prevents leaks through merge points while allowing
-                // propagation to continue through side-branch descendants.
                 if first_parent_chain.contains(&kid) {
                     continue;
                 }
@@ -1767,7 +1791,7 @@ fn trace_thread(
     parent_oid: Oid,
     child_row: usize,
     parent_row: usize,
-    parent_col: usize,
+    _parent_col: usize,
     thread_positions: &HashMap<Oid, Vec<(usize, usize)>>,
 ) -> (Vec<(usize, usize)>, Option<(usize, usize)>) {
     if parent_row <= child_row + 1 {
@@ -1824,22 +1848,6 @@ fn trace_thread(
 
     // Return the largest gap as the primary arrow_gap (for frontend arrowheads)
     let primary_gap = gap_boundaries.into_iter().max_by_key(|(lo, hi)| hi - lo);
-
-    // Trivial waypoint filter: if all waypoints are at the same column
-    // as the parent (no direction changes) and there's no gap, the edge is
-    // a simple cross-column connection best handled by the renderer's
-    // chamfer path. Returning empty waypoints lets the chamfer kick in,
-    // avoiding overlapping nodes at the parent's column. When waypoints
-    // are at a DIFFERENT column than parent_col, they carry meaningful
-    // routing info (the thread stays in that column) — keeping them
-    // prevents the chamfer's vertical segment at parent_col from
-    // overlapping unrelated nodes.
-    if primary_gap.is_none() && !waypoints.is_empty() {
-        let all_same_col = waypoints.windows(2).all(|w| w[0].1 == w[1].1);
-        if all_same_col && waypoints[0].1 == parent_col {
-            return (Vec::new(), None);
-        }
-    }
 
     (waypoints, primary_gap)
 }
@@ -4892,6 +4900,187 @@ mod tests {
             edge_6_to_1.from_col,
             edge_6_to_1.to_row,
             edge_6_to_1.to_col,
+        );
+    }
+
+    // --- Regression: gitv repo fix-crash branch edge routing ---
+    //
+    // Reproduces the exact topology around f421e8d in the gitv repo:
+    //
+    //   f421e8d has 3 children:
+    //    - 6ce557e (mainline, FPC from HEAD, col 0)
+    //    - 4e14921 (fix-crash base, col 1)
+    //    - a344ea2 (standalone branch, col 2)
+    //
+    //   The fix-crash chain (4e14921 → 52f6ce1 → b54e36f → 4f335b4 → 279ad6c)
+    //   sits at rows 1-5. a344ea2 sits at row 6. f421e8d at row 7.
+    //
+    //   The edge from 4e14921 (row 5, col 1) to f421e8d (row 7, col 0) must
+    //   NOT pass through a344ea2's node at (row 6, col 2). f421e8d's thread
+    //   must be pre-inserted at column 0 at row 6 so the edge can route
+    //   (5,1) → (6,0) → (7,0).
+
+    #[test]
+    fn regression_gitv_repo_fix_crash_edge_routing() {
+        // Timestamps chosen to reproduce the real topological ordering:
+        //   6ce557e (newest, processed first) > fix-crash chain > a344ea2 > f421e8d
+        let make = |oid: u8, parents: Vec<u8>, time: i64| -> CommitInfo {
+            CommitInfo {
+                oid: make_oid(oid),
+                short_oid: format!("{oid:02x}00000"),
+                message: String::new(),
+                summary: String::new(),
+                author: Author {
+                    name: "Test".into(),
+                    email: "test@test.com".into(),
+                },
+                committer: Author {
+                    name: "Test".into(),
+                    email: "test@test.com".into(),
+                },
+                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                parent_oids: parents.into_iter().map(make_oid).collect(),
+                refs: Vec::new(),
+            }
+        };
+
+        // OID assignments:
+        //   oid1 = 3ad2005 (parent of f421e8d)
+        //   oid2 = f421e8d (fork point)
+        //   oid3 = 6ce557e (FPC child, mainline)
+        //   oid4 = mainline chain intermediate (child of oid3)
+        //   oid5 = HEAD (mainline tip, child of oid4)
+        //   oid6 = 4e14921 (fix-crash base, child of f421e8d)
+        //   oid7 = 52f6ce1 (fix-crash)
+        //   oid8 = b54e36f (fix-crash)
+        //   oid9 = 4f335b4 (fix-crash)
+        //   oid10 = 279ad6c (fix-crash tip)
+        //   oid11 = a344ea2 (standalone child of f421e8d)
+        let commits = vec![
+            // HEAD mainline (highest timestamps, processed first by topo sort)
+            make(5, vec![4], 50),      // HEAD
+            make(4, vec![3], 45),      // mainline intermediate
+            // fix-crash chain (tip to base, timestamps decreasing)
+            make(10, vec![9], 39),     // fix-crash tip (like 279ad6c)
+            make(9, vec![8], 38),      // (like 4f335b4)
+            make(8, vec![7], 37),      // (like b54e36f)
+            make(7, vec![6], 36),      // (like 52f6ce1)
+            make(6, vec![2], 34),      // 4e14921 — fix-crash base, child of f421e8d
+            make(11, vec![2], 33),     // a344ea2 — standalone child of f421e8d
+            // mainline chain continues
+            make(3, vec![2], 40),      // 6ce557e — FPC child of f421e8d
+            // fork point and root
+            make(2, vec![1], 32),      // f421e8d
+            make(1, vec![], 31),       // 3ad2005 — parent of f421e8d (root)
+        ];
+
+        let calc = GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let layout = calc.calculate_layout();
+
+        // Debug output
+        println!("\n=== Nodes ===");
+        for n in &layout.nodes {
+            println!("  oid{:02x} row={} col={}", n.oid.as_bytes()[0], n.row, n.column);
+        }
+        println!("=== Edges ===");
+        for e in &layout.edges {
+            let nfrom = layout.nodes.iter().find(|n| n.row == e.from_row).unwrap();
+            let nto = layout.nodes.iter().find(|n| n.row == e.to_row).unwrap();
+            println!(
+                "  oid{:02x}→oid{:02x} ({},{}→{},{}) waypoints={:?} gap={:?}",
+                nfrom.oid.as_bytes()[0],
+                nto.oid.as_bytes()[0],
+                e.from_row,
+                e.from_col,
+                e.to_row,
+                e.to_col,
+                e.waypoints,
+                e.arrow_gap,
+            );
+        }
+
+        // 1. No same-column pass-through
+        let verify_errors = layout.verify();
+        assert!(
+            verify_errors.is_empty(),
+            "verify() found {} error(s):\n{}",
+            verify_errors.len(),
+            verify_errors
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        // 2. Mainline at col 0
+        for &oid in &[make_oid(5), make_oid(4), make_oid(3), make_oid(2), make_oid(1)] {
+            let node = layout.nodes.iter().find(|n| n.oid == oid).unwrap();
+            assert_eq!(
+                node.column, 0,
+                "mainline oid{:02x} should be at column 0, got {}",
+                oid.as_bytes()[0],
+                node.column
+            );
+        }
+
+        // 3. fix-crash chain at col > 0
+        for &oid in &[make_oid(6), make_oid(7), make_oid(8), make_oid(9), make_oid(10)] {
+            let node = layout.nodes.iter().find(|n| n.oid == oid).unwrap();
+            assert!(
+                node.column > 0,
+                "fix-crash chain oid{:02x} should be at column > 0, got {}",
+                oid.as_bytes()[0],
+                node.column
+            );
+        }
+
+        // 4. a344ea2 at col > 0
+        let a344ea2_node = layout.nodes.iter().find(|n| n.oid == make_oid(11)).unwrap();
+        assert!(
+            a344ea2_node.column > 0,
+            "a344ea2 should be at column > 0, got {}",
+            a344ea2_node.column
+        );
+
+        // 5. Edge from fix-crash base (oid6=4e14921) to f421e8d (oid2)
+        // must route correctly WITHOUT overlapping a344ea2.
+        // The horizontal-first chamfer handles this naturally:
+        //   Seg 1: horizontal at row 7 from col 1 toward col 0 (no node at (7,0))
+        //   Seg 2: diagonal (avoids a344ea2 at (8,1))
+        //   Seg 3: vertical at col 0 to row 9
+        let child_node = layout.nodes.iter().find(|n| n.oid == make_oid(6)).unwrap();
+        let parent_node = layout.nodes.iter().find(|n| n.oid == make_oid(2)).unwrap();
+        let edge_6_to_2 = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == child_node.row && e.to_row == parent_node.row)
+            .expect("edge 4e14921→f421e8d must exist");
+
+        // Waypoints are dropped for non-gap cross-column edges — the chamfer handles routing
+        assert!(
+            edge_6_to_2.waypoints.is_empty(),
+            "edge 4e14921→f421e8d should have no waypoints (chamfer handles routing)"
+        );
+
+        // 6. No rendered crossing (chamfer-aware check)
+        let crossings = find_rendered_crossings(&layout);
+        assert!(
+            crossings.is_empty(),
+            "find_rendered_crossings() found {} error(s):\n{}",
+            crossings.len(),
+            crossings
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 }
