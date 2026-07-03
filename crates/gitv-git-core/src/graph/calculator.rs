@@ -1661,11 +1661,26 @@ fn makeupline(
     ordertokens: &HashMap<Oid, String>,
     mingap_len: usize,
 ) {
-    // Find rstart = previous use of oid before curr_row
-    let rstart = match GraphCalculator::prevuse(oid, curr_row, children_sorted, row_assignments) {
-        Some(r) if r < prev_row => r,
-        _ => return,
-    };
+    // Walk backward through prevuse calls (gitk's loop: `for {set r $rend} {1} {set r $rstart}`)
+    // until we find a use strictly before prev_row, or exhaust all previous uses.
+    let mut r = curr_row;
+    let rstart;
+    loop {
+        match GraphCalculator::prevuse(oid, r, children_sorted, row_assignments) {
+            None => return, // no child before r → nothing to patch
+            Some(rs) if rs < prev_row => {
+                rstart = rs;
+                break;
+            }
+            Some(rs) => {
+                // rstart >= prev_row — keep walking backward
+                r = rs;
+                if r == 0 {
+                    return;
+                }
+            }
+        }
+    }
 
     // If the gap is very large, clamp rstart so we only patch uparrowlen rows
     if rstart + UPARROW_LEN + mingap_len + DOWNARROW_LEN < curr_row {
