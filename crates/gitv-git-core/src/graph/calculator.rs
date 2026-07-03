@@ -1530,8 +1530,15 @@ impl GraphCalculator {
 
                     // Trace the parent's thread through the rowidlist to
                     // find direction-change waypoints (gitk drawlineseg approach).
-                    let (waypoints, arrow_gap) =
-                        trace_thread(p_oid, c_row, p_gd.row, &thread_positions);
+                    let (mut waypoints, arrow_gap) =
+                        trace_thread(p_oid, c_row, p_gd.row, p_gd.column, &thread_positions);
+
+                    // For same-column edges with no arrow gap, waypoints would
+                    // create zigzags (thread briefly at another column). A
+                    // straight vertical line is the correct rendering.
+                    if c_col == p_gd.column && arrow_gap.is_none() {
+                        waypoints = Vec::new();
+                    }
 
                     edges.push(Edge {
                         from_row: c_row,
@@ -1760,6 +1767,7 @@ fn trace_thread(
     parent_oid: Oid,
     child_row: usize,
     parent_row: usize,
+    parent_col: usize,
     thread_positions: &HashMap<Oid, Vec<(usize, usize)>>,
 ) -> (Vec<(usize, usize)>, Option<(usize, usize)>) {
     if parent_row <= child_row + 1 {
@@ -1818,12 +1826,17 @@ fn trace_thread(
     let primary_gap = gap_boundaries.into_iter().max_by_key(|(lo, hi)| hi - lo);
 
     // Trivial waypoint filter: if all waypoints are at the same column
-    // (no direction changes) and there's no gap, the edge is a simple
-    // cross-column connection best handled by the renderer's chamfer
-    // path. Returning empty waypoints lets the chamfer kick in.
+    // as the parent (no direction changes) and there's no gap, the edge is
+    // a simple cross-column connection best handled by the renderer's
+    // chamfer path. Returning empty waypoints lets the chamfer kick in,
+    // avoiding overlapping nodes at the parent's column. When waypoints
+    // are at a DIFFERENT column than parent_col, they carry meaningful
+    // routing info (the thread stays in that column) — keeping them
+    // prevents the chamfer's vertical segment at parent_col from
+    // overlapping unrelated nodes.
     if primary_gap.is_none() && !waypoints.is_empty() {
         let all_same_col = waypoints.windows(2).all(|w| w[0].1 == w[1].1);
-        if all_same_col {
+        if all_same_col && waypoints[0].1 == parent_col {
             return (Vec::new(), None);
         }
     }
@@ -1928,7 +1941,7 @@ fn optimize_rows_impl(
             };
 
             // Find id in previous row
-            let x0 = match rowidlist[y0].iter().position(|&x| x == Some(id)) {
+            let mut x0 = match rowidlist[y0].iter().position(|&x| x == Some(id)) {
                 Some(x) => x,
                 None => {
                     col += 1;
@@ -1936,7 +1949,7 @@ fn optimize_rows_impl(
                 }
             };
 
-            let z = x0 as i64 - col as i64;
+            let mut z = x0 as i64 - col as i64;
 
             // Check isarrow
             let mut isarrow = false;
@@ -1970,17 +1983,41 @@ fn optimize_rows_impl(
                     rowisopt[y0] = false;
                     optimize_rows_impl(rowidlist, rowisopt, displayorder, children, y0, row);
                 }
-                // Re-read positions after padding changes
-                continue;
-            }
-
-            // Fix lines going right too much
-            if z > 1 || (z > 0 && isarrow) {
+                // Re-read x0/z/z0 after padding reshuffled y0.
+                // gitk does NOT continue here — it falls through so the
+                // z0-fill and anti-jig checks below can still fire.
+                x0 = match rowidlist[y0].iter().position(|&x| x == Some(id)) {
+                    Some(v) => v,
+                    None => {
+                        col += 1;
+                        continue;
+                    }
+                };
+                z = x0 as i64 - col as i64;
+                if z0.is_some() {
+                    z0 = rowidlist[ym]
+                        .iter()
+                        .position(|&x| x == Some(id))
+                        .map(|xm| xm as i64 - x0 as i64);
+                }
+            } else if z > 1 || (z > 0 && isarrow) {
+                // Fix lines going right too much
                 let npad = (z - 1 + isarrow as i64) as usize;
                 insert_pad(rowidlist, row, col, npad);
                 haspad = true;
                 col += npad;
+                col += 1;
                 continue;
+            }
+
+            // When z0 is still unset and this is not an arrow, fill it from
+            // the commit drawn at row ym (gitk: "this line links to its first
+            // child on row $row-2").
+            if z0.is_none() && !isarrow {
+                let ym_commit = displayorder[ym];
+                if let Some(xc) = rowidlist[ym].iter().position(|&x| x == Some(ym_commit)) {
+                    z0 = Some(xc as i64 - x0 as i64);
+                }
             }
 
             // Avoid jigging left then immediately right
@@ -1993,7 +2030,6 @@ fn optimize_rows_impl(
                     rowisopt[y0] = false;
                     optimize_rows_impl(rowidlist, rowisopt, displayorder, children, y0, row);
                 }
-                continue;
             }
 
             col += 1;
@@ -2004,39 +2040,56 @@ fn optimize_rows_impl(
             let idlist_len = rowidlist[row].len();
 
             // Find the first column (from right) that doesn't have a line going right.
-            // gitk: after finding, incr col then check if < llength.
+            // gitk scans right-to-left: if id is not in previdlist, only substitute
+            // the first-child's position when id's first child IS displayorder[y0].
+            // The final insert only fires when x0 >= 0 (gitk: "if $x0 >= 0").
             let mut found_col: Option<usize> = None;
-            for c in (0..idlist_len).rev() {
+            let mut found_x0: i64 = -1;
+            'scan: for c in (0..idlist_len).rev() {
                 let cid = rowidlist[row][c];
                 if cid.is_none() {
+                    // Existing pad slot — x0 treated as 0 (>= 0), stop here
                     found_col = Some(c);
+                    found_x0 = 0;
                     break;
                 }
-                let cx0 = rowidlist[y0].iter().position(|&x| x == cid);
-                let x0 = match cx0 {
-                    Some(x) => x as i64,
+                let cid = cid.unwrap();
+                let x0_scan: i64 = match rowidlist[y0].iter().position(|&x| x == Some(cid)) {
+                    Some(p) => p as i64,
                     None => {
+                        // Not in previdlist; only resolve via first-child link
                         let kid = displayorder[y0];
-                        let kid_col = rowidlist[y0].iter().position(|&x| x == Some(kid));
-                        if let Some(kc) = kid_col {
-                            kc as i64
+                        let is_first_child = children
+                            .get(&cid)
+                            .and_then(|kids| kids.first())
+                            .is_some_and(|&fc| fc == kid);
+                        if is_first_child {
+                            match rowidlist[y0].iter().position(|&x| x == Some(kid)) {
+                                Some(kc) => kc as i64,
+                                None => continue 'scan,
+                            }
                         } else {
-                            continue;
+                            // x0 effectively -1 (< 0) — x0 <= c → break,
+                            // but do NOT insert (x0 < 0 fails the x0 >= 0 guard)
+                            found_col = Some(c);
+                            found_x0 = -1;
+                            break 'scan;
                         }
                     }
                 };
-                if x0 <= c as i64 {
+                if x0_scan <= c as i64 {
                     found_col = Some(c);
-                    break;
+                    found_x0 = x0_scan;
+                    break 'scan;
                 }
             }
 
             // gitk: if {$x0 >= 0 && [incr col] < [llength $idlist]}
-            if let Some(c) = found_col {
-                let insert_at = c + 1;
-                if insert_at < idlist_len {
-                    rowidlist[row].insert(insert_at, None);
-                }
+            if found_x0 >= 0
+                && let Some(c) = found_col
+                && c + 1 < idlist_len
+            {
+                rowidlist[row].insert(c + 1, None);
             }
         }
         rowisopt[row] = true;
@@ -3124,7 +3177,7 @@ mod tests {
         }
 
         let idx = build_thread_index(&rowidlist);
-        let (waypoints, gap) = trace_thread(parent, 0, 10, &idx);
+        let (waypoints, gap) = trace_thread(parent, 0, 10, 0, &idx);
 
         assert!(gap.is_some(), "should detect the gap");
         let (lo, hi) = gap.unwrap();
