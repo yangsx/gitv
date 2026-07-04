@@ -442,6 +442,9 @@ impl GraphCalculator {
             })
             .collect();
 
+        // Post-process edges to re-route any obstructed same-column segments
+        Self::fix_edge_pass_throughs(&nodes, &mut edges);
+
         if self.options.orientation == GraphOrientation::BottomToTop {
             let max_row = nodes.iter().map(|n| n.row).max().unwrap_or(0);
             for node in &mut nodes {
@@ -1506,6 +1509,118 @@ impl GraphCalculator {
                 }
             })
             .collect()
+    }
+
+    /// Post-process edges to re-route any same-column segment that passes
+    /// through a node. Scans every consecutive pair in each edge's full
+    /// path (endpoints + waypoints). When an obstruction is found, inserts
+    /// detour waypoints into the existing waypoint list — never removes.
+    fn fix_edge_pass_throughs(nodes: &[NodePosition], edges: &mut [Edge]) {
+        let mut occupancy: HashSet<(usize, usize)> = HashSet::with_capacity(nodes.len());
+        for n in nodes {
+            occupancy.insert((n.row, n.column));
+        }
+        let max_col = nodes.iter().map(|n| n.column).max().unwrap_or(4) + 2;
+
+        for edge in edges.iter_mut() {
+            // Build list of consecutive pairs: endpoints + waypoints
+            let mut segments: Vec<((usize, usize), (usize, usize))> = Vec::new();
+            let mut prev = (edge.from_row, edge.from_col);
+            for &wp in &edge.waypoints {
+                segments.push((prev, wp));
+                prev = wp;
+            }
+            segments.push((prev, (edge.to_row, edge.to_col)));
+
+            // Find obstructed same-col segments and schedule insertions
+            // (collected as (insert_after_index, detour_start, detour_end, route_col)
+            // and applied in reverse to preserve indices).
+            struct Insertion {
+                after: usize,
+                ds: usize,
+                de: usize,
+                rc: usize,
+            }
+            let mut insertions: Vec<Insertion> = Vec::new();
+            let mut waypoint_idx = 0usize; // index into edge.waypoints at the END of each segment
+
+            for (si, &(p1, p2)) in segments.iter().enumerate() {
+                let is_last = si == segments.len() - 1;
+                if p1.1 != p2.1 || is_last {
+                    // Cross-col or last segment — no pass-through worry here
+                    if !is_last {
+                        waypoint_idx += 1;
+                    }
+                    continue;
+                }
+
+                // Same-column segment
+                let col = p1.1;
+                let (lo, hi) = (p1.0.min(p2.0), p1.0.max(p2.0));
+                let obstructed: Vec<usize> = (lo + 1..hi)
+                    .filter(|&r| occupancy.contains(&(r, col)))
+                    .collect();
+
+                if obstructed.is_empty() {
+                    waypoint_idx += 1;
+                    continue;
+                }
+
+                // Obstruction found — compute detour
+                let first_obs = obstructed[0];
+                let last_obs = obstructed[obstructed.len() - 1];
+                let ds = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
+                let de = lo.max(last_obs + 1).min(hi - 1);
+                if ds < de {
+                    let rc = (0..max_col)
+                        .filter(|&c| c != col)
+                        .min_by_key(|&c| (ds..=de).filter(|&r| occupancy.contains(&(r, c))).count())
+                        .unwrap_or(col + 1);
+                    insertions.push(Insertion {
+                        after: waypoint_idx,
+                        ds,
+                        de,
+                        rc,
+                    });
+                }
+                waypoint_idx += 1;
+            }
+
+            // Apply insertions in reverse order
+            if !insertions.is_empty() {
+                for ins in insertions.into_iter().rev() {
+                    if ins.rc != Self::col_of_point(edge, ins.ds) {
+                        edge.waypoints.insert(ins.after, (ins.ds, ins.rc));
+                    }
+                    if ins.rc != Self::col_of_point(edge, ins.de) {
+                        edge.waypoints.insert(ins.after, (ins.de, ins.rc));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Helper: column at a given row along the edge path.
+    /// Interpolates by scanning edge endpoints and waypoints.
+    fn col_of_point(edge: &Edge, target_row: usize) -> usize {
+        let mut prev = (edge.from_row, edge.from_col);
+        if target_row == prev.0 {
+            return prev.1;
+        }
+        for &wp in &edge.waypoints {
+            if target_row == wp.0 {
+                return wp.1;
+            }
+            if target_row > prev.0 && target_row < wp.0 || target_row < prev.0 && target_row > wp.0
+            {
+                return prev.1; // between prev and wp — same as prev's column
+            }
+            prev = wp;
+        }
+        if target_row == edge.to_row {
+            return edge.to_col;
+        }
+        edge.to_col
     }
 
     fn rebuild_edges_with_colors(
