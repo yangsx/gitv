@@ -778,7 +778,9 @@ impl GraphCalculator {
                         .get(&first_child_oid)
                         .cloned()
                         .unwrap_or_default();
-                    let &child_ci = oid_index.get(&first_child_oid).unwrap();
+                    let &child_ci = oid_index
+                        .get(&first_child_oid)
+                        .expect("first child oid must exist in oid_index");
                     let parent_idx = commits[child_ci]
                         .parent_oids
                         .iter()
@@ -1237,9 +1239,9 @@ impl GraphCalculator {
                 let mut hint = curr_col;
                 for &p_oid in &pre_commit.parent_oids {
                     if !idlist.contains(&p_oid) {
-                    // gitk checks children[p][0] (first/youngest child in display order) < row.
-                    // gitv's children_sorted is sorted by row ascending (same semantics), but we
-                    // use the child with the minimum row for safety.
+                        // gitk checks children[p][0] (first/youngest child in display order) < row.
+                        // gitv's children_sorted is sorted by row ascending (same semantics), but we
+                        // use the child with the minimum row for safety.
                         let should_insert = children_sorted
                             .get(&p_oid)
                             .and_then(|kids| {
@@ -1278,7 +1280,10 @@ impl GraphCalculator {
             }
 
             // Record column of curr
-            let col = idlist.iter().position(|&x| x == curr.oid).unwrap();
+            let col = idlist
+                .iter()
+                .position(|&x| x == curr.oid)
+                .expect("curr.oid must be in idlist after insertion");
             columns.insert(curr.oid, col);
 
             // Store full rowidlist for optimize_rows + thread tracing
@@ -1552,8 +1557,7 @@ impl GraphCalculator {
                     // parent column are redundant — the chamfer handles routing.
                     // Only keep waypoints when they span multiple columns.
                     if arrow_gap.is_none() && c_col != p_gd.column && !waypoints.is_empty() {
-                        let all_at_parent_col =
-                            waypoints.iter().all(|(_, c)| *c == p_gd.column);
+                        let all_at_parent_col = waypoints.iter().all(|(_, c)| *c == p_gd.column);
                         if all_at_parent_col {
                             waypoints = Vec::new();
                         }
@@ -2054,14 +2058,12 @@ fn optimize_rows_impl(
             let mut found_col: Option<usize> = None;
             let mut found_x0: i64 = -1;
             'scan: for c in (0..idlist_len).rev() {
-                let cid = rowidlist[row][c];
-                if cid.is_none() {
+                let Some(cid) = rowidlist[row][c] else {
                     // Existing pad slot — x0 treated as 0 (>= 0), stop here
                     found_col = Some(c);
                     found_x0 = 0;
                     break;
-                }
-                let cid = cid.unwrap();
+                };
                 let x0_scan: i64 = match rowidlist[y0].iter().position(|&x| x == Some(cid)) {
                     Some(p) => p as i64,
                     None => {
@@ -4959,34 +4961,35 @@ mod tests {
         //   oid11 = a344ea2 (standalone child of f421e8d)
         let commits = vec![
             // HEAD mainline (highest timestamps, processed first by topo sort)
-            make(5, vec![4], 50),      // HEAD
-            make(4, vec![3], 45),      // mainline intermediate
+            make(5, vec![4], 50), // HEAD
+            make(4, vec![3], 45), // mainline intermediate
             // fix-crash chain (tip to base, timestamps decreasing)
-            make(10, vec![9], 39),     // fix-crash tip (like 279ad6c)
-            make(9, vec![8], 38),      // (like 4f335b4)
-            make(8, vec![7], 37),      // (like b54e36f)
-            make(7, vec![6], 36),      // (like 52f6ce1)
-            make(6, vec![2], 34),      // 4e14921 — fix-crash base, child of f421e8d
-            make(11, vec![2], 33),     // a344ea2 — standalone child of f421e8d
+            make(10, vec![9], 39), // fix-crash tip (like 279ad6c)
+            make(9, vec![8], 38),  // (like 4f335b4)
+            make(8, vec![7], 37),  // (like b54e36f)
+            make(7, vec![6], 36),  // (like 52f6ce1)
+            make(6, vec![2], 34),  // 4e14921 — fix-crash base, child of f421e8d
+            make(11, vec![2], 33), // a344ea2 — standalone child of f421e8d
             // mainline chain continues
-            make(3, vec![2], 40),      // 6ce557e — FPC child of f421e8d
+            make(3, vec![2], 40), // 6ce557e — FPC child of f421e8d
             // fork point and root
-            make(2, vec![1], 32),      // f421e8d
-            make(1, vec![], 31),       // 3ad2005 — parent of f421e8d (root)
+            make(2, vec![1], 32), // f421e8d
+            make(1, vec![], 31),  // 3ad2005 — parent of f421e8d (root)
         ];
 
-        let calc = GraphCalculator::new(
-            commits,
-            HashMap::new(),
-            Vec::new(),
-            GraphOptions::default(),
-        );
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
         let layout = calc.calculate_layout();
 
         // Debug output
         println!("\n=== Nodes ===");
         for n in &layout.nodes {
-            println!("  oid{:02x} row={} col={}", n.oid.as_bytes()[0], n.row, n.column);
+            println!(
+                "  oid{:02x} row={} col={}",
+                n.oid.as_bytes()[0],
+                n.row,
+                n.column
+            );
         }
         println!("=== Edges ===");
         for e in &layout.edges {
@@ -5020,10 +5023,17 @@ mod tests {
         );
 
         // 2. Mainline at col 0
-        for &oid in &[make_oid(5), make_oid(4), make_oid(3), make_oid(2), make_oid(1)] {
+        for &oid in &[
+            make_oid(5),
+            make_oid(4),
+            make_oid(3),
+            make_oid(2),
+            make_oid(1),
+        ] {
             let node = layout.nodes.iter().find(|n| n.oid == oid).unwrap();
             assert_eq!(
-                node.column, 0,
+                node.column,
+                0,
                 "mainline oid{:02x} should be at column 0, got {}",
                 oid.as_bytes()[0],
                 node.column
@@ -5031,7 +5041,13 @@ mod tests {
         }
 
         // 3. fix-crash chain at col > 0
-        for &oid in &[make_oid(6), make_oid(7), make_oid(8), make_oid(9), make_oid(10)] {
+        for &oid in &[
+            make_oid(6),
+            make_oid(7),
+            make_oid(8),
+            make_oid(9),
+            make_oid(10),
+        ] {
             let node = layout.nodes.iter().find(|n| n.oid == oid).unwrap();
             assert!(
                 node.column > 0,

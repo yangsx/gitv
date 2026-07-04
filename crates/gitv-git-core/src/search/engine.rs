@@ -95,39 +95,44 @@ impl SearchEngine {
         let mut result_bitmap: Option<RoaringBitmap> = None;
         let mut compiled_regex: Option<Regex> = None;
 
-        let has_text = query.text.as_ref().is_some_and(|t| !t.is_empty());
-        let has_sha = query.sha_prefix.as_ref().is_some_and(|p| !p.is_empty());
+        let text = query.text.as_ref().filter(|t| !t.is_empty());
+        let sha_prefix = query.sha_prefix.as_ref().filter(|p| !p.is_empty());
 
-        if has_text && has_sha {
-            let text_results = if query.use_regex {
-                let re = Regex::new(query.text.as_ref().unwrap())?;
-                compiled_regex = Some(re.clone());
-                self.search_regex_with(&re)
-            } else {
-                self.search_text(query.text.as_ref().unwrap())
-            };
-            let sha_results = self.search_sha(query.sha_prefix.as_ref().unwrap());
-            result_bitmap = Some(text_results | sha_results);
-        } else if has_text {
-            let text_results = if query.use_regex {
-                let re = Regex::new(query.text.as_ref().unwrap())?;
-                compiled_regex = Some(re.clone());
-                self.search_regex_with(&re)
-            } else {
-                self.search_text(query.text.as_ref().unwrap())
-            };
-            result_bitmap = Some(Self::combine(
-                result_bitmap,
-                text_results,
-                query.combine_mode,
-            ));
-        } else if has_sha {
-            let sha_results = self.search_sha(query.sha_prefix.as_ref().unwrap());
-            result_bitmap = Some(Self::combine(
-                result_bitmap,
-                sha_results,
-                query.combine_mode,
-            ));
+        match (text, sha_prefix) {
+            (Some(text), Some(sha_prefix)) => {
+                let text_results = if query.use_regex {
+                    let re = Regex::new(text)?;
+                    compiled_regex = Some(re.clone());
+                    self.search_regex_with(&re)
+                } else {
+                    self.search_text(text)
+                };
+                let sha_results = self.search_sha(sha_prefix);
+                result_bitmap = Some(text_results | sha_results);
+            }
+            (Some(text), None) => {
+                let text_results = if query.use_regex {
+                    let re = Regex::new(text)?;
+                    compiled_regex = Some(re.clone());
+                    self.search_regex_with(&re)
+                } else {
+                    self.search_text(text)
+                };
+                result_bitmap = Some(Self::combine(
+                    result_bitmap,
+                    text_results,
+                    query.combine_mode,
+                ));
+            }
+            (None, Some(sha_prefix)) => {
+                let sha_results = self.search_sha(sha_prefix);
+                result_bitmap = Some(Self::combine(
+                    result_bitmap,
+                    sha_results,
+                    query.combine_mode,
+                ));
+            }
+            (None, None) => {}
         }
 
         if let Some(ref author) = query.author
