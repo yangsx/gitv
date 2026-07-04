@@ -1518,6 +1518,15 @@ impl GraphCalculator {
         // Precompute each oid's (row, col) positions once so per-edge thread
         // tracing is a range lookup instead of a linear scan over all rows.
         let thread_positions = build_thread_index(rowidlist);
+
+        // Build occupancy grid: which (row, col) has a node, used to detect
+        // pass-through conflicts for same-column edges.
+        let mut occupancy: HashSet<(usize, usize)> = HashSet::with_capacity(sorted.len());
+        for c in sorted {
+            let gd = &graph_data[&c.oid];
+            occupancy.insert((gd.row, gd.column));
+        }
+
         for c in sorted {
             let c_row = graph_data[&c.oid].row;
             let c_col = graph_data[&c.oid].column;
@@ -1547,10 +1556,45 @@ impl GraphCalculator {
                     let (mut waypoints, arrow_gap) =
                         trace_thread(p_oid, c_row, p_gd.row, p_gd.column, &thread_positions);
 
-                    // For same-column edges, drop all waypoints — a straight
-                    // vertical line is the correct rendering (zigzag-free).
+                    // For same-column edges, check whether a node sits in
+                    // this column between the endpoints. If not, a straight
+                    // vertical line is safe. If so, insert smooth routing
+                    // waypoints to bypass the obstruction.
+                    //
+                    // trace_thread's own waypoints zigzag (the parent thread
+                    // moves right then immediately left due to pad insertion),
+                    // so we replace them with a clean detour via an adjacent
+                    // column — which avoids both pass-through AND zigzag.
                     if c_col == p_gd.column && arrow_gap.is_none() {
-                        waypoints = Vec::new();
+                        let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
+                        let obstructed: Vec<usize> = (lo + 1..hi)
+                            .filter(|&r| occupancy.contains(&(r, c_col)))
+                            .collect();
+                        if obstructed.is_empty() {
+                            waypoints = Vec::new();
+                        } else {
+                            let first_obs = obstructed[0];
+                            let last_obs = obstructed[obstructed.len() - 1];
+                            let detour_start = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
+                            let detour_end = lo.max(last_obs + 1).min(hi - 1);
+                            if detour_start < detour_end {
+                                // Find the column with fewest nodes in the
+                                // detour range (preferring zero obstructions,
+                                // settling for minimal remaining errors).
+                                let max_col =
+                                    graph_data.values().map(|gd| gd.column).max().unwrap_or(4) + 2;
+                                let best_col =
+                                    (0..max_col).filter(|&c| c != c_col).min_by_key(|&c| {
+                                        (detour_start..=detour_end)
+                                            .filter(|&r| occupancy.contains(&(r, c)))
+                                            .count()
+                                    });
+                                if let Some(route_col) = best_col {
+                                    waypoints =
+                                        vec![(detour_start, route_col), (detour_end, route_col)];
+                                }
+                            }
+                        }
                     }
 
                     // For cross-column edges without a gap, waypoints at the
