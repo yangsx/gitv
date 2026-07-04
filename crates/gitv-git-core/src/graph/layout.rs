@@ -133,7 +133,115 @@ pub struct GraphViewport {
     pub row_max_column: Vec<usize>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EdgeTypeCounts {
+    pub straight: usize,
+    pub branch: usize,
+    pub merge: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LayoutDiagnostics {
+    /// Maximum number of simultaneously active threads across any row
+    pub max_concurrent_threads: usize,
+    /// total_columns - max_concurrent_threads (waste)
+    pub column_waste: usize,
+    /// Total waypoints across all edges
+    pub total_waypoints: usize,
+    /// Max waypoints on any single edge
+    pub max_waypoints_per_edge: usize,
+    /// Edges grouped by type
+    pub edge_type_counts: EdgeTypeCounts,
+    /// Number of edges with arrow_gap (thread removals)
+    pub arrow_gap_count: usize,
+    /// Column shift delta histogram.
+    /// `column_shift_histogram[d]` = number of edges with |from_col - to_col| == d
+    pub column_shift_histogram: Vec<usize>,
+    /// Per-row active thread count histogram.
+    /// `row_thread_histogram[t]` = number of rows that had t active threads
+    pub row_thread_histogram: Vec<usize>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct TopologySummary {
+    pub total_commits: usize,
+    pub merge_count: usize,
+    /// Histogram of child counts per commit.
+    /// `branching_factor_histogram[c]` = number of commits with `c` children.
+    pub branching_factor_histogram: Vec<usize>,
+    /// Longest parent-to-child chain (in nodes, including both ends).
+    pub longest_chain: usize,
+    /// Number of commits with more than one child.
+    pub fork_point_count: usize,
+}
+
 impl GraphLayout {
+    /// Summarize the commit topology: merges, branching factor, chain depth.
+    #[must_use]
+    pub fn topology_summary(&self) -> TopologySummary {
+        use std::collections::HashMap;
+
+        let total_commits = self.nodes.len();
+        let merge_count = self.nodes.iter().filter(|n| n.is_merge).count();
+
+        // row → Oid lookup, safe via get() under the hood
+        let mut row_to_oid = vec![Oid::from_bytes([0u8; 20]); self.total_rows];
+        for n in &self.nodes {
+            if n.row < row_to_oid.len() {
+                row_to_oid[n.row] = n.oid;
+            }
+        }
+
+        let mut child_count: HashMap<Oid, usize> = HashMap::new();
+        for edge in &self.edges {
+            if let (Some(_child), Some(&parent)) =
+                (row_to_oid.get(edge.from_row), row_to_oid.get(edge.to_row))
+            {
+                *child_count.entry(parent).or_insert(0) += 1;
+            }
+        }
+
+        // Branching factor histogram
+        let max_children = child_count.values().max().copied().unwrap_or(0);
+        let mut bf_hist = vec![0usize; max_children + 1];
+        for n in &self.nodes {
+            let c = child_count.get(&n.oid).copied().unwrap_or(0);
+            if c < bf_hist.len() {
+                bf_hist[c] += 1;
+            }
+        }
+
+        let fork_point_count = child_count.values().filter(|&&c| c > 1).count();
+
+        // Longest chain via iterative DP.
+        // Rows: 0=tip (newest), N-1=root (oldest). Children have lower rows than parents.
+        let mut children_of: HashMap<usize, Vec<usize>> = HashMap::new();
+        for edge in &self.edges {
+            if edge.from_row < self.total_rows && edge.to_row < self.total_rows {
+                children_of
+                    .entry(edge.to_row)
+                    .or_default()
+                    .push(edge.from_row);
+            }
+        }
+        let mut depth = vec![1usize; self.total_rows];
+        for row in 0..self.total_rows {
+            if let Some(kids) = children_of.get(&row) {
+                let max_kid_depth = kids.iter().map(|&c| depth[c]).max().unwrap_or(0);
+                depth[row] += max_kid_depth;
+            }
+        }
+        let longest_chain = depth.iter().max().copied().unwrap_or(0);
+
+        TopologySummary {
+            total_commits,
+            merge_count,
+            branching_factor_histogram: bf_hist,
+            longest_chain,
+            fork_point_count,
+        }
+    }
+
     /// Verify layout correctness: check that no edge passes through an
     /// unrelated node. For multi-segment edges (with waypoints), traces
     /// the actual path through waypoints.
@@ -223,5 +331,64 @@ impl GraphLayout {
         }
 
         errors
+    }
+
+    /// Compute layout quality diagnostics. All metrics are O(n) or better.
+    #[must_use]
+    pub fn diagnose(&self) -> LayoutDiagnostics {
+        let max_concurrent_threads = self.row_max_column.iter().max().copied().unwrap_or(0);
+        let column_waste = self.total_columns.saturating_sub(max_concurrent_threads);
+
+        let mut total_waypoints: usize = 0;
+        let mut max_waypoints_per_edge: usize = 0;
+        let mut edge_type_counts = EdgeTypeCounts {
+            straight: 0,
+            branch: 0,
+            merge: 0,
+        };
+        let mut arrow_gap_count: usize = 0;
+        let mut max_col_shift: usize = 0;
+
+        for edge in &self.edges {
+            total_waypoints += edge.waypoints.len();
+            max_waypoints_per_edge = max_waypoints_per_edge.max(edge.waypoints.len());
+            match edge.edge_type {
+                EdgeType::Straight => edge_type_counts.straight += 1,
+                EdgeType::Branch => edge_type_counts.branch += 1,
+                EdgeType::Merge => edge_type_counts.merge += 1,
+            }
+            if edge.arrow_gap.is_some() {
+                arrow_gap_count += 1;
+            }
+            let shift = edge.from_col.abs_diff(edge.to_col);
+            max_col_shift = max_col_shift.max(shift);
+        }
+
+        let mut col_hist = vec![0usize; max_col_shift + 1];
+        for edge in &self.edges {
+            let shift = edge.from_col.abs_diff(edge.to_col);
+            if shift < col_hist.len() {
+                col_hist[shift] += 1;
+            }
+        }
+
+        let max_threads = self.row_max_column.iter().max().copied().unwrap_or(0);
+        let mut row_hist = vec![0usize; (max_threads + 1).max(1)];
+        for &t in &self.row_max_column {
+            if t < row_hist.len() {
+                row_hist[t] += 1;
+            }
+        }
+
+        LayoutDiagnostics {
+            max_concurrent_threads,
+            column_waste,
+            total_waypoints,
+            max_waypoints_per_edge,
+            edge_type_counts,
+            arrow_gap_count,
+            column_shift_histogram: col_hist,
+            row_thread_histogram: row_hist,
+        }
     }
 }

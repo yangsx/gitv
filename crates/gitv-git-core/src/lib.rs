@@ -5,6 +5,7 @@ pub mod graph;
 pub mod models;
 pub mod repository;
 pub mod search;
+pub mod self_test;
 pub mod stream;
 
 /// Maximum number of diff lines returned per file before truncation.

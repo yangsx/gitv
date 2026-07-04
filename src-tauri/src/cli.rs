@@ -15,6 +15,14 @@ pub struct Cli {
 
     #[arg(long = "debug-overlay")]
     pub debug_overlay: bool,
+
+    /// Run headless graph self-test (human-readable summary to stderr).
+    #[arg(long = "self-test", value_name = "PATH")]
+    pub self_test: Option<PathBuf>,
+
+    /// Run headless graph self-test (JSON output to stdout).
+    #[arg(long = "self-test-json", value_name = "PATH")]
+    pub self_test_json: Option<PathBuf>,
 }
 
 pub fn parse_cli() -> Cli {
@@ -24,6 +32,8 @@ pub fn parse_cli() -> Cli {
             repo_paths: vec![],
             log_level: None,
             debug_overlay: false,
+            self_test: None,
+            self_test_json: None,
         };
     }
     Cli::parse_from(args)

@@ -57,9 +57,79 @@ fn init_tracing(cli_log_level: Option<&str>) {
     }
 }
 
+fn run_cli_self_test(cli: &cli::Cli) -> bool {
+    if let Some(ref path) = cli.self_test {
+        run_one_self_test(path, false);
+        true
+    } else if let Some(ref path) = cli.self_test_json {
+        run_one_self_test(path, true);
+        true
+    } else {
+        false
+    }
+}
+
+fn run_one_self_test(path: &std::path::Path, json: bool) {
+    match gitv_git_core::self_test::run_self_test(path) {
+        Ok(output) => {
+            if json {
+                match serde_json::to_string_pretty(&output) {
+                    Ok(json_str) => println!("{json_str}"),
+                    Err(e) => {
+                        eprintln!("self-test serialization failed: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                eprintln!(
+                    "self-test: {:.1}ms (compute {:.1}ms), {} nodes, {} edges, {} cols, {} errors",
+                    output.timing_ms,
+                    output.compute_ms,
+                    output.node_count,
+                    output.edge_count,
+                    output.total_columns,
+                    output.error_count,
+                );
+                eprintln!(
+                    "  diagnostics: waste={}, waypoints={}, arrow_gaps={}, max_threads={}",
+                    output.diagnostics.column_waste,
+                    output.diagnostics.total_waypoints,
+                    output.diagnostics.arrow_gap_count,
+                    output.diagnostics.max_concurrent_threads,
+                );
+                eprintln!(
+                    "  topology: {} merges, longest_chain={}, fork_points={}",
+                    output.topology.merge_count,
+                    output.topology.longest_chain,
+                    output.topology.fork_point_count,
+                );
+                if output.error_count > 0 {
+                    for err in &output.errors {
+                        eprintln!("  error: {err}");
+                    }
+                }
+                eprintln!(
+                    "  column shift histogram: {}",
+                    output.column_shift_histogram
+                );
+                eprintln!("  row thread histogram: {}", output.row_thread_histogram);
+            }
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("self-test failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let cli = cli::parse_cli();
+
+    if run_cli_self_test(&cli) {
+        return;
+    }
 
     init_tracing(cli.log_level.as_deref());
     commands::diagnostics::install_panic_hook(env!("CARGO_PKG_VERSION"));
@@ -131,6 +201,7 @@ pub fn run() {
             commands::diagnostics::log_frontend_message,
             commands::diagnostics::open_log_directory,
             commands::debug::get_memory_usage,
+            commands::diagnostics::run_self_test,
             commands::preferences::get_preferences,
             commands::preferences::set_preferences,
         ])

@@ -2,8 +2,40 @@
 	import { t } from '$lib/stores/locale';
 	import { debug, avgIpcTime, recentIpcTimings, formatBytes } from '$lib/stores/debug';
 	import { operationState } from '$lib/stores/repository';
+	import { runSelfTest } from '$lib/bindings/commands';
+	import type { SelfTestResult } from '$lib/bindings/types';
+
+	interface Props {
+		repoPath?: string | null;
+	}
+
+	let { repoPath = null }: Props = $props();
+
+	$effect(() => {
+		void repoPath;
+		selfTestResult = null;
+		selfTestRunning = false;
+		selfTestError = null;
+	});
 
 	let formatMs = (ms: number) => ms.toFixed(1);
+	let selfTestResult = $state<SelfTestResult | null>(null);
+	let selfTestRunning = $state(false);
+	let selfTestError = $state<string | null>(null);
+
+	async function runTest() {
+		if (!repoPath || selfTestRunning) return;
+		selfTestRunning = true;
+		selfTestError = null;
+		selfTestResult = null;
+		try {
+			selfTestResult = await runSelfTest(repoPath);
+		} catch (e) {
+			selfTestError = String(e);
+		} finally {
+			selfTestRunning = false;
+		}
+	}
 
 	let fpsClass = $derived(
 		$debug.fps < 50 ? 'text-red-400' : $debug.fps < 55 ? 'text-yellow-400' : 'text-green-400'
@@ -100,5 +132,89 @@
 				</div>
 			</div>
 		{/if}
+
+		<div class="mt-2 border-t border-gray-800 pt-2">
+			<button
+				class="w-full rounded px-2 py-1 text-xs font-medium disabled:opacity-50 {selfTestError
+					? 'bg-red-900 text-red-300'
+					: selfTestResult?.error_count
+						? 'bg-yellow-900 text-yellow-300'
+						: 'bg-blue-900 text-blue-300'} hover:bg-opacity-80"
+				onclick={runTest}
+				disabled={!repoPath || selfTestRunning}
+			>
+				{selfTestRunning ? $t('debug.running') : $t('debug.run_self_test')}
+			</button>
+			{#if selfTestError}
+				<div class="mt-1 text-red-400 text-xs">{selfTestError}</div>
+			{/if}
+			{#if selfTestResult}
+				<div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+					<span class="text-gray-500">{$t('debug.timing')}</span>
+					<span>{formatMs(selfTestResult.timing_ms)}ms</span>
+					<span class="text-gray-500">{$t('debug.nodes')}</span>
+					<span>{selfTestResult.node_count}</span>
+					<span class="text-gray-500">{$t('debug.edges')}</span>
+					<span>{selfTestResult.edge_count}</span>
+					<span class="text-gray-500">{$t('debug.columns')}</span>
+					<span>{selfTestResult.total_columns}</span>
+					<span class="text-gray-500">{$t('debug.errors')}</span>
+					<span class={selfTestResult.error_count > 0 ? 'text-red-400' : 'text-green-400'}>
+						{selfTestResult.error_count}
+					</span>
+				</div>
+				<div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-gray-800 pt-1">
+					<span class="text-gray-500">{$t('debug.max_threads')}</span>
+					<span>{selfTestResult.max_concurrent_threads}</span>
+					<span class="text-gray-500">{$t('debug.col_waste')}</span>
+					<span>{selfTestResult.column_waste}</span>
+					<span class="text-gray-500">{$t('debug.waypoints')}</span>
+					<span
+						>{selfTestResult.total_waypoints}
+						{$t('debug.max_per_edge', { n: selfTestResult.max_waypoints_per_edge })}</span
+					>
+					<span class="text-gray-500">{$t('debug.arrow_gaps')}</span>
+					<span>{selfTestResult.arrow_gap_count}</span>
+					<span class="text-gray-500">{$t('debug.edge_types')}</span>
+					<span
+						>{selfTestResult.straight_edges}/{selfTestResult.branch_edges}/{selfTestResult.merge_edges}</span
+					>
+					<span class="text-gray-500">{$t('debug.col_shifts')}</span>
+					<span class="truncate max-w-[140px]" title={selfTestResult.column_shift_histogram}>
+						{selfTestResult.column_shift_histogram || 'none'}
+					</span>
+				</div>
+				<div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-gray-800 pt-1">
+					<span class="text-gray-500">{$t('debug.total_commits')}</span>
+					<span>{selfTestResult.total_commits}</span>
+					<span class="text-gray-500">{$t('debug.merges')}</span>
+					<span>{selfTestResult.merge_count}</span>
+					<span class="text-gray-500">{$t('debug.longest_chain')}</span>
+					<span>{selfTestResult.longest_chain}</span>
+					<span class="text-gray-500">{$t('debug.fork_points')}</span>
+					<span>{selfTestResult.fork_point_count}</span>
+					<span class="text-gray-500">{$t('debug.branching_factor')}</span>
+					<span
+						class="truncate max-w-[140px]"
+						title={JSON.stringify(selfTestResult.branching_factor_histogram)}
+					>
+						{selfTestResult.branching_factor_histogram.join(',')}
+					</span>
+				</div>
+				{#if selfTestResult.errors.length > 0}
+					<div class="mt-1 text-red-400 text-xs">
+						{$t('debug.showing_first_of', {
+							shown: selfTestResult.errors.length,
+							total: selfTestResult.error_count
+						})}
+					</div>
+					<div class="mt-1 max-h-24 overflow-y-auto text-xs text-red-400">
+						{#each selfTestResult.errors as err, i (i)}
+							<div class="truncate">{err}</div>
+						{/each}
+					</div>
+				{/if}
+			{/if}
+		</div>
 	</div>
 {/if}

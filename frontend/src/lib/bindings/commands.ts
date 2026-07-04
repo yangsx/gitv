@@ -20,6 +20,7 @@ import type {
 	SavedSearch,
 	WorkingChangesDiff,
 	AppPreferences,
+	SelfTestResult,
 	InitialData
 } from './types';
 
@@ -274,4 +275,8 @@ export async function setPreferences(prefs: AppPreferences): Promise<void> {
 
 export async function getMemoryUsage(): Promise<number | null> {
 	return timedInvoke<number | null>('get_memory_usage');
+}
+
+export async function runSelfTest(path: string): Promise<SelfTestResult> {
+	return timedInvoke<SelfTestResult>('run_self_test', { path });
 }

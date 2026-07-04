@@ -378,3 +378,27 @@ export interface AppPreferences {
 	language: string;
 	arrow_gap_threshold: number;
 }
+
+export interface SelfTestResult {
+	timing_ms: number;
+	node_count: number;
+	edge_count: number;
+	total_columns: number;
+	error_count: number;
+	errors: string[];
+	max_concurrent_threads: number;
+	column_waste: number;
+	total_waypoints: number;
+	max_waypoints_per_edge: number;
+	straight_edges: number;
+	branch_edges: number;
+	merge_edges: number;
+	arrow_gap_count: number;
+	column_shift_histogram: string;
+	row_thread_histogram: string;
+	total_commits: number;
+	merge_count: number;
+	branching_factor_histogram: number[];
+	longest_chain: number;
+	fork_point_count: number;
+}

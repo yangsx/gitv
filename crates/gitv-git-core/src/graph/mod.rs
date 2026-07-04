@@ -5,5 +5,5 @@ mod viewport;
 pub use calculator::GraphCalculator;
 pub use layout::{
     Edge, EdgeStyle, EdgeType, GraphColorMode, GraphLayout, GraphOptions, GraphOrientation,
-    GraphPalette, GraphViewport, NodePosition, StashMarker,
+    GraphPalette, GraphViewport, LayoutDiagnostics, NodePosition, StashMarker, TopologySummary,
 };

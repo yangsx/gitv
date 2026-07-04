@@ -1716,7 +1716,7 @@
 		</footer>
 	{/if}
 	<ToastContainer />
-	<DebugOverlay />
+	<DebugOverlay {repoPath} />
 	{#if showPreferences}
 		<PreferencesModal
 			onclose={() => {
