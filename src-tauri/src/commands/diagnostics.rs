@@ -14,6 +14,10 @@ use crate::commands::args;
 /// Result of a self-test run: full graph layout + diagnostics.
 #[derive(Serialize)]
 pub struct SelfTestResult {
+    /// Canonical path of the repository.
+    pub repo_path: String,
+    /// Directory basename of the repository.
+    pub repo_name: String,
     /// Wall-clock time for the entire operation (open repo, load commits, compute layout, verify)
     pub timing_ms: f64,
     /// Number of nodes in the layout
@@ -175,12 +179,15 @@ pub fn open_log_directory() -> Result<String, String> {
 pub async fn run_self_test(path: String) -> Result<SelfTestResult, String> {
     use gitv_git_core::self_test::run_self_test as core_run;
 
-    let core = tauri::async_runtime::spawn_blocking(move || core_run(Path::new(&path)))
-        .await
-        .map_err(|e| format!("self-test panicked: {e}"))?
-        .map_err(|e| format!("self-test failed: {e}"))?;
+    let core =
+        tauri::async_runtime::spawn_blocking(move || core_run(Path::new(&path), Some(10_000)))
+            .await
+            .map_err(|e| format!("self-test panicked: {e}"))?
+            .map_err(|e| format!("self-test failed: {e}"))?;
 
     Ok(SelfTestResult {
+        repo_path: core.repo_path,
+        repo_name: core.repo_name,
         timing_ms: core.timing_ms,
         node_count: core.node_count,
         edge_count: core.edge_count,

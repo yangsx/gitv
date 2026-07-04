@@ -23,6 +23,10 @@ pub struct Cli {
     /// Run headless graph self-test (JSON output to stdout).
     #[arg(long = "self-test-json", value_name = "PATH")]
     pub self_test_json: Option<PathBuf>,
+
+    /// Maximum commits to process in self-test mode (default: no limit).
+    #[arg(long = "max-commits", value_name = "N")]
+    pub self_test_max_commits: Option<usize>,
 }
 
 pub fn parse_cli() -> Cli {
@@ -34,6 +38,7 @@ pub fn parse_cli() -> Cli {
             debug_overlay: false,
             self_test: None,
             self_test_json: None,
+            self_test_max_commits: None,
         };
     }
     Cli::parse_from(args)

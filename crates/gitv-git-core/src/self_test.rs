@@ -13,6 +13,10 @@ use crate::repository::Repository;
 /// Full output of a self-test run.
 #[derive(Serialize)]
 pub struct SelfTestOutput {
+    /// Canonical path of the repository.
+    pub repo_path: String,
+    /// Directory basename of the repository (e.g. "linux").
+    pub repo_name: String,
     /// Wall-clock time from start to finish (open repo, load commits, compute, verify).
     pub timing_ms: f64,
     /// Time spent in compute (graph layout + verify + diagnose).
@@ -39,10 +43,20 @@ pub struct SelfTestOutput {
 
 /// Run a self-test on the repository at `path`.
 ///
-/// Opens the repo, loads up to 10K commits + stashes, computes the graph layout,
+/// Opens the repo, loads commits + stashes, computes the graph layout,
 /// runs verification and diagnostics, and returns structured results.
-pub fn run_self_test(path: &Path) -> Result<SelfTestOutput, GitError> {
+///
+/// `max_commits` limits how many commits are loaded. `None` = no limit.
+pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTestOutput, GitError> {
     let overall = Instant::now();
+
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let repo_path = canonical.to_string_lossy().to_string();
+    let repo_name = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
 
     let repo = GixRepository::open(path)?;
     tracing::info!("self_test: open repo in {:?}", overall.elapsed());
@@ -56,8 +70,7 @@ pub fn run_self_test(path: &Path) -> Result<SelfTestOutput, GitError> {
 
     let stash_parent_tips: Vec<Oid> = stashes.iter().map(|s| s.parent_oid).collect();
 
-    const MAX_COMMITS: usize = 10_000;
-    let commits = repo.commits(Some(MAX_COMMITS), &stash_parent_tips)?;
+    let commits = repo.commits(max_commits, &stash_parent_tips)?;
     tracing::info!(
         "self_test: {} commits loaded in {:?}",
         commits.len(),
@@ -106,6 +119,8 @@ pub fn run_self_test(path: &Path) -> Result<SelfTestOutput, GitError> {
         .join(",");
 
     Ok(SelfTestOutput {
+        repo_path,
+        repo_name,
         timing_ms: overall.elapsed().as_secs_f64() * 1000.0,
         compute_ms,
         node_count,

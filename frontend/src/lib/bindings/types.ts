@@ -380,6 +380,8 @@ export interface AppPreferences {
 }
 
 export interface SelfTestResult {
+	repo_path: string;
+	repo_name: string;
 	timing_ms: number;
 	node_count: number;
 	edge_count: number;

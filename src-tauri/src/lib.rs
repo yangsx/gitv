@@ -59,18 +59,18 @@ fn init_tracing(cli_log_level: Option<&str>) {
 
 fn run_cli_self_test(cli: &cli::Cli) -> bool {
     if let Some(ref path) = cli.self_test {
-        run_one_self_test(path, false);
+        run_one_self_test(path, false, cli.self_test_max_commits);
         true
     } else if let Some(ref path) = cli.self_test_json {
-        run_one_self_test(path, true);
+        run_one_self_test(path, true, cli.self_test_max_commits);
         true
     } else {
         false
     }
 }
 
-fn run_one_self_test(path: &std::path::Path, json: bool) {
-    match gitv_git_core::self_test::run_self_test(path) {
+fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usize>) {
+    match gitv_git_core::self_test::run_self_test(path, max_commits) {
         Ok(output) => {
             if json {
                 match serde_json::to_string_pretty(&output) {
