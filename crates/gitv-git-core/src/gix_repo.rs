@@ -3726,7 +3726,7 @@ mod tests {
         fn new() -> Self {
             let dir = tempfile::TempDir::new().expect("temp dir");
             let path = dir.path();
-            run_git(path, &["init"]);
+            run_git(path, &["-c", "init.defaultBranch=main", "init"]);
             run_git(path, &["config", "user.name", "Test"]);
             run_git(path, &["config", "user.email", "test@test.com"]);
             Self { dir }
