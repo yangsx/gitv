@@ -86,6 +86,16 @@ pub trait Repository {
         whitespace: WhitespaceMode,
         line_limit: Option<usize>,
     ) -> Result<FileDiff, DiffError>;
+    fn combined_file_diff(
+        &self,
+        merge_oid: Oid,
+        path: &std::path::Path,
+        mode: DiffMode,
+        whitespace: WhitespaceMode,
+        line_limit: Option<usize>,
+    ) -> Result<FileDiff, DiffError> {
+        self.file_diff_limited(None, merge_oid, path, mode, whitespace, line_limit)
+    }
     fn file_history(
         &self,
         path: &std::path::Path,
@@ -112,6 +122,10 @@ pub trait Repository {
         pattern: &str,
         regex: Option<&regex::Regex>,
     ) -> Result<Vec<crate::search::PatchMatchLocation>, GitError>;
+    /// For merge commits (2+ parents): returns files that differ from ALL parents
+    /// with a `diff_parent` hint per file.  For non-merge commits delegates to
+    /// [`commit_details`](Self::commit_details).
+    fn combined_diff(&self, oid: Oid, include_counts: bool) -> Result<CommitDetails, GitError>;
 }
 
 pub fn open(path: &Path) -> Result<Box<dyn Repository>, GitError> {

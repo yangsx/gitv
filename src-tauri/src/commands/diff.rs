@@ -26,6 +26,26 @@ pub async fn get_commit_details(
 }
 
 #[tauri::command]
+#[instrument(skip(state, path), fields(command = "get_combined_commit_details"))]
+pub async fn get_combined_commit_details(
+    state: State<'_, AppState>,
+    path: String,
+    oid: String,
+    include_counts: Option<bool>,
+) -> Result<gitv_git_core::models::CommitDetails, String> {
+    let repo_path = PathBuf::from(&path);
+    let repo = state.get_repo(&repo_path)?;
+    let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
+    let include = include_counts.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.combined_diff(commit_oid, include)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_commit_file_counts"))]
 pub async fn get_commit_file_counts(
     state: State<'_, AppState>,
@@ -116,6 +136,43 @@ pub fn get_file_tree(
         .transpose()
         .map_err(|e| e.to_string())?;
     repo.file_tree(oid).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+#[instrument(
+    skip(state, path, file_path),
+    fields(command = "get_combined_file_diff")
+)]
+pub fn get_combined_file_diff(
+    state: State<'_, AppState>,
+    path: String,
+    oid: String,
+    file_path: String,
+    diff_mode: Option<String>,
+    whitespace: Option<String>,
+    full: Option<bool>,
+) -> Result<gitv_git_core::models::FileDiff, String> {
+    let repo_path = PathBuf::from(&path);
+    let repo = state.get_repo(&repo_path)?;
+    let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
+    let mode = parse_diff_mode(diff_mode.as_deref());
+    let ws = parse_whitespace(whitespace.as_deref());
+    let line_limit = if full.unwrap_or(false) {
+        None
+    } else {
+        Some(gitv_git_core::DIFF_LINE_LIMIT)
+    };
+    let result = repo
+        .combined_file_diff(
+            commit_oid,
+            std::path::Path::new(&file_path),
+            mode,
+            ws,
+            line_limit,
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(result)
 }
 
 fn parse_diff_mode(s: Option<&str>) -> DiffMode {

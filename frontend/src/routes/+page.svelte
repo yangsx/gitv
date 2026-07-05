@@ -4,7 +4,7 @@
 	import { get } from 'svelte/store';
 	import {
 		getGraphLayout,
-		getCommitDetails,
+		getCombinedCommitDetails,
 		getCommitFileCounts,
 		getCommitsBatch,
 		getDiff,
@@ -666,12 +666,15 @@
 		}
 
 		try {
-			commitDetails = await getCommitDetails(repoPath, oid);
+			commitDetails = await getCombinedCommitDetails(repoPath, oid, true);
 			if (oid !== $selectedOid) {
 				commitDetails = null;
 				return;
 			}
-			void loadFileCounts(oid);
+			// For non-merge commits, load counts from first-parent diff
+			if (commitDetails && commitDetails.info.parent_oids.length <= 1) {
+				void loadFileCounts(oid);
+			}
 		} catch {
 			commitDetails = null;
 		} finally {

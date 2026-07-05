@@ -180,6 +180,8 @@ pub fn run() {
             commands::search::search_commits,
             commands::search::cancel_patch_search,
             commands::diff::get_commit_details,
+            commands::diff::get_combined_commit_details,
+            commands::diff::get_combined_file_diff,
             commands::diff::get_commit_file_counts,
             commands::diff::get_diff,
             commands::diff::get_file_diff,

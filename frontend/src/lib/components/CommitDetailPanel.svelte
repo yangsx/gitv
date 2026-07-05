@@ -7,6 +7,7 @@
 	} from '$lib/bindings/types';
 	import {
 		getFileDiff,
+		getCombinedFileDiff,
 		getFileTree,
 		getBlobContent,
 		getWorkingChangesDiffs
@@ -268,14 +269,23 @@
 				const idx = next++;
 				const file = files[idx];
 				try {
-					const diff = await getFileDiff(
-						repoPath,
-						diffFromOid(),
-						diffToOid(),
-						file.path,
-						localDiffMode,
-						localDiffWhitespace
-					);
+					const isMerge = !isComparison && details.info.parent_oids.length > 1;
+					const diff = isMerge
+						? await getCombinedFileDiff(
+								repoPath,
+								diffToOid(),
+								file.path,
+								localDiffMode,
+								localDiffWhitespace
+							)
+						: await getFileDiff(
+								repoPath,
+								file.diff_parent ?? diffFromOid(),
+								diffToOid(),
+								file.path,
+								localDiffMode,
+								localDiffWhitespace
+							);
 					if (diffGen.isStale(gen)) return;
 					results.push([file.path, diff]);
 				} catch {
@@ -296,20 +306,22 @@
 		diffsLoading = false;
 	}
 
-	async function loadFullFileDiff(path: string) {
+	async function loadFullFileDiff(path: string, _fromOidOverride?: string | null) {
 		const gen = diffGen.next();
-		const from = diffFromOid();
 		const to = diffToOid();
 		try {
-			const diff = await getFileDiff(
-				repoPath,
-				from,
-				to,
-				path,
-				localDiffMode,
-				localDiffWhitespace,
-				true
-			);
+			const isMerge = !isComparison && details.info.parent_oids.length > 1;
+			const diff = isMerge
+				? await getCombinedFileDiff(repoPath, to, path, localDiffMode, localDiffWhitespace, true)
+				: await getFileDiff(
+						repoPath,
+						_fromOidOverride ?? diffFromOid(),
+						to,
+						path,
+						localDiffMode,
+						localDiffWhitespace,
+						true
+					);
 			if (!diffGen.isStale(gen)) fileDiffs.set(path, diff);
 		} catch {
 			if (!diffGen.isStale(gen)) {
@@ -765,7 +777,7 @@
 										</span>
 										<button
 											class="rounded bg-blue-700 px-2 py-0.5 text-xs text-white hover:bg-blue-600"
-											onclick={() => loadFullFileDiff(file.path)}
+											onclick={() => loadFullFileDiff(file.path, file.diff_parent)}
 										>
 											{$t('comparison.show_full')}
 										</button>
