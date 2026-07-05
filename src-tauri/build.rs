@@ -1,6 +1,15 @@
 fn main() {
     tauri_build::build();
 
+    // Force re-run when git HEAD moves
+    let git_dir = ".git";
+    if let Ok(head) = std::fs::read_to_string(format!("{git_dir}/HEAD")) {
+        println!("cargo:rerun-if-changed={git_dir}/HEAD");
+        if let Some(ref_path) = head.strip_prefix("ref: ") {
+            println!("cargo:rerun-if-changed={git_dir}/{}", ref_path.trim());
+        }
+    }
+
     let sha = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
