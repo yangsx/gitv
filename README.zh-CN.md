@@ -125,7 +125,7 @@ gitv/
 │   │   └── lib.rs              # 应用设置、状态、命令注册
 │   └── Cargo.toml
 ├── crates/
-│   ├── gitv-git-core/          # 纯 Rust Git 逻辑（无 Tauri 依赖）— 99 个测试
+│   ├── gitv-git-core/          # 纯 Rust Git 逻辑（无 Tauri 依赖）— 155 个测试
 │   │   └── src/
 │   │       ├── repository.rs   # 基于 gix 的仓库抽象
 │   │       ├── graph/          # 布局计算器、存储插入
