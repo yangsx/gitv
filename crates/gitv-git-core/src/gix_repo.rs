@@ -828,7 +828,6 @@ impl Repository for GixRepository {
                 .message_raw()
                 .map(|m| m.to_string())
                 .unwrap_or_default();
-            let summary = message.lines().next().unwrap_or("").to_string();
 
             let stash_tree = stash_commit
                 .tree()
@@ -839,7 +838,7 @@ impl Repository for GixRepository {
                 index,
                 oid: stash_oid,
                 parent_oid,
-                message: summary,
+                message,
                 author,
                 time,
                 file_summary,
@@ -1574,7 +1573,6 @@ impl Repository for GixRepository {
                     .message_raw()
                     .map(|m| m.to_string())
                     .unwrap_or_default();
-                let summary = message.lines().next().unwrap_or("").to_string();
 
                 let entry_path =
                     std::path::PathBuf::from(String::from_utf8_lossy(&current_path).into_owned());
@@ -1588,7 +1586,7 @@ impl Repository for GixRepository {
                     commit_oid,
                     path: entry_path,
                     old_path,
-                    summary,
+                    message,
                     author,
                     time,
                 });
@@ -1906,14 +1904,12 @@ fn commit_to_commit_info(oid: &Oid, commit: &gix::Commit, refs: Vec<Ref>) -> Com
         .message_raw()
         .map(|m| m.to_string())
         .unwrap_or_default();
-    let summary = message.lines().next().unwrap_or("").to_string();
     let parent_oids: Vec<Oid> = commit.parent_ids().map(|id| gix_id_to_oid(&id)).collect();
 
     CommitInfo {
         oid: *oid,
         short_oid: oid.short_hex(),
         message,
-        summary,
         author,
         committer,
         author_time,
@@ -3801,8 +3797,8 @@ mod tests {
         let repo = GixRepository::open(temp.path()).expect("open");
         let commits = repo.commits(None, &[]).expect("commits");
         assert_eq!(commits.len(), 2);
-        assert_eq!(commits[0].summary, "second commit");
-        assert_eq!(commits[1].summary, "first commit");
+        assert_eq!(commits[0].summary(), "second commit");
+        assert_eq!(commits[1].summary(), "first commit");
         assert_eq!(commits[0].parent_oids.len(), 1);
         assert_eq!(commits[0].parent_oids[0], commits[1].oid);
     }
@@ -3867,7 +3863,7 @@ mod tests {
         let repo = GixRepository::open(temp.path()).expect("open");
         let details = repo.commit(oid).expect("commit details");
         assert_eq!(details.info.oid, oid);
-        assert_eq!(details.info.summary, "first commit");
+        assert_eq!(details.info.summary(), "first commit");
         assert!(details.info.parent_oids.is_empty());
         assert!(details.tree_oid != Oid::from_bytes([0u8; 20]));
     }

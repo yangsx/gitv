@@ -51,7 +51,6 @@ fn make_commits(count: usize) -> Vec<CommitInfo> {
             oid: make_oid(i as u64),
             short_oid: format!("{i:07x}"),
             message: messages[i % messages.len()].into(),
-            summary: messages[i % messages.len()].into(),
             author: Author {
                 name: format!("author{}", i % 10),
                 email: format!("a{}@example.com", i % 10),

@@ -17,7 +17,6 @@ fn make_commit(oid_seed: u64, parent_seeds: Vec<u64>, author_name: &str) -> Comm
         oid: make_oid(oid_seed),
         short_oid: format!("{:07x}", oid_seed),
         message: format!("commit {oid_seed}"),
-        summary: format!("commit {oid_seed}"),
         author: Author {
             name: author_name.into(),
             email: format!("{author_name}@example.com"),

@@ -7,13 +7,16 @@ export interface CommitInfo {
 	oid: string;
 	short_oid: string;
 	message: string;
-	summary: string;
 	author: Author;
 	committer: Author;
 	author_time: string;
 	commit_time: string;
 	parent_oids: string[];
 	refs: Ref[];
+}
+
+export function commitSummary(commit: CommitInfo): string {
+	return commit.message.split('\n')[0] || '';
 }
 
 export type Ref = { Branch?: BranchRef; Tag?: TagRef; Remote?: RemoteRef };
@@ -298,7 +301,7 @@ export interface FileHistoryEntry {
 	commit_oid: string;
 	path: string;
 	old_path: string | null;
-	summary: string;
+	message: string;
 	author: Author;
 	time: string;
 }

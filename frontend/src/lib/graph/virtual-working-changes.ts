@@ -112,7 +112,6 @@ function makeVirtualCommit(oid: string, summary: string): CommitInfo {
 		oid,
 		short_oid: '',
 		message: summary,
-		summary,
 		author: { name: '', email: '' },
 		committer: { name: '', email: '' },
 		author_time: '',

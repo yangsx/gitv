@@ -277,7 +277,6 @@ describe('applyVirtualWorkingChanges', () => {
 					oid: 's1',
 					short_oid: '',
 					message: '',
-					summary: '',
 					author: { name: '', email: '' },
 					committer: { name: '', email: '' },
 					author_time: '',
@@ -340,7 +339,7 @@ describe('createVirtualCommitInfos', () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].oid).toBe(UNSTAGED_OID);
-		expect(result[0].summary).toBe('page.unstaged');
+		expect(result[0].message).toBe('page.unstaged');
 	});
 
 	it('creates staged CommitInfo when only staged changes exist', () => {
@@ -348,7 +347,7 @@ describe('createVirtualCommitInfos', () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].oid).toBe(STAGED_OID);
-		expect(result[0].summary).toBe('page.staged');
+		expect(result[0].message).toBe('page.staged');
 	});
 
 	it('creates both virtual commits when both staged and unstaged exist', () => {
@@ -376,7 +375,6 @@ describe('createVirtualCommitInfos', () => {
 
 		expect(result[0].short_oid).toBe('');
 		expect(result[0].message).toBe('page.staged');
-		expect(result[0].message).toBe(result[0].summary);
 		expect(result[0].author).toEqual({ name: '', email: '' });
 		expect(result[0].author_time).toBe('');
 		expect(result[0].commit_time).toBe('');

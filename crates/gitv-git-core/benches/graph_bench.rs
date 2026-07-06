@@ -25,7 +25,6 @@ fn generate_linear_commits(count: usize) -> Vec<CommitInfo> {
             oid,
             short_oid: format!("{:07x}", i),
             message: format!("commit {i}"),
-            summary: format!("commit {i}"),
             author: Author {
                 name: "author".into(),
                 email: "a@example.com".into(),
@@ -70,7 +69,6 @@ fn generate_branchy_commits(count: usize, branch_freq: usize) -> Vec<CommitInfo>
             oid,
             short_oid: format!("{:07x}", i),
             message: format!("commit {i}"),
-            summary: format!("commit {i}"),
             author: Author {
                 name: format!("author{}", i % 5),
                 email: format!("a{}@example.com", i % 5),

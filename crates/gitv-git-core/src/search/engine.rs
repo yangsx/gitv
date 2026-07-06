@@ -42,14 +42,6 @@ impl CommitMessageIndex {
                     local.entry(term.to_lowercase()).or_default().insert(idx);
                 }
 
-                // Index summary tokens
-                let summary_terms = tokenize(&commit.summary);
-                let unique_summary: std::collections::HashSet<&str> =
-                    summary_terms.into_iter().collect();
-                for term in unique_summary {
-                    local.entry(term.to_lowercase()).or_default().insert(idx);
-                }
-
                 local
             })
             .collect();
@@ -272,7 +264,7 @@ impl SearchEngine {
     fn search_regex_with(&self, re: &Regex) -> RoaringBitmap {
         let mut result = RoaringBitmap::new();
         for (i, commit) in self.commits.iter().enumerate() {
-            if re.is_match(&commit.message) || re.is_match(&commit.summary) {
+            if re.is_match(&commit.message) {
                 result.insert(i as u32);
             }
         }
@@ -313,7 +305,7 @@ impl SearchEngine {
         result.unwrap_or_default()
     }
 
-    /// Searches commit message and summary text.
+    /// Searches commit message text.
     /// NOTE: Despite the name `file_path` in the query, this currently searches
     /// commit messages, not actual changed file paths. True file-path search
     /// would require indexing `CommitDetails.changed_files` which is not
@@ -322,9 +314,7 @@ impl SearchEngine {
         let lower = text.to_lowercase();
         let mut result = RoaringBitmap::new();
         for (i, commit) in self.commits.iter().enumerate() {
-            if commit.message.to_lowercase().contains(&lower)
-                || commit.summary.to_lowercase().contains(&lower)
-            {
+            if commit.message.to_lowercase().contains(&lower) {
                 result.insert(i as u32);
             }
         }
@@ -435,7 +425,6 @@ mod tests {
             oid: make_oid(oid),
             short_oid: format!("{oid:02x}00000"),
             message: msg.to_string(),
-            summary: msg.lines().next().unwrap_or("").to_string(),
             author: Author {
                 name: author_name.to_string(),
                 email: format!("{author_name}@test.com"),

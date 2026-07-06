@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
 	import type { CommitInfo, Ref, Highlight, MatchType } from '$lib/bindings/types';
+	import { commitSummary } from '$lib/bindings/types';
 	import {
 		STAGED_OID,
 		UNSTAGED_OID,
@@ -43,7 +44,7 @@
 	}
 
 	function renderSummary(): string {
-		const summary = commit.summary;
+		const summary = commitSummary(commit);
 		if (!highlights || highlights.length === 0) return escapeHtml(summary);
 		const parts: string[] = [];
 		let lastEnd = 0;
@@ -113,11 +114,11 @@
 	style="height: {rowHeight}px;"
 	aria-label={isVirtual
 		? $t('commit_row.staged_aria', {
-				summary: commit.summary,
+				summary: commitSummary(commit),
 				type: isStaged ? 'staged' : 'unstaged'
 			})
 		: $t('commit_row.aria_label', {
-				summary: commit.summary,
+				summary: commitSummary(commit),
 				author: commit.author.name,
 				date: formatGitDateTime(commit.commit_time)
 			}) +

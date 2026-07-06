@@ -431,7 +431,6 @@ impl GraphCalculator {
                     oid: stash.oid,
                     short_oid: stash.oid.short_hex(),
                     message: stash.message.clone(),
-                    summary: stash.message.clone(),
                     author: stash.author.clone(),
                     committer: stash.author.clone(),
                     author_time: stash.time,
@@ -2303,7 +2302,6 @@ mod tests {
             oid: make_oid(oid),
             short_oid: format!("{oid:02x}00000"),
             message: msg.to_string(),
-            summary: msg.to_string(),
             author: Author {
                 name: "Test".to_string(),
                 email: "test@test.com".to_string(),
@@ -3759,7 +3757,6 @@ mod tests {
                 oid: make_oid(oid),
                 short_oid: format!("{oid:02x}00000"),
                 message: String::new(),
-                summary: String::new(),
                 author: Author {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
@@ -3830,7 +3827,6 @@ mod tests {
                 oid: make_oid(oid),
                 short_oid: format!("{oid:02x}00000"),
                 message: String::new(),
-                summary: String::new(),
                 author: Author {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
@@ -3920,7 +3916,6 @@ mod tests {
                 oid: make_oid(oid),
                 short_oid: format!("{oid:02x}00000"),
                 message: String::new(),
-                summary: String::new(),
                 author: Author {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
@@ -4000,7 +3995,6 @@ mod tests {
                 oid: make_oid(i),
                 short_oid: format!("{i:02x}00000"),
                 message: format!("main {i}"),
-                summary: format!("main {i}"),
                 author: Author {
                     name: "T".into(),
                     email: "t@t.com".into(),
@@ -4021,7 +4015,6 @@ mod tests {
             oid: make_oid(1),
             short_oid: "0100000".into(),
             message: "root".into(),
-            summary: "root".into(),
             author: Author {
                 name: "T".into(),
                 email: "t@t.com".into(),
@@ -4040,7 +4033,6 @@ mod tests {
             oid: make_oid(121),
             short_oid: "12100000".into(),
             message: "branch".into(),
-            summary: "branch".into(),
             author: Author {
                 name: "T".into(),
                 email: "t@t.com".into(),
@@ -4060,7 +4052,6 @@ mod tests {
             oid: make_oid(122),
             short_oid: "12200000".into(),
             message: "merge".into(),
-            summary: "merge".into(),
             author: Author {
                 name: "T".into(),
                 email: "t@t.com".into(),
@@ -5096,14 +5087,13 @@ mod tests {
                 oid: make_oid(oid),
                 short_oid: format!("{oid:02x}00000"),
                 message: String::new(),
-                summary: String::new(),
                 author: Author {
-                    name: "Test".into(),
-                    email: "test@test.com".into(),
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
                 },
                 committer: Author {
-                    name: "Test".into(),
-                    email: "test@test.com".into(),
+                    name: "Test".to_string(),
+                    email: "test@test.com".to_string(),
                 },
                 author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
                 commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),

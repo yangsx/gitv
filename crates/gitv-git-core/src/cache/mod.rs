@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::error::CacheError;
 use crate::models::*;
 
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 const CACHE_FILENAME: &str = "repo-cache.bin";
 
 pub struct RepositoryCache {
@@ -78,7 +78,7 @@ impl CachedRepoData {
                 .iter()
                 .map(|c| CachedCommitSummary {
                     oid: c.oid,
-                    summary: c.summary.clone(),
+                    message: c.message.clone(),
                     author: c.author.clone(),
                     author_time: c.author_time,
                     commit_time: c.commit_time,
@@ -135,7 +135,7 @@ mod tests {
             ref_snapshot: ref_snapshot.clone(),
             commit_summaries: vec![CachedCommitSummary {
                 oid: Oid::from_hex("0123456789abcdeffedcba987654321000000001").unwrap(),
-                summary: "test commit".to_string(),
+                message: "test commit".to_string(),
                 author: Author {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
@@ -151,7 +151,7 @@ mod tests {
         let loaded = cache.load().expect("load").expect("some data");
         assert_eq!(loaded.ref_snapshot, ref_snapshot);
         assert_eq!(loaded.commit_summaries.len(), 1);
-        assert_eq!(loaded.commit_summaries[0].summary, "test commit");
+        assert_eq!(loaded.commit_summaries[0].message, "test commit");
         assert_eq!(loaded.version, CACHE_VERSION);
     }
 

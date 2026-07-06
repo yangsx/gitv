@@ -5,6 +5,7 @@
 		FileTreeNode,
 		PatchMatchLocation
 	} from '$lib/bindings/types';
+	import { commitSummary } from '$lib/bindings/types';
 	import {
 		getFileDiff,
 		getCombinedFileDiff,
@@ -633,7 +634,7 @@
 								</div>
 							{/if}
 							<div class="mt-2 text-sm text-gray-200 whitespace-pre-wrap">
-								{details.info.summary}
+								{commitSummary(details.info)}
 							</div>
 							{#if details.body}
 								{#if rawMessage}

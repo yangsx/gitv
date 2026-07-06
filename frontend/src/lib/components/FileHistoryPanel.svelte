@@ -5,6 +5,10 @@
 	import { formatGitDateTime } from '$lib/utils/format-date';
 	import { showToast } from '$lib/stores/toast';
 
+	function entrySummary(entry: FileHistoryEntry): string {
+		return entry.message.split('\n')[0] || '';
+	}
+
 	interface Props {
 		repoPath: string;
 		filePath: string;
@@ -65,7 +69,7 @@
 				<button
 					class="w-full border-b border-gray-800 px-3 py-1.5 text-left hover:bg-gray-800/50"
 					aria-label={$t('file_history.entry_aria', {
-						summary: entry.summary,
+						summary: entrySummary(entry),
 						author: entry.author.name,
 						oid: entry.commit_oid.slice(0, 8)
 					})}
@@ -73,7 +77,7 @@
 				>
 					<div class="flex items-center gap-2">
 						<span class="font-mono text-gray-500">{entry.commit_oid.slice(0, 8)}</span>
-						<span class="flex-1 truncate text-gray-300">{entry.summary}</span>
+						<span class="flex-1 truncate text-gray-300">{entrySummary(entry)}</span>
 						<span class="shrink-0 text-gray-500">{entry.author.name}</span>
 						<span class="shrink-0 text-gray-600">{formatGitDateTime(entry.time)}</span>
 					</div>

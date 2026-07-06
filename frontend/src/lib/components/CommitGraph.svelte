@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/stores/locale';
 	import type { GraphLayout, NodePosition, CommitInfo } from '$lib/bindings/types';
+	import { commitSummary } from '$lib/bindings/types';
 	import { updateGraphDrawTime } from '$lib/stores/debug';
 	import {
 		colorToCSS,
@@ -224,7 +225,7 @@
 							onTooltip?.({
 								x: e.clientX + 12,
 								y: e.clientY - 8,
-								text: `${ci.short_oid} ${ci.summary}`
+								text: `${ci.short_oid} ${commitSummary(ci)}`
 							});
 						}
 					}

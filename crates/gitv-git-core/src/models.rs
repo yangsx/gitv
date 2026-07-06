@@ -129,13 +129,19 @@ pub struct CommitInfo {
     pub oid: Oid,
     pub short_oid: String,
     pub message: String,
-    pub summary: String,
     pub author: Author,
     pub committer: Author,
     pub author_time: DateTime<Utc>,
     pub commit_time: DateTime<Utc>,
     pub parent_oids: Vec<Oid>,
     pub refs: Vec<Ref>,
+}
+
+impl CommitInfo {
+    #[must_use]
+    pub fn summary(&self) -> &str {
+        self.message.lines().next().unwrap_or("")
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -401,7 +407,7 @@ pub struct FileHistoryEntry {
     pub commit_oid: Oid,
     pub path: PathBuf,
     pub old_path: Option<PathBuf>,
-    pub summary: String,
+    pub message: String,
     pub author: Author,
     pub time: DateTime<Utc>,
 }
@@ -507,7 +513,7 @@ pub struct CachedRepoData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CachedCommitSummary {
     pub oid: Oid,
-    pub summary: String,
+    pub message: String,
     pub author: Author,
     pub author_time: DateTime<Utc>,
     pub commit_time: DateTime<Utc>,
@@ -521,8 +527,7 @@ impl From<CachedCommitSummary> for CommitInfo {
         CommitInfo {
             oid: s.oid,
             short_oid,
-            message: String::new(),
-            summary: s.summary,
+            message: s.message,
             author: s.author.clone(),
             committer: s.author,
             author_time: s.author_time,
