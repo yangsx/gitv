@@ -15,8 +15,21 @@ export function nodeCenterY(row: number, startRow: number, rowHeight: number): n
 	return (row - startRow) * rowHeight + rowHeight / 2;
 }
 
+const colorCache = new Map<string, string>();
+
 export function colorToCSS(c: Color): string {
-	return `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(2)})`;
+	const key = `${c.r},${c.g},${c.b},${c.a}`;
+	let cached = colorCache.get(key);
+	if (!cached) {
+		cached = `rgba(${c.r},${c.g},${c.b},${(c.a / 255).toFixed(2)})`;
+		colorCache.set(key, cached);
+		// Limit cache size to prevent memory leak
+		if (colorCache.size > 2000) {
+			const firstKey = colorCache.keys().next().value!;
+			colorCache.delete(firstKey);
+		}
+	}
+	return cached;
 }
 
 export function isEdgeVisible(edge: Edge, startRow: number, endRow: number): boolean {

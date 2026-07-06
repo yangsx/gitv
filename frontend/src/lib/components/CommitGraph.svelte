@@ -74,6 +74,17 @@
 		computeVisibleEdgeCoords(layout, visibleStart, visibleEnd, rowHeight, laneWidth, PADDING_LEFT)
 	);
 
+	// Cache stashIdxMap — only rebuild when stash_markers changes
+	let cachedStashMarkers: typeof layout.stash_markers | null = null;
+	let cachedStashIdxMap: Map<string, number> | null = null;
+	function getStashIdxMap(l: GraphLayout): Map<string, number> {
+		if (l.stash_markers !== cachedStashMarkers) {
+			cachedStashMarkers = l.stash_markers;
+			cachedStashIdxMap = new Map(l.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
+		}
+		return cachedStashIdxMap!;
+	}
+
 	function draw(l: GraphLayout) {
 		if (!canvas) return;
 		const ctx = canvas.getContext('2d');
@@ -118,7 +129,7 @@
 			const isHovered = seg.idx === hoveredEdgeIdx && !isSelected;
 			drawSegment(ctx, seg, sc, isHovered, isSelected, sNodeRadius);
 		}
-		const stashIdxMap = new Map(l.stash_markers.map((s) => [s.stash_oid, s.stash_index]));
+		const stashIdxMap = getStashIdxMap(l);
 		for (const node of l.nodes) {
 			if (node.row < startRow || node.row > endRow) continue;
 			drawNode(ctx, node, sLaneWidth, sNodeRadius, sPadding, startRow, rowHeight, sc, stashIdxMap);
