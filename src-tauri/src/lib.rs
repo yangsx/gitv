@@ -109,6 +109,17 @@ fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usi
                     }
                 }
                 eprintln!(
+                    "  hide_merges: {} nodes, {} edges, {} errors",
+                    output.hide_merges_node_count,
+                    output.hide_merges_edge_count,
+                    output.hide_merges_error_count,
+                );
+                if output.hide_merges_error_count > 0 {
+                    for err in &output.hide_merges_errors {
+                        eprintln!("  hide_merges error: {err}");
+                    }
+                }
+                eprintln!(
                     "  column shift histogram: {}",
                     output.column_shift_histogram
                 );

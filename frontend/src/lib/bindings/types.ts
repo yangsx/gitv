@@ -415,4 +415,8 @@ export interface SelfTestResult {
 	branching_factor_histogram: number[];
 	longest_chain: number;
 	fork_point_count: number;
+	hide_merges_node_count: number;
+	hide_merges_edge_count: number;
+	hide_merges_error_count: number;
+	hide_merges_errors: string[];
 }

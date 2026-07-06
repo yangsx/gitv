@@ -214,6 +214,34 @@
 						{/each}
 					</div>
 				{/if}
+				{#if selfTestResult.hide_merges_node_count > 0}
+					<div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-gray-800 pt-1">
+						<span class="text-gray-500">Hide merges</span>
+						<span>
+							{selfTestResult.hide_merges_node_count}n /
+							{selfTestResult.hide_merges_edge_count}e
+						</span>
+						<span class="text-gray-500">Hide merges errors</span>
+						<span
+							class={selfTestResult.hide_merges_error_count > 0 ? 'text-red-400' : 'text-green-400'}
+						>
+							{selfTestResult.hide_merges_error_count}
+						</span>
+					</div>
+					{#if selfTestResult.hide_merges_errors.length > 0}
+						<div class="mt-1 text-red-400 text-xs">
+							{$t('debug.showing_first_of', {
+								shown: selfTestResult.hide_merges_errors.length,
+								total: selfTestResult.hide_merges_error_count
+							})}
+						</div>
+						<div class="mt-1 max-h-24 overflow-y-auto text-xs text-red-400">
+							{#each selfTestResult.hide_merges_errors as err, i (i)}
+								<div class="truncate">{err}</div>
+							{/each}
+						</div>
+					{/if}
+				{/if}
 			{/if}
 		</div>
 	</div>

@@ -39,6 +39,14 @@ pub struct SelfTestOutput {
     pub column_shift_histogram: String,
     /// Comma-separated row thread histogram: "1:234,2:567,3:89"
     pub row_thread_histogram: String,
+    /// Number of nodes with hide_merges enabled.
+    pub hide_merges_node_count: usize,
+    /// Number of edges with hide_merges enabled.
+    pub hide_merges_edge_count: usize,
+    /// Number of pass-through errors with hide_merges enabled.
+    pub hide_merges_error_count: usize,
+    /// Up to 1000 error messages from the hide_merges layout.
+    pub hide_merges_errors: Vec<String>,
 }
 
 /// Run a self-test on the repository at `path`.
@@ -78,7 +86,12 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
     );
 
     let compute_start = Instant::now();
-    let calc = GraphCalculator::new(commits, HashMap::new(), stashes, GraphOptions::default());
+    let calc = GraphCalculator::new(
+        commits.clone(),
+        HashMap::new(),
+        stashes.clone(),
+        GraphOptions::default(),
+    );
     let layout = calc.calculate_layout();
 
     let errors = layout.verify();
@@ -99,6 +112,30 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
 
     let max_errors_shown = 1000;
     let shown_errors: Vec<String> = errors.into_iter().take(max_errors_shown).collect();
+
+    // Run hide_merges layout to catch edge routing bugs that only manifest
+    // when merge commits are filtered out.
+    let hide_calc = GraphCalculator::new(
+        commits,
+        HashMap::new(),
+        stashes,
+        GraphOptions {
+            hide_merges: true,
+            ..GraphOptions::default()
+        },
+    );
+    let hide_layout = hide_calc.calculate_layout();
+    let hide_errors = hide_layout.verify();
+    let hide_error_count = hide_errors.len();
+    let hide_node_count = hide_layout.nodes.len();
+    let hide_edge_count = hide_layout.edges.len();
+
+    tracing::info!(
+        "self_test: hide_merges \
+         ({hide_node_count} nodes, {hide_edge_count} edges, {hide_error_count} errors)",
+    );
+
+    let hide_shown_errors: Vec<String> = hide_errors.into_iter().take(max_errors_shown).collect();
 
     let col_shift_hist: String = diag
         .column_shift_histogram
@@ -132,5 +169,9 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
         topology: topo,
         column_shift_histogram: col_shift_hist,
         row_thread_histogram: row_thread_hist,
+        hide_merges_node_count: hide_node_count,
+        hide_merges_edge_count: hide_edge_count,
+        hide_merges_error_count: hide_error_count,
+        hide_merges_errors: hide_shown_errors,
     })
 }

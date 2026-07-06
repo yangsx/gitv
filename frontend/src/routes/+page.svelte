@@ -93,7 +93,7 @@
 		resolvedHighContrast
 	} from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
-	import { computeHideMergeLayout } from '$lib/graph/hide-merges';
+
 	import {
 		applyVirtualWorkingChanges,
 		createVirtualCommitInfos
@@ -302,7 +302,8 @@
 				orientation: $graphOrientation,
 				color_mode: $graphColorMode,
 				arrow_gap_threshold: $arrowGapThreshold,
-				palette: $graphPalette
+				palette: $graphPalette,
+				hide_merges: $graphHideMerges
 			});
 			const repoRoot = data.repo_info.path;
 			repoPath = repoRoot;
@@ -413,7 +414,8 @@
 				color_mode: $graphColorMode,
 				palette: $graphPalette,
 				arrow_gap_threshold: $arrowGapThreshold,
-				focus_branch_oid: focusBranchOid
+				focus_branch_oid: focusBranchOid,
+				hide_merges: $graphHideMerges
 			});
 			if (gen !== layoutGeneration) return;
 			graphLayout = result;
@@ -493,19 +495,17 @@
 		return result;
 	});
 
-	let hideMergeLayout = $derived(computeHideMergeLayout(displayLayout, $graphHideMerges));
-
 	let effectiveLayout = $derived.by(() => {
 		if ($searchShowMode === 'hide-nonhits' && $matchingOids.size > 0) return null;
 		if ($sortBy !== 'date' || $sortAsc) return null;
-		return hideMergeLayout;
+		return displayLayout;
 	});
 
 	let displayedCommits = $derived.by(() => {
 		if (!$graphHideMerges) return effectiveCommits;
-		if (!hideMergeLayout) return effectiveCommits.filter((c) => c.parent_oids.length <= 1);
-		const visibleOids = new Set(hideMergeLayout.nodes.map((n) => n.oid));
-		return effectiveCommits.filter((c) => visibleOids.has(c.oid));
+		if (!displayLayout) return effectiveCommits.filter((c) => c.parent_oids.length <= 1);
+		const visibleOids = new Set(displayLayout.nodes.map((n) => n.oid));
+		return effectiveCommits.filter((c) => VIRTUAL_OIDS.has(c.oid) || visibleOids.has(c.oid));
 	});
 
 	let commitCount = $derived(displayedCommits.length);
@@ -515,6 +515,7 @@
 		void $graphOrientation;
 		void $graphPalette;
 		void $arrowGapThreshold;
+		void $graphHideMerges;
 		untrack(() => {
 			if (get(repoInfo)) {
 				reloadLayout();
@@ -529,12 +530,13 @@
 	});
 
 	$effect(() => {
-		if (graphLayout) {
+		const layout = effectiveLayout ?? displayLayout;
+		if (layout) {
 			updateDebugGraphStats(
-				graphLayout.nodes.length,
-				graphLayout.edges.length,
-				graphLayout.stash_markers.length,
-				graphLayout.total_columns
+				layout.nodes.length,
+				layout.edges.length,
+				layout.stash_markers.length,
+				layout.total_columns
 			);
 		}
 	});
