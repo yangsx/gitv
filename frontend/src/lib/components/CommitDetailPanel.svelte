@@ -642,7 +642,7 @@
 										class="mt-1 text-sm text-gray-400 whitespace-pre-wrap font-sans">{details.body}</pre>
 								{:else if renderedBody}
 									<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-									<div class="mt-1 text-sm text-gray-400 markdown-body">{@html renderedBody}</div>
+									<div class="mt-3 text-sm text-gray-400 markdown-body">{@html renderedBody}</div>
 								{/if}
 							{/if}
 						</div>
