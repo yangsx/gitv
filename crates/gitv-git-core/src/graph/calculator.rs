@@ -520,14 +520,20 @@ impl GraphCalculator {
 
     #[must_use]
     pub fn get_ancestor_oids(&self, oid: &Oid) -> HashSet<Oid> {
+        let oid_index: HashMap<Oid, usize> = self
+            .commits
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.oid, i))
+            .collect();
         let mut ancestors = HashSet::new();
         let mut stack = vec![*oid];
         while let Some(current) = stack.pop() {
             if !ancestors.insert(current) {
                 continue;
             }
-            if let Some(commit) = self.commits.iter().find(|c| c.oid == current) {
-                for parent in &commit.parent_oids {
+            if let Some(&ci) = oid_index.get(&current) {
+                for parent in &self.commits[ci].parent_oids {
                     stack.push(*parent);
                 }
             }

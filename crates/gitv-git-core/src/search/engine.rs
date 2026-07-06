@@ -255,11 +255,9 @@ impl SearchEngine {
     }
 
     fn search_sha(&self, prefix: &str) -> RoaringBitmap {
-        let lower = prefix.to_lowercase();
         let mut result = RoaringBitmap::new();
         for (i, commit) in self.commits.iter().enumerate() {
-            let hex = commit.oid.to_hex();
-            if hex.starts_with(&lower) || commit.short_oid.starts_with(&lower) {
+            if commit.oid.starts_with_hex(prefix) {
                 result.insert(i as u32);
             }
         }
@@ -341,11 +339,9 @@ impl SearchEngine {
     fn determine_match_type(&self, query: &SearchQuery, commit: &CommitInfo) -> MatchType {
         if let Some(ref prefix) = query.sha_prefix
             && !prefix.is_empty()
+            && commit.oid.starts_with_hex(prefix)
         {
-            let lower = prefix.to_lowercase();
-            if commit.oid.to_hex().starts_with(&lower) || commit.short_oid.starts_with(&lower) {
-                return MatchType::Sha;
-            }
+            return MatchType::Sha;
         }
         if let Some(ref author) = query.author
             && !author.is_empty()

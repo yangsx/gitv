@@ -5,6 +5,16 @@ use std::path::PathBuf;
 
 use crate::error::OidError;
 
+const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+const _: () = {
+    let mut i = 0;
+    while i < 16 {
+        let c = HEX_CHARS[i];
+        assert!((b'0' <= c && c <= b'9') || (b'a' <= c && c <= b'f'));
+        i += 1;
+    }
+};
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[must_use]
 pub struct Oid([u8; 20]);
@@ -48,12 +58,42 @@ impl Oid {
 
     #[must_use]
     pub fn to_hex(&self) -> String {
-        self.0.iter().map(|b| format!("{b:02x}")).collect()
+        let mut buf = [0u8; 40];
+        self.to_hex_into(&mut buf);
+        // SAFETY: buf contains only ASCII hex characters
+        unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+    }
+
+    pub fn to_hex_into(&self, buf: &mut [u8; 40]) {
+        for (i, &byte) in self.0.iter().enumerate() {
+            buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
+            buf[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
+        }
     }
 
     #[must_use]
     pub fn short_hex(&self) -> String {
-        self.to_hex()[..7].to_string()
+        // 7 hex chars = 3 full bytes + first nibble of byte 3
+        let mut buf = [0u8; 7];
+        for i in 0..3 {
+            let byte = self.0[i];
+            buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
+            buf[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
+        }
+        buf[6] = HEX_CHARS[(self.0[3] >> 4) as usize];
+        // SAFETY: buf contains only ASCII hex characters
+        unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+    }
+
+    /// Check if this OID starts with the given hex prefix without allocating.
+    /// The prefix is compared case-insensitively.
+    #[must_use]
+    pub fn starts_with_hex(&self, prefix: &str) -> bool {
+        let prefix_bytes = prefix.as_bytes();
+        let prefix_len = prefix_bytes.len().min(40);
+        let mut buf = [0u8; 40];
+        self.to_hex_into(&mut buf);
+        buf[..prefix_len].eq_ignore_ascii_case(&prefix_bytes[..prefix_len])
     }
 }
 
