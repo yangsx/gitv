@@ -2,7 +2,7 @@ use gitv_git_core::gix_repo::GixRepository;
 use gitv_git_core::models::{CommitInfo, Oid};
 use gitv_git_core::repository::Repository;
 use gitv_git_core::search::{SearchEngine, SearchQuery};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,11 +15,15 @@ pub struct AppState {
     patch_searches: Mutex<HashMap<u64, Arc<AtomicBool>>>,
     next_patch_search_id: AtomicU64,
     commit_store: Mutex<HashMap<PathBuf, Arc<Vec<CommitInfo>>>>,
+    commit_store_order: Mutex<VecDeque<PathBuf>>,
+    search_engine_order: Mutex<VecDeque<PathBuf>>,
 }
 
 /// Maximum number of repos whose commits are retained in memory.
-/// Exceeding this evicts all entries except the one being stored.
 const MAX_COMMIT_STORE_REPOS: usize = 8;
+
+/// Maximum number of search engines retained in memory.
+const MAX_SEARCH_ENGINE_REPOS: usize = 4;
 
 impl AppState {
     pub fn new() -> Self {
@@ -29,15 +33,25 @@ impl AppState {
             patch_searches: Mutex::new(HashMap::new()),
             next_patch_search_id: AtomicU64::new(1),
             commit_store: Mutex::new(HashMap::new()),
+            commit_store_order: Mutex::new(VecDeque::new()),
+            search_engine_order: Mutex::new(VecDeque::new()),
         }
     }
 
     pub fn store_commits(&self, repo_path: &Path, commits: Vec<CommitInfo>) {
-        if let Ok(mut store) = self.commit_store.lock() {
-            if store.len() >= MAX_COMMIT_STORE_REPOS {
-                store.retain(|k, _| k == repo_path);
+        if let (Ok(mut store), Ok(mut order)) =
+            (self.commit_store.lock(), self.commit_store_order.lock())
+        {
+            // Remove old entry from order if exists
+            order.retain(|p| p != repo_path);
+            // Evict LRU if at capacity
+            if store.len() >= MAX_COMMIT_STORE_REPOS
+                && let Some(oldest) = order.pop_front()
+            {
+                store.remove(&oldest);
             }
             store.insert(repo_path.to_path_buf(), Arc::new(commits));
+            order.push_back(repo_path.to_path_buf());
         }
     }
 
@@ -47,23 +61,43 @@ impl AppState {
         offset: usize,
         limit: usize,
     ) -> Result<Vec<CommitInfo>, String> {
-        let store = self.commit_store.lock().map_err(|e| e.to_string())?;
+        let (store, mut order) = (
+            self.commit_store.lock().map_err(|e| e.to_string())?,
+            self.commit_store_order.lock().map_err(|e| e.to_string())?,
+        );
         let commits = store
             .get(repo_path)
             .ok_or("commits not loaded for this repo")?;
         let end = offset.saturating_add(limit).min(commits.len());
+        // Update LRU order — mark this repo as recently used
+        order.retain(|p| p != repo_path);
+        order.push_back(repo_path.to_path_buf());
         Ok(commits[offset..end].to_vec())
     }
 
     pub fn search(&self, repo_path: &Path, query: &SearchQuery) -> Result<SearchOutcome, String> {
         let (results, all_oids) = {
             let mut cache = self.search_engines.lock().map_err(|e| e.to_string())?;
+            let mut order = self.search_engine_order.lock().map_err(|e| e.to_string())?;
 
             if !cache.contains_key(repo_path) {
+                // Evict LRU if at capacity
+                if cache.len() >= MAX_SEARCH_ENGINE_REPOS
+                    && let Some(oldest) = order.pop_front()
+                {
+                    cache.remove(&oldest);
+                }
                 let repo = self.get_repo(repo_path)?;
                 let commits = repo.commits(None, &[]).map_err(|e| e.to_string())?;
                 let engine = SearchEngine::new(commits);
                 cache.insert(repo_path.to_path_buf(), engine);
+                // Update access order
+                order.retain(|p| p != repo_path);
+                order.push_back(repo_path.to_path_buf());
+            } else {
+                // Update access order for existing entry
+                order.retain(|p| p != repo_path);
+                order.push_back(repo_path.to_path_buf());
             }
 
             let engine = cache.get(repo_path).ok_or("engine not found")?;

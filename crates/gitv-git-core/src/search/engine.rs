@@ -1,6 +1,8 @@
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use regex::Regex;
 use roaring::RoaringBitmap;
 use std::collections::HashMap;
+use std::ops::BitOrAssign;
 
 use crate::error::SearchError;
 use crate::models::{CommitInfo, DateRange, Oid};
@@ -25,24 +27,37 @@ impl CommitMessageIndex {
     }
 
     fn index_commits(&mut self, commits: &[CommitInfo], start_idx: u32) {
-        for (i, commit) in commits.iter().enumerate() {
-            let idx = start_idx + i as u32;
-            let terms = tokenize(&commit.message);
-            let unique_terms: std::collections::HashSet<&str> = terms.into_iter().collect();
-            for term in unique_terms {
-                self.postings
-                    .entry(term.to_lowercase())
-                    .or_default()
-                    .insert(idx);
-            }
-            let summary_terms = tokenize(&commit.summary);
-            let unique_summary: std::collections::HashSet<&str> =
-                summary_terms.into_iter().collect();
-            for term in unique_summary {
-                self.postings
-                    .entry(term.to_lowercase())
-                    .or_default()
-                    .insert(idx);
+        // Build per-commit postings in parallel, then merge
+        let per_commit: Vec<HashMap<String, RoaringBitmap>> = commits
+            .par_iter()
+            .enumerate()
+            .map(|(i, commit)| {
+                let idx = start_idx + i as u32;
+                let mut local: HashMap<String, RoaringBitmap> = HashMap::new();
+
+                // Index message tokens
+                let terms = tokenize(&commit.message);
+                let unique_terms: std::collections::HashSet<&str> = terms.into_iter().collect();
+                for term in unique_terms {
+                    local.entry(term.to_lowercase()).or_default().insert(idx);
+                }
+
+                // Index summary tokens
+                let summary_terms = tokenize(&commit.summary);
+                let unique_summary: std::collections::HashSet<&str> =
+                    summary_terms.into_iter().collect();
+                for term in unique_summary {
+                    local.entry(term.to_lowercase()).or_default().insert(idx);
+                }
+
+                local
+            })
+            .collect();
+
+        // Merge parallel results into self.postings
+        for local in per_commit {
+            for (term, bitmap) in local {
+                self.postings.entry(term).or_default().bitor_assign(&bitmap);
             }
         }
     }
@@ -64,19 +79,29 @@ impl SearchEngine {
         let mut message_index = CommitMessageIndex::new();
         message_index.index_commits(&commits, 0);
 
+        // Build author index in parallel
+        let per_commit_author: Vec<HashMap<String, RoaringBitmap>> = commits
+            .par_iter()
+            .enumerate()
+            .map(|(i, commit)| {
+                let idx = i as u32;
+                let mut local: HashMap<String, RoaringBitmap> = HashMap::new();
+                let author_key = format!(
+                    "{} {}",
+                    commit.author.name.to_lowercase(),
+                    commit.author.email.to_lowercase()
+                );
+                for word in author_key.split_whitespace() {
+                    local.entry(word.to_string()).or_default().insert(idx);
+                }
+                local
+            })
+            .collect();
+
         let mut author_index: HashMap<String, RoaringBitmap> = HashMap::new();
-        for (i, commit) in commits.iter().enumerate() {
-            let idx = i as u32;
-            let author_key = format!(
-                "{} {}",
-                commit.author.name.to_lowercase(),
-                commit.author.email.to_lowercase()
-            );
-            for word in author_key.split_whitespace() {
-                author_index
-                    .entry(word.to_string())
-                    .or_default()
-                    .insert(idx);
+        for local in per_commit_author {
+            for (term, bitmap) in local {
+                author_index.entry(term).or_default().bitor_assign(&bitmap);
             }
         }
 
