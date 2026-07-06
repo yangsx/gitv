@@ -1,12 +1,31 @@
 fn main() {
     tauri_build::build();
 
+    // Walk up from crate dir to find the .git directory (it may be at the
+    // workspace root, not next to the crate).
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+    let mut current = std::path::PathBuf::from(&manifest_dir);
+    let git_dir = loop {
+        let candidate = current.join(".git");
+        if candidate.exists() {
+            break Some(candidate);
+        }
+        if !current.pop() {
+            break None;
+        }
+    };
+
     // Force re-run when git HEAD moves
-    let git_dir = ".git";
-    if let Ok(head) = std::fs::read_to_string(format!("{git_dir}/HEAD")) {
-        println!("cargo:rerun-if-changed={git_dir}/HEAD");
-        if let Some(ref_path) = head.strip_prefix("ref: ") {
-            println!("cargo:rerun-if-changed={git_dir}/{}", ref_path.trim());
+    if let Some(ref git_dir) = git_dir {
+        let head_path = git_dir.join("HEAD");
+        if let Ok(head) = std::fs::read_to_string(&head_path) {
+            println!("cargo:rerun-if-changed={}", head_path.display());
+            if let Some(ref_path) = head.strip_prefix("ref: ") {
+                println!(
+                    "cargo:rerun-if-changed={}",
+                    git_dir.join(ref_path.trim()).display()
+                );
+            }
         }
     }
 
