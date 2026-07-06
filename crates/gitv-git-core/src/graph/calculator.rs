@@ -541,11 +541,31 @@ impl GraphCalculator {
     }
 
     fn filter_merges(&self) -> Vec<CommitInfo> {
-        let merge_oids: HashSet<Oid> = self
+        let all_merges: HashSet<Oid> = self
             .commits
             .iter()
             .filter(|c| c.parent_oids.len() > 1)
             .map(|c| c.oid)
+            .collect();
+
+        // Count non-merge children of each merge to determine if it's a
+        // branch point. A merge with ≥2 non-merge children must NOT be
+        // hidden — removing it would orphan side branches.
+        let mut non_merge_children: HashMap<Oid, usize> = HashMap::new();
+        for c in &self.commits {
+            if c.parent_oids.len() <= 1 {
+                for p in &c.parent_oids {
+                    if all_merges.contains(p) {
+                        *non_merge_children.entry(*p).or_default() += 1;
+                    }
+                }
+            }
+        }
+
+        let hidden_merges: HashSet<Oid> = all_merges
+            .iter()
+            .filter(|&&oid| *non_merge_children.get(&oid).unwrap_or(&0) <= 1)
+            .copied()
             .collect();
 
         let mut resolve: HashMap<Oid, Oid> = HashMap::new();
@@ -553,14 +573,14 @@ impl GraphCalculator {
         while changed {
             changed = false;
             for commit in &self.commits {
-                if commit.parent_oids.len() <= 1 {
+                if !hidden_merges.contains(&commit.oid) {
                     continue;
                 }
                 let first_parent = match commit.parent_oids.first() {
                     Some(p) => *p,
                     None => continue,
                 };
-                let resolved = Self::resolve_to_non_merge(&first_parent, &merge_oids, &resolve);
+                let resolved = Self::resolve_to_non_merge(&first_parent, &hidden_merges, &resolve);
                 if resolve.get(&commit.oid) != Some(&resolved) {
                     resolve.insert(commit.oid, resolved);
                     changed = true;
@@ -568,19 +588,50 @@ impl GraphCalculator {
             }
         }
 
+        // For each hidden merge with ≥2 parents, resolve the second parent
+        // through the hidden set. This will be added to the merge's child
+        // so the branch tip connects to the mainline above the merge point.
+        let merge_second_parents: HashMap<Oid, Oid> = self
+            .commits
+            .iter()
+            .filter(|c| hidden_merges.contains(&c.oid))
+            .filter_map(|c| {
+                if c.parent_oids.len() < 2 {
+                    return None;
+                }
+                let sp = c.parent_oids[1];
+                let resolved_sp = Self::resolve_to_non_merge(&sp, &hidden_merges, &resolve);
+                if hidden_merges.contains(&resolved_sp) {
+                    return None;
+                }
+                Some((c.oid, resolved_sp))
+            })
+            .collect();
+
+        // Keep all commits except hidden merges.
         let mut result: Vec<CommitInfo> = self
             .commits
             .iter()
-            .filter(|c| c.parent_oids.len() <= 1)
+            .filter(|c| !hidden_merges.contains(&c.oid))
             .cloned()
             .collect();
 
+        // Rewire parents: resolve hidden merges to their first non-hidden
+        // ancestor, and add the second parent so the branch stays connected.
         for c in &mut result {
-            for p in &mut c.parent_oids {
+            let original_parents = c.parent_oids.clone();
+            let mut new_parents = Vec::new();
+            for p in &original_parents {
                 if let Some(&replacement) = resolve.get(p) {
-                    *p = replacement;
+                    new_parents.push(replacement);
+                    if let Some(&sp) = merge_second_parents.get(p) {
+                        new_parents.push(sp);
+                    }
+                } else {
+                    new_parents.push(*p);
                 }
             }
+            c.parent_oids = new_parents;
         }
 
         result
@@ -1551,8 +1602,8 @@ impl GraphCalculator {
 
             for (si, &(p1, p2)) in segments.iter().enumerate() {
                 let is_last = si == segments.len() - 1;
-                if p1.1 != p2.1 || is_last {
-                    // Cross-col or last segment — no pass-through worry here
+                if p1.1 != p2.1 {
+                    // Cross-column segment — chamfer handles routing
                     if !is_last {
                         waypoint_idx += 1;
                     }
@@ -1717,13 +1768,44 @@ impl GraphCalculator {
                         }
                     }
 
-                    // For cross-column edges without a gap, waypoints at the
-                    // parent column are redundant — the chamfer handles routing.
-                    // Only keep waypoints when they span multiple columns.
+                    // For cross-column edges without a gap, check if the
+                    // parent column has obstructions between child and parent.
+                    // If clear, the chamfer is safe and waypoints are redundant.
+                    // If obstructed, route around them via an adjacent column
+                    // (same detour logic as the same-column case above).
                     if arrow_gap.is_none() && c_col != p_gd.column && !waypoints.is_empty() {
                         let all_at_parent_col = waypoints.iter().all(|(_, c)| *c == p_gd.column);
                         if all_at_parent_col {
-                            waypoints = Vec::new();
+                            let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
+                            let obstructed: Vec<usize> = (lo + 1..hi)
+                                .filter(|&r| occupancy.contains(&(r, p_gd.column)))
+                                .collect();
+                            if obstructed.is_empty() {
+                                waypoints = Vec::new();
+                            } else {
+                                let first_obs = obstructed[0];
+                                let last_obs = obstructed[obstructed.len() - 1];
+                                let detour_start = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
+                                let detour_end = lo.max(last_obs + 1).min(hi - 1);
+                                if detour_start < detour_end {
+                                    let max_col =
+                                        graph_data.values().map(|gd| gd.column).max().unwrap_or(4)
+                                            + 2;
+                                    let best_col = (0..max_col)
+                                        .filter(|&c| c != p_gd.column)
+                                        .min_by_key(|&c| {
+                                            (detour_start..=detour_end)
+                                                .filter(|&r| occupancy.contains(&(r, c)))
+                                                .count()
+                                        });
+                                    if let Some(route_col) = best_col {
+                                        waypoints = vec![
+                                            (detour_start, route_col),
+                                            (detour_end, route_col),
+                                        ];
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -2491,7 +2573,6 @@ mod tests {
         let calc = GraphCalculator::new(commits, HashMap::new(), Vec::new(), options);
         let layout = calc.calculate_layout();
         assert_eq!(layout.nodes.len(), 4, "merge removed, 4 nodes remain");
-        assert!(layout.nodes.iter().all(|n| !n.is_merge));
         let after_merge = layout.nodes.iter().find(|n| n.oid == make_oid(5)).unwrap();
         let edges_to_after: Vec<_> = layout
             .edges
@@ -2854,6 +2935,75 @@ mod tests {
         let calc =
             GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
         let layout = calc.calculate_layout();
+
+        let errors = layout.verify();
+        assert!(
+            errors.is_empty(),
+            "verify() found {} pass-through error(s):\n{}",
+            errors.len(),
+            errors
+                .iter()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn branch_edge_routes_around_mainline_obstructions() {
+        // Regression: branch commit b1 (col 1) whose parent is base (col 0)
+        // far below. A chain of mainline commits sits between them at col 0.
+        // The edge b1→base must route around the mainline nodes, not pass
+        // through them.
+        //
+        // Row 0: m5   (col 0)   ← newest mainline
+        // Row 1: b1   (col 1) ──┐
+        // Row 2: m4   (col 0)   │
+        // Row 3: m3   (col 0)   │
+        // Row 4: m2   (col 0)   │
+        // Row 5: m1   (col 0)   │
+        // Row 6: base (col 0) ──┘
+        let commits = vec![
+            make_commit(1, vec![], "base"),
+            make_commit(2, vec![1], "m1"),
+            make_commit(3, vec![2], "m2"),
+            make_commit(4, vec![3], "m3"),
+            make_commit(5, vec![4], "m4"),
+            make_commit(6, vec![1], "b1"), // branch: parent is base
+            make_commit(7, vec![5], "m5"), // newest mainline
+        ];
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let b1_row = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(6))
+            .unwrap()
+            .row;
+        let base_row = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(1))
+            .unwrap()
+            .row;
+        let branch_edge = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == b1_row && e.to_row == base_row)
+            .unwrap_or_else(|| panic!("branch edge b1→base not found"));
+
+        assert!(
+            !branch_edge.waypoints.is_empty(),
+            "branch edge b1→base must have waypoints to route around mainline. \
+             Edge: from=({},{}) to=({},{})",
+            branch_edge.from_row,
+            branch_edge.from_col,
+            branch_edge.to_row,
+            branch_edge.to_col,
+        );
 
         let errors = layout.verify();
         assert!(
@@ -4416,7 +4566,7 @@ mod tests {
                     .take(3)
                     .cloned()
                     .collect::<Vec<_>>()
-                    .join("; ")
+                    .join("\n")
             );
         }
     }

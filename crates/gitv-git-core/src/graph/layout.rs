@@ -296,7 +296,45 @@ impl GraphLayout {
                     let (r1, c1) = window[0];
                     let (r2, c2) = window[1];
                     if c1 != c2 {
-                        continue; // Cross-column segment, skip
+                        // Cross-column: model the chamfer's implicit vertical
+                        // run at the destination column. Branch edges always
+                        // render horizontal-first (vertical at to_col). Merge
+                        // edges with dc > 1 do the same. Direct diagonals
+                        // (Merge dc <= 1) have no long vertical run.
+                        if edge.waypoints.is_empty() && edge.arrow_gap.is_none() {
+                            let dc = c1.abs_diff(c2);
+                            let has_vertical_run = edge.edge_type == EdgeType::Branch
+                                || (edge.edge_type == EdgeType::Merge && dc > 1);
+                            if has_vertical_run {
+                                let vert_col = c2;
+                                let (min_row, max_row) = (r1.min(r2), r1.max(r2));
+                                for node in &self.nodes {
+                                    if errors.len() >= MAX_ERRORS {
+                                        break;
+                                    }
+                                    if node.column != vert_col {
+                                        continue;
+                                    }
+                                    if node.row == edge.from_row || node.row == edge.to_row {
+                                        continue;
+                                    }
+                                    if node.row > min_row && node.row < max_row {
+                                        errors.push(format!(
+                                            "edge ({},{})\u{2192}({},{}) chamfer vertical run at col {} passes through node {} at ({},{})",
+                                            edge.from_row,
+                                            edge.from_col,
+                                            edge.to_row,
+                                            edge.to_col,
+                                            vert_col,
+                                            node.oid.short_hex(),
+                                            node.row,
+                                            node.column,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        continue;
                     }
                     let (min_row, max_row) = (r1.min(r2), r1.max(r2));
                     for node in &self.nodes {
