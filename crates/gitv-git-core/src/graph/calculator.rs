@@ -588,23 +588,30 @@ impl GraphCalculator {
             }
         }
 
-        // For each hidden merge with ≥2 parents, resolve the second parent
-        // through the hidden set. This will be added to the merge's child
-        // so the branch tip connects to the mainline above the merge point.
-        let merge_second_parents: HashMap<Oid, Oid> = self
+        // For each hidden merge with ≥2 parents, resolve all additional
+        // parents (indices 1..) through the hidden set. These are added to
+        // the merge's child so branch tips connect to the mainline.
+        let merge_extra_parents: HashMap<Oid, Vec<Oid>> = self
             .commits
             .iter()
             .filter(|c| hidden_merges.contains(&c.oid))
             .filter_map(|c| {
-                if c.parent_oids.len() < 2 {
-                    return None;
+                let extras: Vec<Oid> = c.parent_oids[1..]
+                    .iter()
+                    .filter_map(|p| {
+                        let resolved = Self::resolve_to_non_merge(p, &hidden_merges, &resolve);
+                        if hidden_merges.contains(&resolved) {
+                            None
+                        } else {
+                            Some(resolved)
+                        }
+                    })
+                    .collect();
+                if extras.is_empty() {
+                    None
+                } else {
+                    Some((c.oid, extras))
                 }
-                let sp = c.parent_oids[1];
-                let resolved_sp = Self::resolve_to_non_merge(&sp, &hidden_merges, &resolve);
-                if hidden_merges.contains(&resolved_sp) {
-                    return None;
-                }
-                Some((c.oid, resolved_sp))
             })
             .collect();
 
@@ -617,17 +624,26 @@ impl GraphCalculator {
             .collect();
 
         // Rewire parents: resolve hidden merges to their first non-hidden
-        // ancestor, and add the second parent so the branch stays connected.
+        // ancestor, and add extra parents so the branch stays connected.
+        // Dedup to avoid duplicate parents when multiple merge parents
+        // resolve to the same ancestor.
         for c in &mut result {
             let original_parents = c.parent_oids.clone();
             let mut new_parents = Vec::new();
+            let mut seen = HashSet::new();
             for p in &original_parents {
                 if let Some(&replacement) = resolve.get(p) {
-                    new_parents.push(replacement);
-                    if let Some(&sp) = merge_second_parents.get(p) {
-                        new_parents.push(sp);
+                    if seen.insert(replacement) {
+                        new_parents.push(replacement);
                     }
-                } else {
+                    if let Some(extras) = merge_extra_parents.get(p) {
+                        for &ep in extras {
+                            if seen.insert(ep) {
+                                new_parents.push(ep);
+                            }
+                        }
+                    }
+                } else if seen.insert(*p) {
                     new_parents.push(*p);
                 }
             }
@@ -2592,6 +2608,196 @@ mod tests {
                 other_oid.is_some_and(|n| n.oid == make_oid(2))
             }),
             "child of merge should be connected to merge's first parent"
+        );
+    }
+
+    fn has_edge(layout: &GraphLayout, from_oid: Oid, to_oid: Oid) -> bool {
+        let from_row = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == from_oid)
+            .map(|n| n.row);
+        let to_row = layout.nodes.iter().find(|n| n.oid == to_oid).map(|n| n.row);
+        match (from_row, to_row) {
+            (Some(fr), Some(tr)) => layout
+                .edges
+                .iter()
+                .any(|e| e.from_row == fr && e.to_row == tr),
+            _ => false,
+        }
+    }
+
+    fn hide_layout(commits: Vec<CommitInfo>) -> GraphLayout {
+        GraphCalculator::new(
+            commits,
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions {
+                hide_merges: true,
+                ..GraphOptions::default()
+            },
+        )
+        .calculate_layout()
+    }
+
+    #[test]
+    fn hide_merges_octopus_three_parents() {
+        let p1 = make_commit(1, vec![], "p1");
+        let p2 = make_commit(2, vec![], "p2");
+        let p3 = make_commit(3, vec![], "p3");
+        let merge = make_commit(4, vec![1, 2, 3], "octopus");
+        let child = make_commit(5, vec![4], "child");
+        let layout = hide_layout(vec![child, merge, p3, p2, p1]);
+
+        assert_eq!(layout.nodes.len(), 4, "merge removed, 4 nodes remain");
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(1)),
+            "child connects to p1"
+        );
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(2)),
+            "child connects to p2"
+        );
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(3)),
+            "child connects to p3"
+        );
+    }
+
+    #[test]
+    fn hide_merges_multiple_interleaved_branches() {
+        let root = make_commit(1, vec![], "root");
+        let b1 = make_commit(2, vec![1], "b1");
+        let b2 = make_commit(3, vec![1], "b2");
+        let m2 = make_commit(4, vec![1, 3], "m2");
+        let m1 = make_commit(5, vec![4, 2], "m1");
+        let head = make_commit(6, vec![5], "head");
+        let layout = hide_layout(vec![head, m1, m2, b1, b2, root]);
+
+        assert_eq!(layout.nodes.len(), 4, "two merges removed");
+        assert!(
+            has_edge(&layout, make_oid(6), make_oid(1)),
+            "head connects to root via resolved first-parent chain"
+        );
+        assert!(
+            has_edge(&layout, make_oid(6), make_oid(2)),
+            "head connects to b1 via m1's second parent"
+        );
+    }
+
+    #[test]
+    fn hide_merges_shared_ancestor() {
+        let shared = make_commit(1, vec![], "shared");
+        let other = make_commit(2, vec![], "other");
+        let m1 = make_commit(3, vec![1, 2], "m1");
+        let m2 = make_commit(4, vec![1, 2], "m2");
+        let c1 = make_commit(5, vec![3], "c1");
+        let c2 = make_commit(6, vec![4], "c2");
+        let layout = hide_layout(vec![c1, c2, m2, m1, other, shared]);
+
+        assert_eq!(layout.nodes.len(), 4, "both merges removed");
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(1)),
+            "c1 connects to shared"
+        );
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(2)),
+            "c1 connects to other"
+        );
+        assert!(
+            has_edge(&layout, make_oid(6), make_oid(1)),
+            "c2 connects to shared"
+        );
+        assert!(
+            has_edge(&layout, make_oid(6), make_oid(2)),
+            "c2 connects to other"
+        );
+    }
+
+    #[test]
+    fn hide_merges_feature_branch_with_descendants() {
+        let root = make_commit(1, vec![], "root");
+        let main = make_commit(2, vec![1], "main");
+        let feature = make_commit(3, vec![1], "feature");
+        let fchild = make_commit(4, vec![3], "feature child");
+        let merge = make_commit(5, vec![2, 3], "merge");
+        let child = make_commit(6, vec![5], "child");
+        let layout = hide_layout(vec![child, merge, fchild, feature, main, root]);
+
+        assert_eq!(layout.nodes.len(), 5, "merge removed");
+        assert!(
+            has_edge(&layout, make_oid(6), make_oid(2)),
+            "child connects to main (resolved first parent)"
+        );
+        assert!(
+            has_edge(&layout, make_oid(6), make_oid(3)),
+            "child connects to feature (merge's second parent)"
+        );
+        assert!(
+            has_edge(&layout, make_oid(4), make_oid(3)),
+            "feature child still connects to feature"
+        );
+    }
+
+    #[test]
+    fn hide_merges_dedup_same_resolved_parent() {
+        let root = make_commit(1, vec![], "root");
+        let b1 = make_commit(2, vec![1], "b1");
+        let b2 = make_commit(3, vec![1], "b2");
+        let m1 = make_commit(4, vec![1, 2], "m1");
+        let m2 = make_commit(5, vec![1, 3], "m2");
+        let child = make_commit(6, vec![4, 5], "child");
+        let grandchild = make_commit(7, vec![6], "grandchild");
+        let layout = hide_layout(vec![grandchild, child, m2, m1, b2, b1, root]);
+
+        let grandchild_node = layout.nodes.iter().find(|n| n.oid == make_oid(7)).unwrap();
+        let edges_from_grandchild: Vec<_> = layout
+            .edges
+            .iter()
+            .filter(|e| e.from_row == grandchild_node.row)
+            .collect();
+        let edges_to_root: Vec<_> = edges_from_grandchild
+            .iter()
+            .filter(|e| {
+                layout
+                    .nodes
+                    .iter()
+                    .find(|n| n.row == e.to_row)
+                    .is_some_and(|n| n.oid == make_oid(1))
+            })
+            .collect();
+        assert_eq!(
+            edges_to_root.len(),
+            1,
+            "grandchild has exactly 1 edge to root (deduped), not duplicates"
+        );
+    }
+
+    #[test]
+    fn hide_merges_hidden_merge_below_branch_point() {
+        let root = make_commit(1, vec![], "root");
+        let b1 = make_commit(2, vec![1], "b1");
+        let b2 = make_commit(3, vec![1], "b2");
+        let inner = make_commit(4, vec![1, 2], "inner");
+        let bp = make_commit(5, vec![4, 3], "branch point");
+        let c1 = make_commit(6, vec![5], "c1");
+        let c2 = make_commit(7, vec![5], "c2");
+        let layout = hide_layout(vec![c1, c2, bp, inner, b2, b1, root]);
+
+        let bp_node = layout.nodes.iter().find(|n| n.oid == make_oid(5));
+        assert!(bp_node.is_some(), "branch-point merge stays visible");
+        assert_eq!(layout.nodes.len(), 6, "inner merge removed");
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(1)),
+            "bp connects to root (inner's resolved first parent)"
+        );
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(2)),
+            "bp connects to b1 (inner's second parent, pulled up)"
+        );
+        assert!(
+            has_edge(&layout, make_oid(5), make_oid(3)),
+            "bp connects to b2 (its own second parent)"
         );
     }
 
