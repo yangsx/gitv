@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { getMemoryUsage } from '$lib/bindings/commands';
 
 export interface IpcTiming {
@@ -59,6 +59,9 @@ export const logPath = writable('');
 const MAX_TIMINGS = 100;
 
 export function recordIpcTiming(command: string, durationMs: number) {
+	// Skip store update when overlay is hidden to avoid unnecessary reactivity
+	const state = get(debug);
+	if (!state.visible) return;
 	debug.update((d) => {
 		const timings = [...d.ipcTimings, { command, durationMs, timestamp: Date.now() }];
 		return { ...d, ipcTimings: timings.slice(-MAX_TIMINGS) };
@@ -71,6 +74,8 @@ export function updateDebugGraphStats(
 	stashMarkers: number,
 	columns: number
 ) {
+	const state = get(debug);
+	if (!state.visible) return;
 	debug.update((d) => ({
 		...d,
 		graphNodes: nodes,
@@ -81,6 +86,8 @@ export function updateDebugGraphStats(
 }
 
 export function updateGraphDrawTime(ms: number) {
+	const state = get(debug);
+	if (!state.visible) return;
 	debug.update((d) => ({ ...d, graphDrawTimeMs: ms }));
 }
 
@@ -96,6 +103,13 @@ let fpsFrames = 0;
 let fpsLastTime = performance.now();
 
 export function tickFps() {
+	const state = get(debug);
+	if (!state.visible) {
+		// Reset counters when hidden so FPS is accurate when shown
+		fpsFrames = 0;
+		fpsLastTime = performance.now();
+		return;
+	}
 	fpsFrames++;
 	const now = performance.now();
 	if (now - fpsLastTime >= 1000) {
