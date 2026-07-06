@@ -65,7 +65,7 @@ pub async fn get_commit_file_counts(
 
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_diff"))]
-pub fn get_diff(
+pub async fn get_diff(
     state: State<'_, AppState>,
     path: String,
     from: Option<String>,
@@ -80,14 +80,18 @@ pub fn get_diff(
         .map_err(|e| e.to_string())?;
     let to_oid = Oid::from_hex(&to).map_err(|e| e.to_string())?;
     let ws = parse_whitespace(whitespace.as_deref());
-    repo.diff_summary(from_oid, to_oid, ws)
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.diff_summary(from_oid, to_oid, ws)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 #[instrument(skip(state, path, file_path), fields(command = "get_file_diff"))]
-pub fn get_file_diff(
+pub async fn get_file_diff(
     state: State<'_, AppState>,
     path: String,
     from: Option<String>,
@@ -111,20 +115,24 @@ pub fn get_file_diff(
     } else {
         Some(gitv_git_core::DIFF_LINE_LIMIT)
     };
-    repo.file_diff_limited(
-        from_oid,
-        to_oid,
-        std::path::Path::new(&file_path),
-        mode,
-        ws,
-        line_limit,
-    )
-    .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.file_diff_limited(
+            from_oid,
+            to_oid,
+            std::path::Path::new(&file_path),
+            mode,
+            ws,
+            line_limit,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_file_tree"))]
-pub fn get_file_tree(
+pub async fn get_file_tree(
     state: State<'_, AppState>,
     path: String,
     at_commit: Option<String>,
@@ -135,7 +143,9 @@ pub fn get_file_tree(
         .map(|s| Oid::from_hex(&s))
         .transpose()
         .map_err(|e| e.to_string())?;
-    repo.file_tree(oid).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || repo.file_tree(oid).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -144,7 +154,7 @@ pub fn get_file_tree(
     skip(state, path, file_path),
     fields(command = "get_combined_file_diff")
 )]
-pub fn get_combined_file_diff(
+pub async fn get_combined_file_diff(
     state: State<'_, AppState>,
     path: String,
     oid: String,
@@ -163,16 +173,18 @@ pub fn get_combined_file_diff(
     } else {
         Some(gitv_git_core::DIFF_LINE_LIMIT)
     };
-    let result = repo
-        .combined_file_diff(
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.combined_file_diff(
             commit_oid,
             std::path::Path::new(&file_path),
             mode,
             ws,
             line_limit,
         )
-        .map_err(|e| e.to_string())?;
-    Ok(result)
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn parse_diff_mode(s: Option<&str>) -> DiffMode {
@@ -185,7 +197,7 @@ fn parse_diff_mode(s: Option<&str>) -> DiffMode {
 
 #[tauri::command]
 #[instrument(skip(state, path, file_path), fields(command = "get_file_history"))]
-pub fn get_file_history(
+pub async fn get_file_history(
     state: State<'_, AppState>,
     path: String,
     file_path: String,
@@ -193,13 +205,17 @@ pub fn get_file_history(
 ) -> Result<Vec<gitv_git_core::models::FileHistoryEntry>, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
-    repo.file_history(std::path::Path::new(&file_path), max_count)
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.file_history(std::path::Path::new(&file_path), max_count)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 #[instrument(skip(state, path, file_path), fields(command = "get_blob_content"))]
-pub fn get_blob_content(
+pub async fn get_blob_content(
     state: State<'_, AppState>,
     path: String,
     at_commit: String,
@@ -207,17 +223,21 @@ pub fn get_blob_content(
 ) -> Result<String, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path)?;
-    let file_path = std::path::Path::new(&file_path);
+    let file_path = std::path::Path::new(&file_path).to_path_buf();
 
-    match at_commit.as_str() {
-        "__staged__" => repo.blob_content_staged(file_path),
-        "__unstaged__" => repo.blob_content_worktree(file_path),
-        hex => {
-            let oid = Oid::from_hex(hex).map_err(|e| e.to_string())?;
-            repo.blob_content(oid, file_path)
+    tauri::async_runtime::spawn_blocking(move || {
+        match at_commit.as_str() {
+            "__staged__" => repo.blob_content_staged(&file_path),
+            "__unstaged__" => repo.blob_content_worktree(&file_path),
+            hex => {
+                let oid = Oid::from_hex(hex).map_err(|e| e.to_string())?;
+                repo.blob_content(oid, &file_path)
+            }
         }
-    }
-    .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn parse_whitespace(s: Option<&str>) -> WhitespaceMode {
@@ -246,7 +266,7 @@ pub async fn get_working_changes(
 
 #[tauri::command]
 #[instrument(skip(state, path), fields(command = "get_working_changes_diffs"))]
-pub fn get_working_changes_diffs(
+pub async fn get_working_changes_diffs(
     state: State<'_, AppState>,
     path: String,
     staged: bool,
@@ -257,8 +277,12 @@ pub fn get_working_changes_diffs(
     let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
-    repo.working_changes_file_diffs(staged, mode, ws)
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.working_changes_file_diffs(staged, mode, ws)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -266,7 +290,7 @@ pub fn get_working_changes_diffs(
     skip(state, path),
     fields(command = "get_working_changes_combined_diff")
 )]
-pub fn get_working_changes_combined_diff(
+pub async fn get_working_changes_combined_diff(
     state: State<'_, AppState>,
     path: String,
     diff_mode: Option<String>,
@@ -276,6 +300,10 @@ pub fn get_working_changes_combined_diff(
     let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
-    repo.working_changes_combined_diff(mode, ws)
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        repo.working_changes_combined_diff(mode, ws)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
