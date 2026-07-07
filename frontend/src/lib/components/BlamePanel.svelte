@@ -150,7 +150,9 @@
 									{/if}
 								</td>
 								<td class="px-2 py-0.5">
-									<pre class="whitespace-pre-wrap font-mono text-gray-300">{line.content}</pre>
+									<pre
+										class="whitespace-pre-wrap text-gray-300"
+										style="font-family: monospace !important">{line.content}</pre>
 								</td>
 							</tr>
 						{/each}

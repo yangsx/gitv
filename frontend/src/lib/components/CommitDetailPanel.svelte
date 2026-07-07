@@ -553,7 +553,9 @@
 					{$t('commit_detail.loading_content')}
 				</div>
 			{:else if activeTab === 'tree' && blobContent !== null}
-				<pre class="p-4 font-mono text-xs text-gray-300 whitespace-pre-wrap">{blobContent}</pre>
+				<pre
+					class="p-4 text-xs text-gray-300 whitespace-pre-wrap"
+					style="font-family: monospace !important">{blobContent}</pre>
 			{:else if activeTab === 'tree' && blobPath && blobContent === null}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					{$t('commit_detail.binary_not_displayed')}
