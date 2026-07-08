@@ -40,7 +40,7 @@ benches/              # (in crates/gitv-git-core/benches/)
 - Edge interaction: clickable graph edges with cubic bezier hit-testing, hover highlighting (thicker same-curve + endpoint rings), and click-to-navigate (commit ef495f9)
 - Edge styles (Solid/Dashed/Dotted) provide non-color branch indicators for colorblind accessibility, rendered via Canvas 2D draw calls
 - Column layout uses a gitk-faithful algorithm (ordertokens + thread tracing via `trace_thread` + `propagate_branch_token`); this produces better edge routing than the old `compact_columns` approach but costs ~2× CPU on synthetic benchmarks (branchy/10k ≈ 36ms vs 17ms pre-rewrite) — still ~1.8% of the 2s layout budget, so the absolute perf targets are met with large margin
-- CLI accepts repo path arguments (`gitv /repo1 /repo2`) and `--log-level` flag (Req 42, Req 55 revision ranges not yet implemented)
+- CLI accepts repo path arguments (`gitv /repo1 /repo2`), `--log-level`, and headless analysis flags (`--self-test`, `--self-test-json`, `--dump-graph`, `--dump-graph-json` with `--max-commits`, `--hide-merges`, `--orientation`) (Req 42, Req 55 revision ranges not yet implemented)
 - CLI argument parsing via `clap`
 - Panel widths/heights are clamped on restore to min/max bounds — prevents unusable layouts from tiling WMs (Req 59)
 - Structured tracing via `tracing` crate with rolling file logs; debug overlay with FPS/memory/IPC timing (Reqs 68-69)

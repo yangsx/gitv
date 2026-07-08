@@ -3,6 +3,7 @@ pub mod commits;
 pub mod debug;
 pub mod diagnostics;
 pub mod diff;
+pub mod dump;
 pub mod graph;
 pub mod preferences;
 pub mod reflog_stash;

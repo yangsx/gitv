@@ -59,14 +59,32 @@ fn init_tracing(cli_log_level: Option<&str>) {
 
 fn run_cli_self_test(cli: &cli::Cli) -> bool {
     if let Some(ref path) = cli.self_test {
-        run_one_self_test(path, false, cli.self_test_max_commits);
+        run_one_self_test(path, false, cli.max_commits);
         true
     } else if let Some(ref path) = cli.self_test_json {
-        run_one_self_test(path, true, cli.self_test_max_commits);
+        run_one_self_test(path, true, cli.max_commits);
         true
     } else {
         false
     }
+}
+
+/// Build GraphOptions for dump mode from CLI flags.
+fn build_dump_options(cli: &cli::Cli) -> gitv_git_core::graph::GraphOptions {
+    let mut opts = gitv_git_core::graph::GraphOptions::default();
+    if cli.hide_merges {
+        opts.hide_merges = true;
+    }
+    if let Some(ref orient_str) = cli.orientation {
+        match cli::parse_orientation(orient_str) {
+            Ok(o) => opts.orientation = o,
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    opts
 }
 
 fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usize>) {
@@ -111,8 +129,12 @@ fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usi
                     output.column_shift_histogram
                 );
                 eprintln!("  row thread histogram: {}", output.row_thread_histogram);
-                let total_violations: usize =
-                    output.property_checks.iter().map(|c| c.violation_count).sum();
+                // Property check summary
+                let total_violations: usize = output
+                    .property_checks
+                    .iter()
+                    .map(|c| c.violation_count)
+                    .sum();
                 let hide_violations: usize = output
                     .hide_merges_property_checks
                     .iter()
@@ -123,7 +145,11 @@ fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usi
                     total_violations, hide_violations,
                 );
                 for pc in &output.property_checks {
-                    let status = if pc.violation_count == 0 { "OK" } else { "FAIL" };
+                    let status = if pc.violation_count == 0 {
+                        "OK"
+                    } else {
+                        "FAIL"
+                    };
                     eprintln!(
                         "    {status:<4} {} ({} violations)",
                         pc.name, pc.violation_count
@@ -145,6 +171,16 @@ pub fn run() {
 
     if run_cli_self_test(&cli) {
         return;
+    }
+
+    if let Some(ref path) = cli.dump_graph_json {
+        let options = build_dump_options(&cli);
+        commands::dump::run_dump_graph(path, true, cli.max_commits, options);
+    }
+
+    if let Some(ref path) = cli.dump_graph {
+        let options = build_dump_options(&cli);
+        commands::dump::run_dump_graph(path, false, cli.max_commits, options);
     }
 
     init_tracing(cli.log_level.as_deref());

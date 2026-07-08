@@ -85,6 +85,78 @@ gitv /repo1 /repo2
 gitv /path/to/repo --log-level=debug
 ```
 
+`gitv --help`:
+
+```
+Modern Git repository visualizer
+
+Usage: gitv [OPTIONS] [REPO_PATHS]...
+
+Arguments:
+  [REPO_PATHS]...
+
+Options:
+      --log-level <LOG_LEVEL>
+      --debug-overlay
+      --self-test <PATH>        Run headless graph self-test (human-readable summary to stderr)
+      --self-test-json <PATH>   Run headless graph self-test (JSON output to stdout)
+      --dump-graph <PATH>       Dump computed graph layout as text (nodes, edges, expanded paths)
+      --dump-graph-json <PATH>  Dump computed graph layout as JSON (full layout + commits + diagnostics)
+      --max-commits <N>         Maximum commits to process in self-test/dump mode (default: no limit)
+      --hide-merges             Hide merge commits in dump output (applies to --dump-graph / --dump-graph-json only)
+      --orientation <DIR>       Graph orientation in dump output: top-to-bottom or bottom-to-top (applies to --dump-graph / --dump-graph-json only)
+  -h, --help                    Print help
+  -V, --version                 Print version
+```
+
+### Headless Graph Analysis
+
+gitv includes CLI commands for algorithm validation and debugging —
+no GUI window is opened.
+
+**Self-test** — validates graph layout integrity on a real repo:
+
+```bash
+gitv --self-test /path/to/repo
+gitv --self-test-json /path/to/repo
+gitv --self-test /path/to/repo --max-commits 1000
+```
+
+Sample output:
+
+```
+self-test: 45.5ms (compute 5.8ms), 225 nodes, 226 edges, 2 cols, 0 errors
+  diagnostics: waste=0, waypoints=4, arrow_gaps=0, max_threads=2
+  topology: 2 merges, longest_chain=216, fork_points=3
+  hide_merges: 224 nodes, 225 edges, 0 errors
+```
+
+Exit code is 0 on success, 1 if layout errors are found. JSON variant
+(`--self-test-json`) outputs to stdout for CI/automation.
+
+**Dump graph** — exports the full computed layout for external analysis:
+
+```bash
+gitv --dump-graph /path/to/repo
+gitv --dump-graph-json /path/to/repo | python3 -m json.tool | head -50
+
+# With graph options
+gitv --dump-graph /path/to/repo --hide-merges
+gitv --dump-graph /path/to/repo --orientation bottom-to-top
+```
+
+Text output shows nodes (row, col, oid, message), edges (type, style,
+waypoints, expanded path cells), diagnostics, and property checks.
+
+JSON output includes:
+
+- `nodes` — row, column, oid, message, author, parents, refs
+- `edges` — from/to positions, type, style, waypoints, `arrow_gap`,
+  `expanded_path` (every `(row, col)` cell traversed per segment)
+- `diagnostics` — column waste, waypoints, arrow gaps, max threads
+- `property_checks` — 7 checks with violation counts and samples
+- `errors` — layout verification errors (empty if valid)
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |

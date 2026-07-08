@@ -827,26 +827,64 @@ fn get_memory_usage() -> Option<u64>;
 
 ```rust
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "gitv", about = "Modern Git visualization tool")]
-struct Cli {
+#[command(
+    name = "gitv",
+    about = "Modern Git repository visualizer",
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GITV_COMMIT_SHA"), ")")
+)]
+pub struct Cli {
     /// Repository path(s) to open
-    repo_paths: Vec<PathBuf>,
+    pub repo_paths: Vec<PathBuf>,
 
     /// Set log level (e.g., debug, trace)
     #[arg(long = "log-level")]
-    log_level: Option<String>,
-}
+    pub log_level: Option<String>,
 
-// Resolution logic:
-// 1. If no args: show welcome screen
-// 2. If repo paths given: open those repos
-// 3. Future: --branches, --author, revision ranges (Req 55 not yet implemented)
-//
-// Note: --debug-overlay flag was removed; the debug overlay is now always
-// available in all builds via F12 / Ctrl+Shift+D (Req 69).
+    /// Force-show debug overlay on launch
+    #[arg(long = "debug-overlay")]
+    pub debug_overlay: bool,
+
+    /// Run headless graph self-test (human-readable summary to stderr)
+    #[arg(long = "self-test", value_name = "PATH")]
+    pub self_test: Option<PathBuf>,
+
+    /// Run headless graph self-test (JSON output to stdout)
+    #[arg(long = "self-test-json", value_name = "PATH")]
+    pub self_test_json: Option<PathBuf>,
+
+    /// Dump computed graph layout as text (nodes, edges, expanded paths)
+    #[arg(long = "dump-graph", value_name = "PATH")]
+    pub dump_graph: Option<PathBuf>,
+
+    /// Dump computed graph layout as JSON (full layout + commits + diagnostics)
+    #[arg(long = "dump-graph-json", value_name = "PATH")]
+    pub dump_graph_json: Option<PathBuf>,
+
+    /// Maximum commits to process in self-test/dump mode (default: no limit)
+    #[arg(long = "max-commits", value_name = "N")]
+    pub max_commits: Option<usize>,
+
+    /// Hide merge commits in dump output
+    #[arg(long = "hide-merges")]
+    pub hide_merges: bool,
+
+    /// Graph orientation in dump output: top-to-bottom or bottom-to-top
+    #[arg(long = "orientation", value_name = "DIR")]
+    pub orientation: Option<String>,
+}
 ```
+
+Resolution logic:
+1. If no args: show welcome screen
+2. If `--self-test` or `--self-test-json`: run headless graph self-test on the given repo path, print results, exit (no GUI)
+3. If `--dump-graph` or `--dump-graph-json`: compute graph layout, dump to text (stderr) or JSON (stdout), exit (no GUI). `--hide-merges` and `--orientation` adjust the computed layout.
+4. If repo paths given: open those repos in GUI windows
+5. `--max-commits` limits history depth in self-test/dump modes only
+6. `--log-level` and `--debug-overlay` apply to GUI mode
+7. Future: `--branches`, `--author`, revision ranges (Req 55 not yet implemented)
 
 ### Frontend Components (Svelte)
 

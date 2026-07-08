@@ -64,6 +64,77 @@ gitv /repo1 /repo2
 gitv /path/to/repo --log-level=debug
 ```
 
+`gitv --help`：
+
+```
+Modern Git repository visualizer
+
+Usage: gitv [OPTIONS] [REPO_PATHS]...
+
+Arguments:
+  [REPO_PATHS]...
+
+Options:
+      --log-level <LOG_LEVEL>
+      --debug-overlay
+      --self-test <PATH>        以人类可读格式运行无头图自检（输出到 stderr）
+      --self-test-json <PATH>   以 JSON 格式运行无头图自检（输出到 stdout）
+      --dump-graph <PATH>       以文本格式导出计算后的图布局（节点、边、展开路径）
+      --dump-graph-json <PATH>  以 JSON 格式导出完整图布局（含提交信息和诊断数据）
+      --max-commits <N>         自检/导出模式下处理的最大提交数（默认无限制）
+      --hide-merges             在导出输出中隐藏合并提交（仅适用于 --dump-graph / --dump-graph-json）
+      --orientation <DIR>       导出输出中的图方向：top-to-bottom 或 bottom-to-top（仅适用于 --dump-graph / --dump-graph-json）
+  -h, --help                    打印帮助
+  -V, --version                 打印版本
+```
+
+### 无头图分析
+
+gitv 包含用于算法验证和调试的 CLI 命令——不会打开 GUI 窗口。
+
+**自检** — 验证图布局的完整性：
+
+```bash
+gitv --self-test /path/to/repo
+gitv --self-test-json /path/to/repo
+gitv --self-test /path/to/repo --max-commits 1000
+```
+
+输出示例：
+
+```
+self-test: 45.5ms (compute 5.8ms), 225 nodes, 226 edges, 2 cols, 0 errors
+  diagnostics: waste=0, waypoints=4, arrow_gaps=0, max_threads=2
+  topology: 2 merges, longest_chain=216, fork_points=3
+  hide_merges: 224 nodes, 225 edges, 0 errors
+```
+
+成功时退出码为 0，发现布局错误时为 1。JSON 变体
+（`--self-test-json`）输出到 stdout，适合 CI/自动化集成。
+
+**导出图** — 导出完整计算布局用于外部分析：
+
+```bash
+gitv --dump-graph /path/to/repo
+gitv --dump-graph-json /path/to/repo | python3 -m json.tool | head -50
+
+# 使用图选项
+gitv --dump-graph /path/to/repo --hide-merges
+gitv --dump-graph /path/to/repo --orientation bottom-to-top
+```
+
+文本输出显示节点（行、列、oid、消息）、边（类型、样式、
+航点、展开路径单元格）、诊断和属性检查。
+
+JSON 输出包含：
+
+- `nodes` — 行、列、oid、消息、作者、父提交、引用
+- `edges` — 起止位置、类型、样式、航点、`arrow_gap`、
+  `expanded_path`（每段路径覆盖的所有 `(row, col)` 单元格）
+- `diagnostics` — 列浪费、航点数、箭头间隙数、最大线程数
+- `property_checks` — 7 项检查，含违规数和示例
+- `errors` — 布局验证错误（有效时为空）
+
 ## 键盘快捷键
 
 | 快捷键 | 操作 |
