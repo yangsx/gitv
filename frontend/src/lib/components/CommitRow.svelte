@@ -23,6 +23,9 @@
 		id?: string;
 		rowHeight?: number;
 		graphOffset?: number;
+		rowIndex?: number;
+		rowNumberColumnWidth?: number;
+		hashColumnWidth?: number;
 	}
 
 	let {
@@ -36,7 +39,10 @@
 		oncontextmenu,
 		id,
 		rowHeight = 28,
-		graphOffset = 0
+		graphOffset = 0,
+		rowIndex,
+		rowNumberColumnWidth = 0,
+		hashColumnWidth = HASH_COLUMN_WIDTH
 	}: Props = $props();
 
 	function escapeHtml(s: string): string {
@@ -124,10 +130,27 @@
 		onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 	oncontextmenu={(e: MouseEvent) => oncontextmenu?.(e, commit.oid)}
 >
-	<!-- Sticky hash column (frozen left) -->
+	<!-- Sticky row-number column (frozen left, hover-reveal) -->
+	{#if rowNumberColumnWidth > 0}
+		<span
+			class="sticky left-0 z-10 flex shrink-0 items-center justify-end {rowBgClass} {rowHoverClass}"
+			style="width: {rowNumberColumnWidth}px;"
+		>
+			{#if rowIndex !== undefined}
+				<span
+					class="px-1 font-mono text-xs text-gray-500 opacity-0 transition-opacity duration-100 group-hover:opacity-100"
+					style="font-variant-numeric: tabular-nums;"
+				>
+					{rowIndex}
+				</span>
+			{/if}
+		</span>
+	{/if}
+
+	<!-- Sticky hash column (frozen left, offset by row-number gutter) -->
 	<span
-		class="sticky left-0 z-10 flex shrink-0 items-center {rowBgClass} {rowHoverClass}"
-		style="width: {HASH_COLUMN_WIDTH}px;"
+		class="sticky z-10 flex shrink-0 items-center {rowBgClass} {rowHoverClass}"
+		style="left: {rowNumberColumnWidth}px; width: {hashColumnWidth}px;"
 	>
 		{#if isVirtual}
 			<span

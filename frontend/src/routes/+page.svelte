@@ -1547,6 +1547,7 @@
 								onSelect={(oid: string, ctrlKey: boolean) => onSelectCommit(oid, ctrlKey)}
 								onContextMenu={handleCommitContextMenu}
 								{rowHeight}
+								fontSize={$fontSize}
 								onLoadMore={loadMoreCommits}
 								loadedCommitCount={commits.length}
 							/>

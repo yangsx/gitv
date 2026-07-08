@@ -305,17 +305,23 @@
 						>
 						{#if leftLine && wordDiffSegments(leftLine)}
 							<pre
-								class="whitespace-pre-wrap break-all flex-1 min-w-0">{#each wordDiffSegments(leftLine)! as seg, si (si)}<span
+								class="whitespace-pre-wrap break-all flex-1 min-w-0"
+								style="font-family: monospace !important">{#each wordDiffSegments(leftLine)! as seg, si (si)}<span
 										class={segmentClass(seg.kind)}>{seg.text}</span
 									>{/each}</pre>
 						{:else if leftMatched}
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{@html renderHighlighted(
+							<!-- eslint-disable svelte/no-at-html-tags -->
+							<pre
+								class="whitespace-pre-wrap break-all flex-1 min-w-0"
+								style="font-family: monospace !important">{@html renderHighlighted(
 									lineContent(leftLine!),
 									getMatchedText(leftLine)
 								)}</pre>
+							<!-- eslint-enable svelte/no-at-html-tags -->
 						{:else}
-							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{leftLine
+							<pre
+								class="whitespace-pre-wrap break-all flex-1 min-w-0"
+								style="font-family: monospace !important">{leftLine
 									? lineContent(leftLine)
 									: ''}</pre>
 						{/if}
@@ -343,17 +349,23 @@
 						>
 						{#if rightLine && wordDiffSegments(rightLine)}
 							<pre
-								class="whitespace-pre-wrap break-all flex-1 min-w-0">{#each wordDiffSegments(rightLine)! as seg, si (si)}<span
+								class="whitespace-pre-wrap break-all flex-1 min-w-0"
+								style="font-family: monospace !important">{#each wordDiffSegments(rightLine)! as seg, si (si)}<span
 										class={segmentClass(seg.kind)}>{seg.text}</span
 									>{/each}</pre>
 						{:else if rightMatched}
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{@html renderHighlighted(
+							<!-- eslint-disable svelte/no-at-html-tags -->
+							<pre
+								class="whitespace-pre-wrap break-all flex-1 min-w-0"
+								style="font-family: monospace !important">{@html renderHighlighted(
 									lineContent(rightLine!),
 									getMatchedText(rightLine)
 								)}</pre>
+							<!-- eslint-enable svelte/no-at-html-tags -->
 						{:else}
-							<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{rightLine
+							<pre
+								class="whitespace-pre-wrap break-all flex-1 min-w-0"
+								style="font-family: monospace !important">{rightLine
 									? lineContent(rightLine)
 									: ''}</pre>
 						{/if}
@@ -424,18 +436,24 @@
 						{prefix}
 					</span>
 					{#if matched}
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{@html renderHighlighted(
+						<!-- eslint-disable svelte/no-at-html-tags -->
+						<pre
+							class="whitespace-pre-wrap break-all flex-1 min-w-0"
+							style="font-family: monospace !important">{@html renderHighlighted(
 								lineContent(line),
 								getMatchedText(line)
 							)}</pre>
+						<!-- eslint-enable svelte/no-at-html-tags -->
 					{:else if wordDiffSegments(line)}
 						<pre
-							class="whitespace-pre-wrap break-all flex-1 min-w-0">{#each wordDiffSegments(line)! as seg, si (si)}<span
+							class="whitespace-pre-wrap break-all flex-1 min-w-0"
+							style="font-family: monospace !important">{#each wordDiffSegments(line)! as seg, si (si)}<span
 									class={segmentClass(seg.kind)}>{seg.text}</span
 								>{/each}</pre>
 					{:else}
-						<pre class="whitespace-pre-wrap break-all flex-1 min-w-0">{lineContent(line)}</pre>
+						<pre
+							class="whitespace-pre-wrap break-all flex-1 min-w-0"
+							style="font-family: monospace !important">{lineContent(line)}</pre>
 					{/if}
 				</div>
 			{/each}

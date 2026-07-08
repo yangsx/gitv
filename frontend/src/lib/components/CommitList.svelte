@@ -6,7 +6,6 @@
 	import {
 		GRAPH_PADDING_LEFT,
 		GRAPH_LANE_WIDTH,
-		HASH_COLUMN_WIDTH,
 		AUTHOR_COLUMN_WIDTH,
 		DATE_COLUMN_WIDTH,
 		GRAPH_GAP,
@@ -24,6 +23,7 @@
 		onSelect: (_oid: string, _ctrlKey: boolean) => void;
 		onContextMenu?: (_e: MouseEvent, _oid: string) => void;
 		rowHeight?: number;
+		fontSize?: number;
 		onEdgeNavigate?: (_oid: string) => void;
 		onLoadMore?: () => void;
 		loadedCommitCount?: number;
@@ -38,6 +38,7 @@
 		onSelect,
 		onContextMenu,
 		rowHeight = 28,
+		fontSize = 13,
 		onLoadMore,
 		loadedCommitCount,
 		onEdgeNavigate
@@ -69,6 +70,17 @@
 
 	let effectiveTotalRows = $derived(orderedCommits.length);
 
+	// Monospace char advance at text-xs (0.75rem) per pixel of root font size.
+	const MONO_CHAR_PX = 0.6 * 0.75;
+
+	let hashColumnWidth = $derived(Math.ceil(7 * MONO_CHAR_PX * fontSize + 20));
+
+	let rowNumberColumnWidth = $derived.by(() => {
+		if (effectiveTotalRows <= 0) return 0;
+		const digits = String(Math.max(0, effectiveTotalRows - 1)).length;
+		return Math.max(16, Math.ceil(digits * MONO_CHAR_PX * fontSize + 8));
+	});
+
 	let viewportRows = $derived(Math.ceil(containerHeight / rowHeight) + 2 * BUFFER);
 	let visibleStart = $derived(Math.max(0, Math.floor(scrollTop / rowHeight) - BUFFER));
 	let visibleEnd = $derived(Math.min(effectiveTotalRows, visibleStart + viewportRows));
@@ -95,7 +107,12 @@
 
 	let contentWidth = $derived(
 		Math.max(
-			HASH_COLUMN_WIDTH + maxGraphWidth + MIN_TEXT_WIDTH + AUTHOR_COLUMN_WIDTH + DATE_COLUMN_WIDTH,
+			rowNumberColumnWidth +
+				hashColumnWidth +
+				maxGraphWidth +
+				MIN_TEXT_WIDTH +
+				AUTHOR_COLUMN_WIDTH +
+				DATE_COLUMN_WIDTH,
 			containerWidth
 		)
 	);
@@ -286,7 +303,8 @@
 				{#if layout}
 					<div
 						class="absolute top-0 overflow-hidden"
-						style="left: {HASH_COLUMN_WIDTH}px; width: {maxGraphWidth}px; height: {visibleHeight}px; z-index: 0;"
+						style="left: {rowNumberColumnWidth +
+							hashColumnWidth}px; width: {maxGraphWidth}px; height: {visibleHeight}px; z-index: 0;"
 						aria-hidden="true"
 					>
 						<CommitGraph
@@ -318,12 +336,19 @@
 							oncontextmenu={onContextMenu}
 							{rowHeight}
 							graphOffset={rowGraphOffset(visibleStart + i)}
+							rowIndex={visibleStart + i}
+							{rowNumberColumnWidth}
+							{hashColumnWidth}
 						/>
 					{:else}
 						<div class="flex w-full items-center" style="height: {rowHeight}px;">
 							<span
 								class="sticky left-0 z-10 shrink-0 bg-gray-800"
-								style="width: {HASH_COLUMN_WIDTH}px;"
+								style="width: {rowNumberColumnWidth}px;"
+							></span>
+							<span
+								class="sticky z-10 shrink-0 bg-gray-800"
+								style="left: {rowNumberColumnWidth}px; width: {hashColumnWidth}px;"
 							></span>
 							<div class="shrink-0" style="width: {rowGraphOffset(visibleStart + i)}px;"></div>
 							<span class="flex-1 bg-gray-800"></span>
