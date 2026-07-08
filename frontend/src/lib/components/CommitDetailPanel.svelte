@@ -553,9 +553,17 @@
 					{$t('commit_detail.loading_content')}
 				</div>
 			{:else if activeTab === 'tree' && blobContent !== null}
-				<pre
-					class="p-4 text-xs text-gray-300 whitespace-pre-wrap"
-					style="font-family: monospace !important">{blobContent}</pre>
+				<div class="text-xs py-2" style="font-family: monospace !important">
+					{#each blobContent.split('\n') as line, i (i)}
+						<div class="flex hover:bg-gray-800/50">
+							<span
+								class="select-none text-right text-gray-600 shrink-0 sticky left-0 bg-gray-900"
+								style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;">{i + 1}</span
+							>
+							<span class="text-gray-300 whitespace-pre flex-1 pr-4">{line}</span>
+						</div>
+					{/each}
+				</div>
 			{:else if activeTab === 'tree' && blobPath && blobContent === null}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
 					{$t('commit_detail.binary_not_displayed')}
