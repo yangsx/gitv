@@ -25,6 +25,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { t, translate } from '$lib/stores/locale';
 	import { renderMarkdown } from '$lib/utils/markdown';
+	import { highlightLines, type HighlightToken } from '$lib/utils/highlight';
 	import { createGenerationGuard } from '$lib/utils/async-guard';
 	import { showToast } from '$lib/stores/toast';
 	import {
@@ -86,6 +87,7 @@
 	let blobContent = $state<string | null>(null);
 	let blobLoading = $state(false);
 	let blobPath = $state<string | null>(null);
+	let blobTokens = $state<HighlightToken[][] | null>(null);
 
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let highlightedFileIndex = $state(-1);
@@ -205,6 +207,7 @@
 		blameFilePath = null;
 		blobContent = null;
 		blobPath = null;
+		blobTokens = null;
 		highlightedFileIndex = -1;
 		forceLoad = false;
 		fileDiffs.clear();
@@ -352,6 +355,7 @@
 		activeTab = tab;
 		blobContent = null;
 		blobPath = null;
+		blobTokens = null;
 		if (tab === 'tree') loadFileTree();
 	}
 
@@ -367,8 +371,14 @@
 		if (blobPath === path && blobContent !== null) return;
 		blobPath = path;
 		blobLoading = true;
+		blobTokens = null;
 		try {
 			blobContent = await getBlobContent(repoPath, details.info.oid, path);
+			if (blobContent) {
+				highlightLines(blobContent, path).then((tokens) => {
+					blobTokens = tokens;
+				});
+			}
 		} catch {
 			blobContent = null;
 			showToast(translate('commit_detail.blob_failed'), 'error');
@@ -554,15 +564,32 @@
 				</div>
 			{:else if activeTab === 'tree' && blobContent !== null}
 				<div class="text-xs py-2" style="font-family: monospace !important">
-					{#each blobContent.split('\n') as line, i (i)}
-						<div class="flex hover:bg-gray-800/50">
-							<span
-								class="select-none text-right text-gray-600 shrink-0 sticky left-0 bg-gray-900"
-								style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;">{i + 1}</span
-							>
-							<span class="text-gray-300 whitespace-pre flex-1 pr-4">{line}</span>
-						</div>
-					{/each}
+					{#if blobTokens}
+						{#each blobTokens as lineTokens, i (i)}
+							<div class="flex hover:bg-gray-800/50">
+								<span
+									class="select-none text-right text-gray-600 shrink-0 sticky left-0 bg-gray-900"
+									style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;">{i + 1}</span
+								>
+								<span class="text-gray-300 whitespace-pre flex-1 pr-4"
+									>{#each lineTokens as token (token)}<span
+											style={token.color ? `color: ${token.color}` : undefined}
+											>{token.content}</span
+										>{/each}</span
+								>
+							</div>
+						{/each}
+					{:else}
+						{#each blobContent.split('\n') as line, i (i)}
+							<div class="flex hover:bg-gray-800/50">
+								<span
+									class="select-none text-right text-gray-600 shrink-0 sticky left-0 bg-gray-900"
+									style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;">{i + 1}</span
+								>
+								<span class="text-gray-300 whitespace-pre flex-1 pr-4">{line}</span>
+							</div>
+						{/each}
+					{/if}
 				</div>
 			{:else if activeTab === 'tree' && blobPath && blobContent === null}
 				<div class="flex items-center justify-center py-8 text-sm text-gray-500">
@@ -814,18 +841,16 @@
 		</div>
 
 		{#if blameFilePath}
-			<div class="absolute inset-0 z-20 bg-gray-900">
-				<BlamePanel
-					{repoPath}
-					filePath={blameFilePath}
-					atCommit={details.info.oid}
-					oncommitclick={(oid) => {
-						blameFilePath = null;
-						oncommitselect?.(oid);
-					}}
-					onclose={() => (blameFilePath = null)}
-				/>
-			</div>
+			<BlamePanel
+				{repoPath}
+				filePath={blameFilePath}
+				atCommit={details.info.oid}
+				oncommitclick={(oid) => {
+					blameFilePath = null;
+					oncommitselect?.(oid);
+				}}
+				onclose={() => (blameFilePath = null)}
+			/>
 		{/if}
 	</div>
 
