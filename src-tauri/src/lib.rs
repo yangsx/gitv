@@ -82,13 +82,12 @@ fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usi
                 }
             } else {
                 eprintln!(
-                    "self-test: {:.1}ms (compute {:.1}ms), {} nodes, {} edges, {} cols, {} errors",
+                    "self-test: {:.1}ms (compute {:.1}ms), {} nodes, {} edges, {} cols",
                     output.timing_ms,
                     output.compute_ms,
                     output.node_count,
                     output.edge_count,
                     output.total_columns,
-                    output.error_count,
                 );
                 eprintln!(
                     "  diagnostics: waste={}, waypoints={}, arrow_gaps={}, max_threads={}",
@@ -103,27 +102,33 @@ fn run_one_self_test(path: &std::path::Path, json: bool, max_commits: Option<usi
                     output.topology.longest_chain,
                     output.topology.fork_point_count,
                 );
-                if output.error_count > 0 {
-                    for err in &output.errors {
-                        eprintln!("  error: {err}");
-                    }
-                }
                 eprintln!(
-                    "  hide_merges: {} nodes, {} edges, {} errors",
-                    output.hide_merges_node_count,
-                    output.hide_merges_edge_count,
-                    output.hide_merges_error_count,
+                    "  hide_merges: {} nodes, {} edges",
+                    output.hide_merges_node_count, output.hide_merges_edge_count,
                 );
-                if output.hide_merges_error_count > 0 {
-                    for err in &output.hide_merges_errors {
-                        eprintln!("  hide_merges error: {err}");
-                    }
-                }
                 eprintln!(
                     "  column shift histogram: {}",
                     output.column_shift_histogram
                 );
                 eprintln!("  row thread histogram: {}", output.row_thread_histogram);
+                let total_violations: usize =
+                    output.property_checks.iter().map(|c| c.violation_count).sum();
+                let hide_violations: usize = output
+                    .hide_merges_property_checks
+                    .iter()
+                    .map(|c| c.violation_count)
+                    .sum();
+                eprintln!(
+                    "  property checks: {} violations (hide_merges: {})",
+                    total_violations, hide_violations,
+                );
+                for pc in &output.property_checks {
+                    let status = if pc.violation_count == 0 { "OK" } else { "FAIL" };
+                    eprintln!(
+                        "    {status:<4} {} ({} violations)",
+                        pc.name, pc.violation_count
+                    );
+                }
             }
             std::process::exit(0);
         }

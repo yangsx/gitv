@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::models::*;
@@ -429,4 +430,165 @@ impl GraphLayout {
             row_thread_histogram: row_hist,
         }
     }
+
+    /// Produce a human-readable dump of the entire layout for debugging.
+    ///
+    /// Includes:
+    /// - All nodes sorted by row (oid, row, col, merge/stash flags)
+    /// - All edges with type, waypoints, arrow_gap, and **full expanded path**
+    ///   (every `(row, col)` the edge traverses)
+    /// - Diagnostics summary (column count, waypoint count, etc.)
+    #[must_use]
+    pub fn dump(&self) -> String {
+        let mut out = String::with_capacity(4096);
+
+        // --- Nodes ---
+        out.push_str(&format!(
+            "=== GraphLayout Dump ({} nodes, {} edges, {} cols, {} rows) ===\n",
+            self.nodes.len(),
+            self.edges.len(),
+            self.total_columns,
+            self.total_rows,
+        ));
+
+        out.push_str("\n--- Nodes ---\n");
+        let mut nodes_sorted: Vec<&NodePosition> = self.nodes.iter().collect();
+        nodes_sorted.sort_by_key(|n| n.row);
+        for n in &nodes_sorted {
+            let flags = match (n.is_merge, n.is_stash) {
+                (true, true) => " [merge,stash]",
+                (true, false) => " [merge]",
+                (false, true) => " [stash]",
+                (false, false) => "",
+            };
+            out.push_str(&format!(
+                "  row={:>3} col={} {}{}\n",
+                n.row,
+                n.column,
+                n.oid.short_hex(),
+                flags,
+            ));
+        }
+
+        // --- Edges with expanded paths ---
+        out.push_str("\n--- Edges ---\n");
+        let row_to_oid: HashMap<usize, &str> = self
+            .nodes
+            .iter()
+            .map(|n| (n.row, n.oid.short_hex().to_string().leak() as &str))
+            .collect();
+        for (i, edge) in self.edges.iter().enumerate() {
+            let from_name = row_to_oid.get(&edge.from_row).copied().unwrap_or("?");
+            let to_name = row_to_oid.get(&edge.to_row).copied().unwrap_or("?");
+            out.push_str(&format!(
+                "  [{:>3}] ({},{})\u{2192}({},{}) {}\u{2192}{}  type={:?}  waypoints={:?}  gap={:?}\n",
+                i,
+                edge.from_row,
+                edge.from_col,
+                edge.to_row,
+                edge.to_col,
+                from_name,
+                to_name,
+                edge.edge_type,
+                edge.waypoints,
+                edge.arrow_gap,
+            ));
+
+            // Full expanded path
+            for seg in edge_segments(edge) {
+                let expanded = expand_segment(&seg);
+                let pairs: Vec<String> =
+                    expanded.iter().map(|(r, c)| format!("({r},{c})")).collect();
+                out.push_str(&format!("         path: {}\n", pairs.join(" \u{2192} ")));
+            }
+        }
+
+        // --- Diagnostics ---
+        let diag = self.diagnose();
+        out.push_str("\n--- Diagnostics ---\n");
+        out.push_str(&format!(
+            "  total_columns={}  max_concurrent_threads={}  column_waste={}\n",
+            self.total_columns, diag.max_concurrent_threads, diag.column_waste,
+        ));
+        out.push_str(&format!(
+            "  total_waypoints={}  max_waypoints_per_edge={}  arrow_gaps={}\n",
+            diag.total_waypoints, diag.max_waypoints_per_edge, diag.arrow_gap_count,
+        ));
+        out.push_str(&format!(
+            "  edge_types: straight={} branch={} merge={}\n",
+            diag.edge_type_counts.straight,
+            diag.edge_type_counts.branch,
+            diag.edge_type_counts.merge,
+        ));
+        out.push_str(&format!(
+            "  column_shift_histogram: {:?}\n",
+            diag.column_shift_histogram,
+        ));
+
+        out
+    }
+}
+
+// --- Free functions for edge path analysis ---
+
+/// Split an edge into path segments at ALL row discontinuities.
+///
+/// Each segment contains only contiguous waypoints (no row gaps). This
+/// prevents multi-row diagonal segments that would create false
+/// pass-through violations when intermediate rows are interpolated.
+///
+/// The `arrow_gap` field is still respected for frontend rendering (visual
+/// gap in the edge), but `edge_segments` splits at every row gap to ensure
+/// each segment is contiguous.
+#[must_use]
+pub fn edge_segments(edge: &Edge) -> Vec<Vec<(usize, usize)>> {
+    let mut full_path = vec![(edge.from_row, edge.from_col)];
+    full_path.extend(edge.waypoints.iter().copied());
+    full_path.push((edge.to_row, edge.to_col));
+
+    let mut segments: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut current: Vec<(usize, usize)> = vec![full_path[0]];
+
+    for &pt in &full_path[1..] {
+        let prev = *current.last().unwrap();
+        if pt.0 > prev.0 + 1 {
+            // Row gap — end current segment, start a new one
+            segments.push(std::mem::take(&mut current));
+            current = vec![pt];
+        } else {
+            current.push(pt);
+        }
+    }
+    if !current.is_empty() {
+        segments.push(current);
+    }
+
+    segments
+}
+
+/// Expand a segment's waypoint list to cover every row in its span.
+///
+/// For a vertical run (same column between consecutive waypoints), fills in
+/// all intermediate rows. For diagonal/chamfer segments (column changes),
+/// only the endpoints are included (the diagonal happens in one step).
+///
+/// Example: `[(4,0), (5,2), (7,2), (8,1)]` expands to
+/// `[(4,0), (5,2), (6,2), (7,2), (8,1)]`
+pub fn expand_segment(points: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    if points.is_empty() {
+        return Vec::new();
+    }
+    let mut expanded = vec![points[0]];
+    for w in points.windows(2) {
+        let (r1, c1) = w[0];
+        let (r2, c2) = w[1];
+        if c1 == c2 && r2 > r1 + 1 {
+            // Vertical run: fill intermediate rows
+            for r in (r1 + 1)..r2 {
+                expanded.push((r, c1));
+            }
+        }
+        expanded.push((r2, c2));
+    }
+    expanded
 }

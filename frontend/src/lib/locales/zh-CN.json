@@ -339,8 +339,6 @@
 		"nodes": "节点数",
 		"edges": "边数",
 		"columns": "列数",
-		"errors": "错误数",
-		"showing_first_of": "显示前 {shown} 个（共 {total} 个）",
 		"max_threads": "最大线程数",
 		"col_waste": "列浪费",
 		"waypoints": "路径点",
@@ -353,6 +351,9 @@
 		"longest_chain": "最长链",
 		"fork_points": "分叉点",
 		"branching_factor": "分支因子",
+		"property_checks": "属性检查",
+		"hide_merges_property_checks": "隐藏合并 属性检查",
+		"more_count": "+{count} 更多…",
 		"load_phases": "加载阶段"
 	},
 	"file_tree": {

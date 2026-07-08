@@ -137,7 +137,7 @@
 			<button
 				class="w-full rounded px-2 py-1 text-xs font-medium disabled:opacity-50 {selfTestError
 					? 'bg-red-900 text-red-300'
-					: selfTestResult?.error_count
+					: selfTestResult?.property_checks?.some((c) => c.violation_count > 0)
 						? 'bg-yellow-900 text-yellow-300'
 						: 'bg-blue-900 text-blue-300'} hover:bg-opacity-80"
 				onclick={runTest}
@@ -158,10 +158,6 @@
 					<span>{selfTestResult.edge_count}</span>
 					<span class="text-gray-500">{$t('debug.columns')}</span>
 					<span>{selfTestResult.total_columns}</span>
-					<span class="text-gray-500">{$t('debug.errors')}</span>
-					<span class={selfTestResult.error_count > 0 ? 'text-red-400' : 'text-green-400'}>
-						{selfTestResult.error_count}
-					</span>
 				</div>
 				<div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-gray-800 pt-1">
 					<span class="text-gray-500">{$t('debug.max_threads')}</span>
@@ -201,46 +197,47 @@
 						{selfTestResult.branching_factor_histogram.join(',')}
 					</span>
 				</div>
-				{#if selfTestResult.errors.length > 0}
-					<div class="mt-1 text-red-400 text-xs">
-						{$t('debug.showing_first_of', {
-							shown: selfTestResult.errors.length,
-							total: selfTestResult.error_count
-						})}
-					</div>
-					<div class="mt-1 max-h-24 overflow-y-auto text-xs text-red-400">
-						{#each selfTestResult.errors as err, i (i)}
-							<div class="truncate">{err}</div>
+				{#if selfTestResult.property_checks?.length > 0}
+					<div class="mt-1 border-t border-gray-800 pt-1">
+						<div class="text-xs text-gray-500 mb-0.5">{$t('debug.property_checks')}</div>
+						{#each selfTestResult.property_checks as check, j (j)}
+							<div class="grid grid-cols-2 gap-x-4 text-xs">
+								<span class="text-gray-500">{check.name}</span>
+								<span class={check.violation_count > 0 ? 'text-yellow-400' : 'text-green-400'}>
+									{check.violation_count}
+								</span>
+							</div>
+							{#if check.violation_count > 0 && check.sample.length > 0}
+								<div class="ml-4 max-h-16 overflow-y-auto text-xs text-yellow-400/70">
+									{#each check.sample.slice(0, 5) as msg, j (j)}
+										<div class="truncate">{msg}</div>
+									{/each}
+									{#if check.violation_count > check.sample.length}
+										<div class="italic">
+											{$t('debug.more_count', {
+												count: check.violation_count - check.sample.length
+											})}
+										</div>
+									{/if}
+								</div>
+							{/if}
 						{/each}
 					</div>
 				{/if}
-				{#if selfTestResult.hide_merges_node_count > 0}
-					<div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-gray-800 pt-1">
-						<span class="text-gray-500">Hide merges</span>
-						<span>
-							{selfTestResult.hide_merges_node_count}n /
-							{selfTestResult.hide_merges_edge_count}e
-						</span>
-						<span class="text-gray-500">Hide merges errors</span>
-						<span
-							class={selfTestResult.hide_merges_error_count > 0 ? 'text-red-400' : 'text-green-400'}
-						>
-							{selfTestResult.hide_merges_error_count}
-						</span>
+				{#if selfTestResult.hide_merges_property_checks?.length > 0}
+					<div class="mt-1 border-t border-gray-800 pt-1">
+						<div class="text-xs text-gray-500 mb-0.5">
+							{$t('debug.hide_merges_property_checks')}
+						</div>
+						{#each selfTestResult.hide_merges_property_checks as check, j (j)}
+							<div class="grid grid-cols-2 gap-x-4 text-xs">
+								<span class="text-gray-500">{check.name}</span>
+								<span class={check.violation_count > 0 ? 'text-yellow-400' : 'text-green-400'}>
+									{check.violation_count}
+								</span>
+							</div>
+						{/each}
 					</div>
-					{#if selfTestResult.hide_merges_errors.length > 0}
-						<div class="mt-1 text-red-400 text-xs">
-							{$t('debug.showing_first_of', {
-								shown: selfTestResult.hide_merges_errors.length,
-								total: selfTestResult.hide_merges_error_count
-							})}
-						</div>
-						<div class="mt-1 max-h-24 overflow-y-auto text-xs text-red-400">
-							{#each selfTestResult.hide_merges_errors as err, i (i)}
-								<div class="truncate">{err}</div>
-							{/each}
-						</div>
-					{/if}
 				{/if}
 			{/if}
 		</div>

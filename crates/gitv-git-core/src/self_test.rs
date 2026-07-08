@@ -6,9 +6,33 @@ use serde::Serialize;
 
 use crate::error::GitError;
 use crate::gix_repo::GixRepository;
-use crate::graph::{GraphCalculator, GraphOptions, LayoutDiagnostics, TopologySummary};
+use crate::graph::{
+    GraphCalculator, GraphLayout, GraphOptions, LayoutDiagnostics, TopologySummary, check_all,
+};
 use crate::models::Oid;
 use crate::repository::Repository;
+
+/// Result of a single property check (e.g. "no_pass_through", "edge_angles").
+#[derive(Serialize)]
+pub struct PropertyCheckResult {
+    /// Check name (e.g. "unique_positions", "no_pass_through").
+    pub name: String,
+    /// Total number of violations found.
+    pub violation_count: usize,
+    /// Up to 50 sample violation messages.
+    pub sample: Vec<String>,
+}
+
+fn run_property_checks(layout: &GraphLayout) -> Vec<PropertyCheckResult> {
+    check_all(layout)
+        .into_iter()
+        .map(|r| PropertyCheckResult {
+            name: r.name.to_string(),
+            violation_count: r.violations.len(),
+            sample: r.violations.into_iter().take(50).collect(),
+        })
+        .collect()
+}
 
 /// Full output of a self-test run.
 #[derive(Serialize)]
@@ -27,10 +51,6 @@ pub struct SelfTestOutput {
     pub edge_count: usize,
     /// Total columns used.
     pub total_columns: usize,
-    /// Number of pass-through errors found by verify().
-    pub error_count: usize,
-    /// Up to 1000 error messages.
-    pub errors: Vec<String>,
     /// Layout quality diagnostics.
     pub diagnostics: LayoutDiagnostics,
     /// Commit topology summary.
@@ -43,10 +63,10 @@ pub struct SelfTestOutput {
     pub hide_merges_node_count: usize,
     /// Number of edges with hide_merges enabled.
     pub hide_merges_edge_count: usize,
-    /// Number of pass-through errors with hide_merges enabled.
-    pub hide_merges_error_count: usize,
-    /// Up to 1000 error messages from the hide_merges layout.
-    pub hide_merges_errors: Vec<String>,
+    /// Property check results for the main layout.
+    pub property_checks: Vec<PropertyCheckResult>,
+    /// Property check results for the hide_merges layout.
+    pub hide_merges_property_checks: Vec<PropertyCheckResult>,
 }
 
 /// Run a self-test on the repository at `path`.
@@ -94,8 +114,6 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
     );
     let layout = calc.calculate_layout();
 
-    let errors = layout.verify();
-    let error_count = errors.len();
     let diag = layout.diagnose();
     let topo = layout.topology_summary();
     let compute_ms = compute_start.elapsed().as_secs_f64() * 1000.0;
@@ -106,12 +124,9 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
 
     tracing::info!(
         "self_test: compute in {:.1}ms \
-         ({node_count} nodes, {edge_count} edges, {total_cols} cols, {error_count} errors)",
+         ({node_count} nodes, {edge_count} edges, {total_cols} cols)",
         compute_ms,
     );
-
-    let max_errors_shown = 1000;
-    let shown_errors: Vec<String> = errors.into_iter().take(max_errors_shown).collect();
 
     // Run hide_merges layout to catch edge routing bugs that only manifest
     // when merge commits are filtered out.
@@ -125,17 +140,26 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
         },
     );
     let hide_layout = hide_calc.calculate_layout();
-    let hide_errors = hide_layout.verify();
-    let hide_error_count = hide_errors.len();
     let hide_node_count = hide_layout.nodes.len();
     let hide_edge_count = hide_layout.edges.len();
 
     tracing::info!(
         "self_test: hide_merges \
-         ({hide_node_count} nodes, {hide_edge_count} edges, {hide_error_count} errors)",
+         ({hide_node_count} nodes, {hide_edge_count} edges)",
     );
 
-    let hide_shown_errors: Vec<String> = hide_errors.into_iter().take(max_errors_shown).collect();
+    // Run property checks on both layouts (includes no_pass_through via verify()).
+    let property_checks = run_property_checks(&layout);
+    let hide_merges_property_checks = run_property_checks(&hide_layout);
+
+    let total_prop_violations: usize = property_checks.iter().map(|c| c.violation_count).sum();
+    let total_hide_prop_violations: usize = hide_merges_property_checks
+        .iter()
+        .map(|c| c.violation_count)
+        .sum();
+    tracing::info!(
+        "self_test: property checks — {total_prop_violations} violations (hide_merges: {total_hide_prop_violations})",
+    );
 
     let col_shift_hist: String = diag
         .column_shift_histogram
@@ -163,15 +187,13 @@ pub fn run_self_test(path: &Path, max_commits: Option<usize>) -> Result<SelfTest
         node_count,
         edge_count,
         total_columns: total_cols,
-        error_count,
-        errors: shown_errors,
         diagnostics: diag,
         topology: topo,
         column_shift_histogram: col_shift_hist,
         row_thread_histogram: row_thread_hist,
         hide_merges_node_count: hide_node_count,
         hide_merges_edge_count: hide_edge_count,
-        hide_merges_error_count: hide_error_count,
-        hide_merges_errors: hide_shown_errors,
+        property_checks,
+        hide_merges_property_checks,
     })
 }

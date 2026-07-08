@@ -339,8 +339,6 @@
 		"nodes": "Nodes",
 		"edges": "Edges",
 		"columns": "Columns",
-		"errors": "Errors",
-		"showing_first_of": "showing first {shown} of {total}",
 		"max_threads": "max threads",
 		"col_waste": "col waste",
 		"waypoints": "waypoints",
@@ -353,6 +351,9 @@
 		"longest_chain": "longest chain",
 		"fork_points": "fork points",
 		"branching_factor": "branching factor",
+		"property_checks": "Property checks",
+		"hide_merges_property_checks": "Hide merges property checks",
+		"more_count": "+{count} more…",
 		"load_phases": "Load Phases"
 	},
 	"file_tree": {

@@ -341,8 +341,6 @@
 		"nodes": "Knoten",
 		"edges": "Kanten",
 		"columns": "Spalten",
-		"errors": "Fehler",
-		"showing_first_of": "Zeige erste {shown} von {total}",
 		"max_threads": "max. Threads",
 		"col_waste": "Spaltenverschwendung",
 		"waypoints": "Wegpunkte",
@@ -355,6 +353,9 @@
 		"longest_chain": "längste Kette",
 		"fork_points": "Verzweigungen",
 		"branching_factor": "Verzweigungsfaktor",
+		"property_checks": "Eigenschaftsprüfungen",
+		"hide_merges_property_checks": "Hide-Merges Eigenschaftsprüfungen",
+		"more_count": "+{count} weitere…",
 		"load_phases": "Lade-Phasen"
 	},
 	"file_tree": {

@@ -11,6 +11,17 @@ use serde::Serialize;
 
 use crate::commands::args;
 
+/// Result of a single property check.
+#[derive(Serialize)]
+pub struct PropertyCheckResult {
+    /// Check name (e.g. "unique_positions", "no_pass_through").
+    pub name: String,
+    /// Total number of violations found.
+    pub violation_count: usize,
+    /// Up to 50 sample violation messages.
+    pub sample: Vec<String>,
+}
+
 /// Result of a self-test run: full graph layout + diagnostics.
 #[derive(Serialize)]
 pub struct SelfTestResult {
@@ -18,7 +29,7 @@ pub struct SelfTestResult {
     pub repo_path: String,
     /// Directory basename of the repository.
     pub repo_name: String,
-    /// Wall-clock time for the entire operation (open repo, load commits, compute layout, verify)
+    /// Wall-clock time for the entire operation (open repo, load commits, compute layout, diagnose)
     pub timing_ms: f64,
     /// Number of nodes in the layout
     pub node_count: usize,
@@ -26,10 +37,6 @@ pub struct SelfTestResult {
     pub edge_count: usize,
     /// Total columns used
     pub total_columns: usize,
-    /// Number of pass-through errors found by verify()
-    pub error_count: usize,
-    /// Up to 1000 error messages
-    pub errors: Vec<String>,
     // --- Diagnostics ---
     pub max_concurrent_threads: usize,
     pub column_waste: usize,
@@ -49,6 +56,11 @@ pub struct SelfTestResult {
     pub branching_factor_histogram: Vec<usize>,
     pub longest_chain: usize,
     pub fork_point_count: usize,
+    // --- Property checks ---
+    /// Property check results for the main layout.
+    pub property_checks: Vec<PropertyCheckResult>,
+    /// Property check results for the hide_merges layout.
+    pub hide_merges_property_checks: Vec<PropertyCheckResult>,
 }
 
 static CRASH_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -192,8 +204,6 @@ pub async fn run_self_test(path: String) -> Result<SelfTestResult, String> {
         node_count: core.node_count,
         edge_count: core.edge_count,
         total_columns: core.total_columns,
-        error_count: core.error_count,
-        errors: core.errors,
         max_concurrent_threads: core.diagnostics.max_concurrent_threads,
         column_waste: core.diagnostics.column_waste,
         total_waypoints: core.diagnostics.total_waypoints,
@@ -209,5 +219,23 @@ pub async fn run_self_test(path: String) -> Result<SelfTestResult, String> {
         branching_factor_histogram: core.topology.branching_factor_histogram,
         longest_chain: core.topology.longest_chain,
         fork_point_count: core.topology.fork_point_count,
+        property_checks: core
+            .property_checks
+            .into_iter()
+            .map(|c| PropertyCheckResult {
+                name: c.name,
+                violation_count: c.violation_count,
+                sample: c.sample,
+            })
+            .collect(),
+        hide_merges_property_checks: core
+            .hide_merges_property_checks
+            .into_iter()
+            .map(|c| PropertyCheckResult {
+                name: c.name,
+                violation_count: c.violation_count,
+                sample: c.sample,
+            })
+            .collect(),
     })
 }

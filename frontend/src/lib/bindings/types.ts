@@ -391,6 +391,12 @@ export interface AppPreferences {
 	arrow_gap_threshold: number;
 }
 
+export interface PropertyCheckResult {
+	name: string;
+	violation_count: number;
+	sample: string[];
+}
+
 export interface SelfTestResult {
 	repo_path: string;
 	repo_name: string;
@@ -398,8 +404,6 @@ export interface SelfTestResult {
 	node_count: number;
 	edge_count: number;
 	total_columns: number;
-	error_count: number;
-	errors: string[];
 	max_concurrent_threads: number;
 	column_waste: number;
 	total_waypoints: number;
@@ -415,8 +419,6 @@ export interface SelfTestResult {
 	branching_factor_histogram: number[];
 	longest_chain: number;
 	fork_point_count: number;
-	hide_merges_node_count: number;
-	hide_merges_edge_count: number;
-	hide_merges_error_count: number;
-	hide_merges_errors: string[];
+	property_checks: PropertyCheckResult[];
+	hide_merges_property_checks: PropertyCheckResult[];
 }
