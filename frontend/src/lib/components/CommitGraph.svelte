@@ -21,7 +21,9 @@
 
 	import {
 		GRAPH_PADDING_LEFT as PADDING_LEFT,
-		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE
+		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE,
+		STAGED_OID,
+		UNSTAGED_OID
 	} from '$lib/constants';
 
 	interface TooltipData {
@@ -225,7 +227,10 @@
 							onTooltip?.({
 								x: e.clientX + 12,
 								y: e.clientY - 8,
-								text: `${ci.short_oid} ${commitSummary(ci)}`
+								text:
+									ci.oid === STAGED_OID || ci.oid === UNSTAGED_OID
+										? $t(ci.oid === STAGED_OID ? 'page.staged' : 'page.unstaged')
+										: `${ci.short_oid} ${commitSummary(ci)}`
 							});
 						}
 					}

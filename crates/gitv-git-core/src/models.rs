@@ -19,16 +19,36 @@ const _: () = {
 #[must_use]
 pub struct Oid([u8; 20]);
 
+/// Sentinel OID for the staged-changes virtual commit.
+/// All-`ff` bytes — cannot collide with a real SHA-1 hash.
+pub const STAGED_OID: Oid = Oid([0xff; 20]);
+/// Sentinel OID for the unstaged-changes virtual commit.
+/// All-`fe` bytes — cannot collide with a real SHA-1 hash.
+pub const UNSTAGED_OID: Oid = Oid([0xfe; 20]);
+
+const SENTINEL_STAGED_STR: &str = "__staged__";
+const SENTINEL_UNSTAGED_STR: &str = "__unstaged__";
+
 impl Serialize for Oid {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if *self == STAGED_OID {
+            return serializer.serialize_str(SENTINEL_STAGED_STR);
+        }
+        if *self == UNSTAGED_OID {
+            return serializer.serialize_str(SENTINEL_UNSTAGED_STR);
+        }
         serializer.serialize_str(&self.to_hex())
     }
 }
 
 impl<'de> Deserialize<'de> for Oid {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let hex = String::deserialize(deserializer)?;
-        Oid::from_hex(&hex).map_err(serde::de::Error::custom)
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            SENTINEL_STAGED_STR => Ok(STAGED_OID),
+            SENTINEL_UNSTAGED_STR => Ok(UNSTAGED_OID),
+            _ => Oid::from_hex(&s).map_err(serde::de::Error::custom),
+        }
     }
 }
 
@@ -94,6 +114,12 @@ impl Oid {
         let mut buf = [0u8; 40];
         self.to_hex_into(&mut buf);
         buf[..prefix_len].eq_ignore_ascii_case(&prefix_bytes[..prefix_len])
+    }
+
+    /// Returns `true` if this OID is the staged or unstaged sentinel.
+    #[must_use]
+    pub fn is_virtual(&self) -> bool {
+        *self == STAGED_OID || *self == UNSTAGED_OID
     }
 }
 

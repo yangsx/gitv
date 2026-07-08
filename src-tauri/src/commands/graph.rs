@@ -4,7 +4,8 @@ use gitv_git_core::graph::{
     GraphCalculator, GraphColorMode, GraphOptions, GraphOrientation, GraphPalette,
 };
 use gitv_git_core::models::{
-    CachedRepoData, CommitInfo, Oid, Ref, RepositoryInfo, WorkingChangesDiff,
+    Author, CachedRepoData, CommitInfo, Oid, Ref, RepositoryInfo, STAGED_OID, UNSTAGED_OID,
+    WorkingChangesDiff,
 };
 use gitv_git_core::repository::Repository;
 use serde::Serialize;
@@ -78,7 +79,7 @@ fn load_commits(
     Ok(commits)
 }
 
-fn build_refs_map(commits: &[CommitInfo]) -> HashMap<Oid, Vec<Ref>> {
+pub fn build_refs_map(commits: &[CommitInfo]) -> HashMap<Oid, Vec<Ref>> {
     let mut refs_map: HashMap<Oid, Vec<Ref>> = HashMap::new();
     for c in commits {
         if !c.refs.is_empty() {
@@ -86,6 +87,89 @@ fn build_refs_map(commits: &[CommitInfo]) -> HashMap<Oid, Vec<Ref>> {
         }
     }
     refs_map
+}
+
+/// Create virtual CommitInfo nodes for staged/unstaged working changes.
+///
+/// These are injected *before* graph layout computation so the column
+/// assignment algorithm treats them as regular commits: they get col 0
+/// (mainline), and other branches are pushed to higher columns.
+///
+/// When both exist, the chain is `unstaged → staged → HEAD`, matching
+/// the conceptual layering (working tree = index + unstaged; index = HEAD + staged).
+pub fn make_virtual_commits(
+    head_oid: Option<&Oid>,
+    working_changes: Option<&WorkingChangesDiff>,
+) -> Vec<CommitInfo> {
+    let Some(wc) = working_changes else {
+        return vec![];
+    };
+    let has_staged = !wc.staged.is_empty();
+    let has_unstaged = !wc.unstaged.is_empty();
+    if !has_staged && !has_unstaged {
+        return vec![];
+    }
+
+    let empty_author = Author {
+        name: String::new(),
+        email: String::new(),
+    };
+    let now = chrono::Utc::now();
+    let head = head_oid.cloned().unwrap_or(Oid::from_bytes([0u8; 20]));
+
+    let mut virtuals = Vec::with_capacity(2);
+
+    if has_unstaged {
+        let parent = if has_staged {
+            vec![STAGED_OID]
+        } else {
+            vec![head]
+        };
+        virtuals.push(CommitInfo {
+            oid: UNSTAGED_OID,
+            short_oid: String::new(),
+            message: String::new(),
+            author: empty_author.clone(),
+            committer: empty_author.clone(),
+            author_time: now,
+            commit_time: now,
+            parent_oids: parent,
+            refs: vec![],
+        });
+    }
+
+    if has_staged {
+        virtuals.push(CommitInfo {
+            oid: STAGED_OID,
+            short_oid: String::new(),
+            message: String::new(),
+            author: empty_author.clone(),
+            committer: empty_author.clone(),
+            author_time: now,
+            commit_time: now,
+            parent_oids: vec![head],
+            refs: vec![],
+        });
+    }
+
+    virtuals
+}
+
+/// Load commits from cache/repo, then prepend virtual working-changes commits.
+/// Returns the augmented Vec plus the working changes diff (for the frontend).
+fn load_commits_with_virtuals(
+    repo: &dyn Repository,
+    repo_path: &Path,
+    stash_parent_tips: &[Oid],
+    head_oid: Option<&Oid>,
+) -> Result<(Vec<CommitInfo>, Option<WorkingChangesDiff>), String> {
+    let commits = load_commits(repo, repo_path, stash_parent_tips)?;
+    let working_changes = repo.working_changes_diff().ok();
+    let virtuals = make_virtual_commits(head_oid, working_changes.as_ref());
+
+    let mut all = virtuals;
+    all.extend(commits);
+    Ok((all, working_changes))
 }
 
 fn parse_graph_options(
@@ -196,10 +280,13 @@ pub async fn get_initial_data(
         };
         let stash_parent_tips: Vec<Oid> = stashes.iter().map(|s| s.parent_oid).collect();
 
-        let commits = load_commits(
+        // Load commits + working changes together so virtual commits
+        // (staged/unstaged) can be injected before graph layout computation.
+        let (commits, working_changes) = load_commits_with_virtuals(
             &*repo_for_blocking,
             &repo_path_for_blocking,
             &stash_parent_tips,
+            repo_info.head_commit.as_ref(),
         )
         .map_err(|e| format!("failed to load commits: {e}"))?;
         let load_commits_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -232,9 +319,8 @@ pub async fn get_initial_data(
         };
         let refs_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
-        let t3 = Instant::now();
-        let working_changes = repo_for_blocking.working_changes_diff().ok();
-        let working_changes_ms = t3.elapsed().as_secs_f64() * 1000.0;
+        // Working changes already loaded above; timing is subsumed in load_commits_ms.
+        let working_changes_ms = 0.0;
 
         let total_ms = start.elapsed().as_secs_f64() * 1000.0;
 
@@ -319,10 +405,12 @@ pub async fn get_graph_layout(
             let stashes = repo_for_blocking.stash_list().map_err(|e| e.to_string())?;
             let stash_parent_tips: Vec<Oid> = stashes.iter().map(|s| s.parent_oid).collect();
 
-            let commits = load_commits(
+            let repo_info = repo_for_blocking.info().map_err(|e| e.to_string())?;
+            let (commits, _working_changes) = load_commits_with_virtuals(
                 &*repo_for_blocking,
                 &repo_path_for_blocking,
                 &stash_parent_tips,
+                repo_info.head_commit.as_ref(),
             )?;
 
             let refs_map = build_refs_map(&commits);

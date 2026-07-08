@@ -113,10 +113,7 @@
 	class="group flex w-full items-center text-left text-sm focus:outline-none"
 	style="height: {rowHeight}px;"
 	aria-label={isVirtual
-		? $t('commit_row.staged_aria', {
-				summary: commitSummary(commit),
-				type: isStaged ? 'staged' : 'unstaged'
-			})
+		? $t(isStaged ? 'page.staged' : 'page.unstaged')
 		: $t('commit_row.aria_label', {
 				summary: commitSummary(commit),
 				author: commit.author.name,
@@ -157,8 +154,7 @@
 	>
 		{#if isVirtual}
 			<span class="truncate font-medium {isStaged ? 'text-green-300' : 'text-orange-300'}">
-				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-				{@html renderSummary()}
+				{$t(isStaged ? 'page.staged' : 'page.unstaged')}
 			</span>
 		{:else}
 			{#each commit.refs as ref (ref.Branch ? 'b:' + ref.Branch.name : ref.Tag ? 't:' + ref.Tag.name : ref.Remote ? 'r:' + ref.Remote.remote + '/' + ref.Remote.name : '')}

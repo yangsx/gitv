@@ -94,10 +94,6 @@
 	} from '$lib/stores/preferences';
 	import { t, translate, locale } from '$lib/stores/locale';
 
-	import {
-		applyVirtualWorkingChanges,
-		createVirtualCommitInfos
-	} from '$lib/graph/virtual-working-changes';
 	import { announce } from '$lib/utils/a11y';
 
 	let repoPath = $state('');
@@ -419,6 +415,7 @@
 			});
 			if (gen !== layoutGeneration) return;
 			graphLayout = result;
+			commits = await getCommitsBatch(repoPath, 0, Math.max(commits.length, 1));
 			if (layoutToastId !== null) {
 				updateToast(layoutToastId, $t('toast.reload_layout_done'), 'info');
 				layoutToastId = null;
@@ -462,13 +459,10 @@
 	});
 
 	let displayCommits = $derived.by(() => {
-		void $locale;
-		return [...createVirtualCommitInfos(workingChangesDiff, translate), ...allCommits];
+		return allCommits;
 	});
 
-	let displayLayout = $derived(
-		applyVirtualWorkingChanges(graphLayout, workingChangesDiff, $repoInfo?.head_commit)
-	);
+	let displayLayout = $derived(graphLayout);
 
 	let effectiveCommits = $derived.by(() => {
 		let result = displayCommits;
