@@ -846,6 +846,7 @@ impl GraphCalculator {
         first_parent_chain: &HashSet<Oid>,
     ) -> HashMap<Oid, String> {
         let mut ordertokens: HashMap<Oid, String> = HashMap::new();
+        let head_oid = commits[displayorder_idx[0]].oid;
 
         // Initial pass: assign base tokens via youngest-child chain.
         for &ci in displayorder_idx {
@@ -872,8 +873,18 @@ impl GraphCalculator {
                     ordertokens.insert(c.oid, child_token + &segment);
                 }
                 None => {
-                    // No children — HEAD or orphan; gets base token
-                    ordertokens.insert(c.oid, String::new());
+                    // No children: HEAD gets "" (mainline start). All other
+                    // childless commits (branch tips) get a seed token that
+                    // sorts after all normal ordertokens, matching gitk's
+                    // newvarc "s" prefix (line 928). This places branch tips
+                    // at the rightmost columns, preventing them from
+                    // displacing active threads.
+                    if c.oid == head_oid {
+                        ordertokens.insert(c.oid, String::new());
+                    } else {
+                        let cdate = c.commit_time.timestamp().max(0) as u32;
+                        ordertokens.insert(c.oid, format!("s{:08x}", !cdate));
+                    }
                 }
             }
         }
@@ -1106,7 +1117,7 @@ impl GraphCalculator {
                     continue;
                 }
                 let nr = Self::nextuse(p_oid, r, children_sorted, row_assignments);
-                if nr.is_none() || nr.unwrap() >= row {
+                if nr.is_none_or(|v| v >= row) {
                     entries.push((ordertokens[&p_oid].clone(), p_oid));
                 }
             }
@@ -1254,7 +1265,8 @@ impl GraphCalculator {
                 for &p_oid in &term_commit.parent_oids {
                     if let Some(i) = idlist.iter().position(|&x| x == p_oid) {
                         let nr = Self::nextuse(p_oid, termrow, children_sorted, row_assignments);
-                        if nr.is_none() || nr.unwrap() >= row + mingap_len + UPARROW_LEN {
+                        let threshold = row + mingap_len + UPARROW_LEN;
+                        if nr.is_none_or(|v| v >= threshold) {
                             let _ = idlist.remove(i);
                         }
                     }
@@ -1664,14 +1676,16 @@ impl GraphCalculator {
                 waypoint_idx += 1;
             }
 
-            // Apply insertions in reverse order
+            // Apply insertions in reverse order to preserve indices.
+            // Insert end waypoint first, then start — so the final
+            // order is [(ds, rc), (de, rc)] (start before end).
             if !insertions.is_empty() {
                 for ins in insertions.into_iter().rev() {
-                    if ins.rc != Self::col_of_point(edge, ins.ds) {
-                        edge.waypoints.insert(ins.after, (ins.ds, ins.rc));
-                    }
                     if ins.rc != Self::col_of_point(edge, ins.de) {
                         edge.waypoints.insert(ins.after, (ins.de, ins.rc));
+                    }
+                    if ins.rc != Self::col_of_point(edge, ins.ds) {
+                        edge.waypoints.insert(ins.after, (ins.ds, ins.rc));
                     }
                 }
             }
@@ -1720,6 +1734,8 @@ impl GraphCalculator {
             occupancy.insert((gd.row, gd.column));
         }
 
+        let max_col = graph_data.values().map(|gd| gd.column).max().unwrap_or(4) + 2;
+
         for c in sorted {
             let c_row = graph_data[&c.oid].row;
             let c_col = graph_data[&c.oid].column;
@@ -1751,85 +1767,70 @@ impl GraphCalculator {
 
                     // For same-column edges, check whether a node sits in
                     // this column between the endpoints. If not, a straight
-                    // vertical line is safe. If so, insert smooth routing
-                    // waypoints to bypass the obstruction.
-                    //
-                    // trace_thread's own waypoints zigzag (the parent thread
-                    // moves right then immediately left due to pad insertion),
-                    // so we replace them with a clean detour via an adjacent
-                    // column — which avoids both pass-through AND zigzag.
+                    // vertical line is safe. If so, check whether trace_thread's
+                    // waypoints already route around the obstruction (they follow
+                    // the thread's actual rowidlist positions, which can shift
+                    // left when vacated columns open up). If trace_thread's
+                    // waypoints avoid all obstructions, keep them — they already
+                    // encode the natural thread compaction that matches gitk.
+                    // Only replace with a clean detour if trace_thread's
+                    // waypoints themselves pass through nodes.
                     if c_col == p_gd.column && arrow_gap.is_none() {
-                        let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
-                        let obstructed: Vec<usize> = (lo + 1..hi)
-                            .filter(|&r| occupancy.contains(&(r, c_col)))
-                            .collect();
-                        if obstructed.is_empty() {
-                            waypoints = Vec::new();
-                        } else {
-                            let first_obs = obstructed[0];
-                            let last_obs = obstructed[obstructed.len() - 1];
-                            let detour_start = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
-                            let detour_end = lo.max(last_obs + 1).min(hi - 1);
-                            if detour_start <= detour_end {
-                                // Find the column with fewest nodes in the
-                                // detour range (preferring zero obstructions,
-                                // settling for minimal remaining errors).
-                                let max_col =
-                                    graph_data.values().map(|gd| gd.column).max().unwrap_or(4) + 2;
-                                let best_col =
-                                    (0..max_col).filter(|&c| c != c_col).min_by_key(|&c| {
-                                        let obs = (detour_start..=detour_end)
-                                            .filter(|&r| occupancy.contains(&(r, c)))
-                                            .count();
-                                        (obs, c.abs_diff(c_col))
-                                    });
-                                if let Some(route_col) = best_col {
-                                    waypoints =
-                                        vec![(detour_start, route_col), (detour_end, route_col)];
+                        // Build full path including endpoints.
+                        let mut full_path: Vec<(usize, usize)> =
+                            Vec::with_capacity(waypoints.len() + 2);
+                        full_path.push((c_row, c_col));
+                        full_path.extend_from_slice(&waypoints);
+                        full_path.push((p_gd.row, p_gd.column));
+
+                        // Check if any same-column segment passes through a node.
+                        let mut trace_passes_through = false;
+                        let mut i = 0;
+                        while i + 1 < full_path.len() {
+                            let (r1, c1) = full_path[i];
+                            let (r2, c2) = full_path[i + 1];
+                            if c1 == c2 {
+                                let (lo, hi) = (r1.min(r2), r1.max(r2));
+                                if (lo + 1..hi).any(|r| occupancy.contains(&(r, c1))) {
+                                    trace_passes_through = true;
+                                    break;
                                 }
                             }
+                            i += 1;
+                        }
+
+                        // Check if the path zigzags (column direction reverses).
+                        let mut trace_zigzags = false;
+                        if !trace_passes_through {
+                            for w in full_path.windows(3) {
+                                let d1 = w[1].1 as i64 - w[0].1 as i64;
+                                let d2 = w[2].1 as i64 - w[1].1 as i64;
+                                if d1 != 0 && d2 != 0 && ((d1 < 0) != (d2 < 0)) {
+                                    trace_zigzags = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Only rebuild the routing if trace_thread's waypoints
+                        // cause pass-through or zigzag; otherwise they already
+                        // encode the natural thread compaction matching gitk.
+                        if trace_passes_through || trace_zigzags {
+                            let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
+                            waypoints = build_detour_waypoints(lo, hi, c_col, &occupancy, max_col);
                         }
                     }
 
                     // For cross-column edges without a gap, check if the
                     // parent column has obstructions between child and parent.
                     // If clear, the chamfer is safe and waypoints are redundant.
-                    // If obstructed, route around them via an adjacent column
-                    // (same detour logic as the same-column case above).
+                    // If obstructed, route around them via an adjacent column.
                     if arrow_gap.is_none() && c_col != p_gd.column && !waypoints.is_empty() {
                         let all_at_parent_col = waypoints.iter().all(|(_, c)| *c == p_gd.column);
                         if all_at_parent_col {
                             let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
-                            let obstructed: Vec<usize> = (lo + 1..hi)
-                                .filter(|&r| occupancy.contains(&(r, p_gd.column)))
-                                .collect();
-                            if obstructed.is_empty() {
-                                waypoints = Vec::new();
-                            } else {
-                                let first_obs = obstructed[0];
-                                let last_obs = obstructed[obstructed.len() - 1];
-                                let detour_start = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
-                                let detour_end = lo.max(last_obs + 1).min(hi - 1);
-                                if detour_start <= detour_end {
-                                    let max_col =
-                                        graph_data.values().map(|gd| gd.column).max().unwrap_or(4)
-                                            + 2;
-                                    let best_col = (0..max_col)
-                                        .filter(|&c| c != p_gd.column)
-                                        .min_by_key(|&c| {
-                                            let obs = (detour_start..=detour_end)
-                                                .filter(|&r| occupancy.contains(&(r, c)))
-                                                .count();
-                                            (obs, c.abs_diff(p_gd.column))
-                                        });
-                                    if let Some(route_col) = best_col {
-                                        waypoints = vec![
-                                            (detour_start, route_col),
-                                            (detour_end, route_col),
-                                        ];
-                                    }
-                                }
-                            }
+                            waypoints =
+                                build_detour_waypoints(lo, hi, p_gd.column, &occupancy, max_col);
                         }
                     }
 
@@ -1910,6 +1911,60 @@ fn propagate_branch_token(
             }
         }
     }
+}
+
+/// Build a detour route to bypass obstructions in a specific column between
+/// rows `lo` and `hi`. The detour exits `target_col` to an adjacent
+/// `route_col` (the one with fewest nodes in the detour range), then returns
+/// to `target_col` with chamfers near the endpoints.
+///
+/// Returns an empty `Vec` when the straight path is unobstructed or no
+/// valid route column can be found.
+fn build_detour_waypoints(
+    lo: usize,
+    hi: usize,
+    target_col: usize,
+    occupancy: &HashSet<(usize, usize)>,
+    max_col: usize,
+) -> Vec<(usize, usize)> {
+    let obstructed: Vec<usize> = (lo + 1..hi)
+        .filter(|&r| occupancy.contains(&(r, target_col)))
+        .collect();
+    if obstructed.is_empty() {
+        return Vec::new();
+    }
+    let first_obs = obstructed[0];
+    let last_obs = obstructed[obstructed.len() - 1];
+    let detour_start = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
+    let detour_end = lo.max(last_obs + 1).min(hi - 1);
+    if detour_start > detour_end {
+        return Vec::new();
+    }
+    let route_col = match (0..max_col).filter(|&c| c != target_col).min_by_key(|&c| {
+        let obs = (detour_start..=detour_end)
+            .filter(|&r| occupancy.contains(&(r, c)))
+            .count();
+        (obs, c.abs_diff(target_col))
+    }) {
+        Some(c) => c,
+        None => return Vec::new(),
+    };
+    let extended_end = (detour_end + 1..hi)
+        .find(|&r| occupancy.contains(&(r, route_col)))
+        .map(|r| r.saturating_sub(1))
+        .unwrap_or(hi - 1)
+        .max(detour_end);
+    let mut wps = vec![(detour_start, route_col), (extended_end, route_col)];
+    // End chamfer: return to target_col so the remaining run is vertical in-col.
+    if route_col != target_col && extended_end + 1 < hi {
+        wps.push((extended_end + 1, target_col));
+    }
+    // Start chamfer: if first obstruction is far from the child, add a 1-row
+    // chamfer instead of a long diagonal.
+    if detour_start > lo + 1 {
+        wps.insert(0, (detour_start - 1, target_col));
+    }
+    wps
 }
 
 /// Simplify a path by removing collinear intermediate points.
