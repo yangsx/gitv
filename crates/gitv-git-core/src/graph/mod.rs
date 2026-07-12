@@ -9,4 +9,4 @@ pub use layout::{
     GraphPalette, GraphViewport, LayoutDiagnostics, NodePosition, StashMarker, TopologySummary,
     edge_segments, expand_segment,
 };
-pub use properties::{PropertyResult, check_all};
+pub use properties::{PropertyResult, check_all, check_no_edge_waypoint_overlap};

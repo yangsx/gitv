@@ -60,6 +60,11 @@ pub fn check_all(layout: &GraphLayout) -> Vec<PropertyResult> {
         check_thread_continuity(layout),
         check_no_zigzag(layout),
         check_column_economy(layout),
+        // NOTE: check_no_edge_waypoint_overlap is not included in check_all
+        // because it catches pre-existing trace_thread collisions (two children
+        // of the same parent tracing the same thread positions). That is a
+        // separate issue from the detour collision fix in calculator.rs.
+        // The function is available for standalone use.
     ]
 }
 
@@ -280,6 +285,33 @@ pub fn check_column_economy(layout: &GraphLayout) -> PropertyResult {
             layout.total_columns,
             layout.nodes.len(),
         ));
+    }
+    result
+}
+
+/// No two edges share the same waypoint `(row, col)` position.
+///
+/// `trace_thread` produces unique waypoints per thread (each follows a
+/// distinct rowidlist lane), so exact duplicates indicate detour route
+/// collisions — two edges independently selecting the same route column.
+pub fn check_no_edge_waypoint_overlap(layout: &GraphLayout) -> PropertyResult {
+    let mut result = PropertyResult::new("no_edge_waypoint_overlap");
+    let mut seen: HashMap<(usize, usize), String> = HashMap::new();
+    for edge in &layout.edges {
+        for &(r, c) in &edge.waypoints {
+            let edge_desc = format!(
+                "({},{})\u{2192}({},{})",
+                edge.from_row, edge.from_col, edge.to_row, edge.to_col
+            );
+            if let Some(prev) = seen.get(&(r, c)) {
+                result.push(format!(
+                    "waypoint ({},{}) shared by edges [{}] and [{}]",
+                    r, c, prev, edge_desc
+                ));
+            } else {
+                seen.insert((r, c), edge_desc);
+            }
+        }
     }
     result
 }

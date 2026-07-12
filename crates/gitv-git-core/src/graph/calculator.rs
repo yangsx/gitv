@@ -1602,12 +1602,17 @@ impl GraphCalculator {
     /// through a node. Scans every consecutive pair in each edge's full
     /// path (endpoints + waypoints). When an obstruction is found, inserts
     /// detour waypoints into the existing waypoint list — never removes.
+    ///
+    /// Maintains `edge_occupancy` incrementally so that later edges' detour
+    /// route selection avoids columns already claimed by earlier edges.
     fn fix_edge_pass_throughs(nodes: &[NodePosition], edges: &mut [Edge]) {
         let mut occupancy: HashSet<(usize, usize)> = HashSet::with_capacity(nodes.len());
         for n in nodes {
             occupancy.insert((n.row, n.column));
         }
         let max_col = nodes.iter().map(|n| n.column).max().unwrap_or(4) + 2;
+
+        let mut edge_occupancy: HashSet<(usize, usize)> = HashSet::new();
 
         for edge in edges.iter_mut() {
             // Build list of consecutive pairs: endpoints + waypoints
@@ -1662,8 +1667,14 @@ impl GraphCalculator {
                     let rc = (0..max_col)
                         .filter(|&c| c != col)
                         .min_by_key(|&c| {
-                            let obs = (ds..=de).filter(|&r| occupancy.contains(&(r, c))).count();
-                            (obs, c.abs_diff(col))
+                            let obs = (ds..=de)
+                                .filter(|&r| {
+                                    occupancy.contains(&(r, c)) || edge_occupancy.contains(&(r, c))
+                                })
+                                .count();
+                            // Prefer right-side columns on ties so that
+                            // left-side edges retain priority.
+                            (obs, (c < col) as usize, c.abs_diff(col))
                         })
                         .unwrap_or(col + 1);
                     insertions.push(Insertion {
@@ -1688,6 +1699,12 @@ impl GraphCalculator {
                         edge.waypoints.insert(ins.after, (ins.ds, ins.rc));
                     }
                 }
+            }
+
+            // Track this edge's cells (now including any new detour waypoints)
+            // so later edges avoid them.
+            for cell in edge_occupied_cells(edge) {
+                edge_occupancy.insert(cell);
             }
         }
     }
@@ -1733,6 +1750,12 @@ impl GraphCalculator {
             let gd = &graph_data[&c.oid];
             occupancy.insert((gd.row, gd.column));
         }
+
+        // Edge occupancy: cells already claimed by earlier edges' same-column
+        // segments. Built incrementally so that later edges' detour route
+        // selection avoids columns already in use. Left-side edges (processed
+        // first in sorted order) retain priority.
+        let mut edge_occupancy: HashSet<(usize, usize)> = HashSet::new();
 
         let max_col = graph_data.values().map(|gd| gd.column).max().unwrap_or(4) + 2;
 
@@ -1817,7 +1840,14 @@ impl GraphCalculator {
                         // encode the natural thread compaction matching gitk.
                         if trace_passes_through || trace_zigzags {
                             let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
-                            waypoints = build_detour_waypoints(lo, hi, c_col, &occupancy, max_col);
+                            waypoints = build_detour_waypoints(
+                                lo,
+                                hi,
+                                c_col,
+                                &occupancy,
+                                &edge_occupancy,
+                                max_col,
+                            );
                         }
                     }
 
@@ -1829,12 +1859,18 @@ impl GraphCalculator {
                         let all_at_parent_col = waypoints.iter().all(|(_, c)| *c == p_gd.column);
                         if all_at_parent_col {
                             let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
-                            waypoints =
-                                build_detour_waypoints(lo, hi, p_gd.column, &occupancy, max_col);
+                            waypoints = build_detour_waypoints(
+                                lo,
+                                hi,
+                                p_gd.column,
+                                &occupancy,
+                                &edge_occupancy,
+                                max_col,
+                            );
                         }
                     }
 
-                    edges.push(Edge {
+                    let new_edge = Edge {
                         from_row: c_row,
                         from_col: c_col,
                         to_row: p_gd.row,
@@ -1845,7 +1881,14 @@ impl GraphCalculator {
                         edge_style,
                         waypoints,
                         arrow_gap,
-                    });
+                    };
+
+                    // Track this edge's cells so later edges avoid them.
+                    for cell in edge_occupied_cells(&new_edge) {
+                        edge_occupancy.insert(cell);
+                    }
+
+                    edges.push(new_edge);
                 }
             }
         }
@@ -1913,10 +1956,40 @@ fn propagate_branch_token(
     }
 }
 
+/// Compute all `(row, col)` cells an edge's same-column segments occupy.
+///
+/// Walks the edge's full path (endpoints + waypoints). For each consecutive
+/// pair sharing the same column, yields all intermediate rows. Cross-column
+/// segments (diagonals/chamfers) only contribute their endpoint rows.
+///
+/// Used to build an `edge_occupancy` set so that subsequent detour route
+/// selection avoids columns already claimed by earlier edges.
+fn edge_occupied_cells(edge: &Edge) -> Vec<(usize, usize)> {
+    let mut cells: Vec<(usize, usize)> = Vec::new();
+    let mut prev = (edge.from_row, edge.from_col);
+    for &wp in &edge.waypoints {
+        if prev.1 == wp.1 {
+            let (lo, hi) = (prev.0.min(wp.0), prev.0.max(wp.0));
+            cells.extend((lo..=hi).map(|r| (r, prev.1)));
+        }
+        prev = wp;
+    }
+    if prev.1 == edge.to_col {
+        let (lo, hi) = (prev.0.min(edge.to_row), prev.0.max(edge.to_row));
+        cells.extend((lo..=hi).map(|r| (r, prev.1)));
+    }
+    cells
+}
+
 /// Build a detour route to bypass obstructions in a specific column between
 /// rows `lo` and `hi`. The detour exits `target_col` to an adjacent
-/// `route_col` (the one with fewest nodes in the detour range), then returns
-/// to `target_col` with chamfers near the endpoints.
+/// `route_col` (the one with fewest nodes+edges in the detour range), then
+/// returns to `target_col` with chamfers near the endpoints.
+///
+/// `edge_occupancy` tracks cells already claimed by other edges' segments.
+/// When selecting `route_col`, both node and edge obstructions are counted.
+/// Ties prefer columns to the **right** of `target_col` (higher index), so
+/// left-side edges retain priority and right-side edges detour rightward.
 ///
 /// Returns an empty `Vec` when the straight path is unobstructed or no
 /// valid route column can be found.
@@ -1925,6 +1998,7 @@ fn build_detour_waypoints(
     hi: usize,
     target_col: usize,
     occupancy: &HashSet<(usize, usize)>,
+    edge_occupancy: &HashSet<(usize, usize)>,
     max_col: usize,
 ) -> Vec<(usize, usize)> {
     let obstructed: Vec<usize> = (lo + 1..hi)
@@ -1942,9 +2016,11 @@ fn build_detour_waypoints(
     }
     let route_col = match (0..max_col).filter(|&c| c != target_col).min_by_key(|&c| {
         let obs = (detour_start..=detour_end)
-            .filter(|&r| occupancy.contains(&(r, c)))
+            .filter(|&r| occupancy.contains(&(r, c)) || edge_occupancy.contains(&(r, c)))
             .count();
-        (obs, c.abs_diff(target_col))
+        // Prefer right-side columns (c >= target_col) on ties so that
+        // left-side edges keep priority and right-side edges detour rightward.
+        (obs, (c < target_col) as usize, c.abs_diff(target_col))
     }) {
         Some(c) => c,
         None => return Vec::new(),
@@ -5744,5 +5820,103 @@ mod tests {
             let layout = layout_with_rowidlist(commits.clone());
             assert_graph_valid(&layout, name);
         }
+    }
+
+    // --- Edge occupancy / detour collision tests ---
+
+    #[test]
+    fn edge_occupied_cells_vertical_segments() {
+        use crate::graph::layout::{Edge, EdgeStyle, EdgeType};
+        use crate::models::Color;
+
+        // Edge: (0,2) → (3,2) → (5,1) → (10,1)
+        // Same-col segments: col 2 rows 0-3, col 1 rows 5-10
+        let edge = Edge {
+            from_row: 0,
+            from_col: 2,
+            to_row: 10,
+            to_col: 1,
+            edge_type: EdgeType::Straight,
+            color: Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            is_dimmed: false,
+            edge_style: EdgeStyle::Solid,
+            waypoints: vec![(3, 2), (5, 1)],
+            arrow_gap: None,
+        };
+        let cells: HashSet<_> = edge_occupied_cells(&edge).into_iter().collect();
+        // Column 2: rows 0-3
+        for r in 0..=3 {
+            assert!(cells.contains(&(r, 2)), "missing ({r}, 2)");
+        }
+        // Column 1: rows 5-10
+        for r in 5..=10 {
+            assert!(cells.contains(&(r, 1)), "missing ({r}, 1)");
+        }
+        // Cross-col segment (3,2)→(5,1) endpoints are included via the
+        // vertical run endpoints, but no intermediate fill at col 1 row 4
+        // or col 2 row 4.
+        assert!(!cells.contains(&(4, 1)), "(4,1) should not be occupied");
+        assert!(!cells.contains(&(4, 2)), "(4,2) should not be occupied");
+    }
+
+    #[test]
+    fn build_detour_avoids_edge_occupancy() {
+        // Target column 2, obstruction (node) at row 5.
+        // Without edge_occupancy, column 1 (distance 1, left) and column 3
+        // (distance 1, right) tie on node obstruction count (0). The old code
+        // would pick column 1 (lower index). The new tie-break prefers right.
+        let occupancy: HashSet<(usize, usize)> = [(5, 2)].into_iter().collect();
+        let edge_occ: HashSet<(usize, usize)> = HashSet::new();
+        let wps = build_detour_waypoints(0, 10, 2, &occupancy, &edge_occ, 6);
+        assert!(!wps.is_empty(), "should produce detour waypoints");
+        // wps[0] may be a start chamfer at target_col; the route_col is at
+        // the first waypoint whose column differs from target_col.
+        let route_col = wps.iter().find(|(_, c)| *c != 2).map(|(_, c)| *c);
+        assert_eq!(
+            route_col,
+            Some(3),
+            "should prefer right-side column 3 over left-side column 1"
+        );
+    }
+
+    #[test]
+    fn build_detour_avoids_occupied_route_column() {
+        // Target column 2, node obstruction at row 5.
+        // Column 1 is fully occupied by a previous edge (rows 0-10).
+        // Without edge_occupancy, column 1 would be chosen (0 nodes).
+        // With edge_occupancy, column 1 has 11 edge cells → must avoid it.
+        let occupancy: HashSet<(usize, usize)> = [(5, 2)].into_iter().collect();
+        let edge_occ: HashSet<(usize, usize)> = (0..=10).map(|r| (r, 1)).collect();
+        let wps = build_detour_waypoints(0, 10, 2, &occupancy, &edge_occ, 6);
+        assert!(!wps.is_empty(), "should produce detour waypoints");
+        let route_col = wps[0].1;
+        assert_ne!(
+            route_col, 1,
+            "must not use column 1 — it is occupied by edge_occupancy"
+        );
+    }
+
+    #[test]
+    fn prop_no_edge_waypoint_overlap_verifies_detour_fix() {
+        let commits = vec![
+            make_commit(1, vec![], "root"),
+            make_commit(2, vec![1], "m1"),
+            make_commit(3, vec![2], "m2"),
+            make_commit(4, vec![2], "a1"),
+            make_commit(5, vec![4], "a2"),
+            make_commit(6, vec![3, 5], "merge"),
+        ];
+        let layout = layout_with_rowidlist(commits);
+        let result = crate::graph::check_no_edge_waypoint_overlap(&layout);
+        assert!(
+            result.is_ok(),
+            "no_edge_waypoint_overlap should pass: {}",
+            result.format()
+        );
     }
 }
