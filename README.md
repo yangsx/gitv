@@ -218,7 +218,7 @@ gitv/
 │   │   └── lib.rs              # App setup, state, command registration
 │   └── Cargo.toml
 ├── crates/
-│   ├── gitv-git-core/          # Pure Rust Git logic (no Tauri deps) — 155 tests
+│   ├── gitv-git-core/          # Pure Rust Git logic (no Tauri deps) — 170 tests
 │   │   └── src/
 │   │       ├── repository.rs   # gix-based repo abstraction
 │   │       ├── graph/          # Layout calculator, stash insertion
@@ -332,7 +332,7 @@ cargo nextest run -p gitv-git-core --test graph_tests
 cargo test --workspace
 ```
 
-155 tests in `gitv-git-core` — no Tauri dependency, fully mockable.
+170 tests in `gitv-git-core` — no Tauri dependency, fully mockable.
 
 ### Benchmarks
 

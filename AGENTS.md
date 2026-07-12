@@ -3,7 +3,7 @@
 ## Project Status
 **In development.** Core application has substantial source code in place:
 - **Backend** (`src-tauri/`): Tauri commands for preferences, graph layout, commits, diff, repo operations, saved searches, file watching, diagnostics
-- **Git core** (`crates/gitv-git-core/`): 155 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
+- **Git core** (`crates/gitv-git-core/`): 170 tests passing — repository abstraction, graph calculator/layout, search engine (RoaringBitmap), streaming, file watching, disk cache, models
 - **Frontend** (`frontend/`): Svelte 5 + TypeScript with CommitGraph (canvas-based), CommitList, CommitDetailPanel (diff/whitespace controls), PreferencesModal (draggable), InfoDialog (draggable — shortcuts, logging, app info), Toolbar, SearchBar, Sidebar, FileTree, BlamePanel, CommandPalette, ContextMenu, DebugOverlay
 - **Preferences**: Persistent JSON at `$XDG_CONFIG_HOME/gitv/preferences.json` with debounced auto-save, applies to graph/diff/view behavior
 - Architecture design in `design.md`; full requirements in `requirements.md`
