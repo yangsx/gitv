@@ -472,10 +472,14 @@ impl GraphLayout {
 
         // --- Edges with expanded paths ---
         out.push_str("\n--- Edges ---\n");
-        let row_to_oid: HashMap<usize, &str> = self
+        let oid_strings: Vec<(usize, String)> = self
             .nodes
             .iter()
-            .map(|n| (n.row, n.oid.short_hex().to_string().leak() as &str))
+            .map(|n| (n.row, n.oid.short_hex().to_string()))
+            .collect();
+        let row_to_oid: HashMap<usize, &str> = oid_strings
+            .iter()
+            .map(|(row, s)| (*row, s.as_str()))
             .collect();
         for (i, edge) in self.edges.iter().enumerate() {
             let from_name = row_to_oid.get(&edge.from_row).copied().unwrap_or("?");
@@ -548,16 +552,16 @@ pub fn edge_segments(edge: &Edge) -> Vec<Vec<(usize, usize)>> {
 
     let mut segments: Vec<Vec<(usize, usize)>> = Vec::new();
     let mut current: Vec<(usize, usize)> = vec![full_path[0]];
+    let mut prev_row = full_path[0].0;
 
     for &pt in &full_path[1..] {
-        let prev = *current.last().unwrap();
-        if pt.0 > prev.0 + 1 {
-            // Row gap — end current segment, start a new one
+        if pt.0 > prev_row + 1 {
             segments.push(std::mem::take(&mut current));
             current = vec![pt];
         } else {
             current.push(pt);
         }
+        prev_row = pt.0;
     }
     if !current.is_empty() {
         segments.push(current);
