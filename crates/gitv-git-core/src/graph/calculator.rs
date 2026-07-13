@@ -408,13 +408,17 @@ impl GraphCalculator {
         // Adjust row_max_column for edge horizontal segments (merge/branch fan-out).
         // rowidlist captures threads entering each row but misses the parent columns
         // that merge edges fan out to at the merge commit's own row.
+        // We must update all rows between from_row and to_row (inclusive) because
+        // vertical edge segments pass through intermediate rows and the text offset
+        // needs to account for the edge column at every row the edge spans.
         for edge in &edges {
             let max_col = edge.from_col.max(edge.to_col) + 1;
-            if edge.from_row < row_max_column.len() {
-                row_max_column[edge.from_row] = row_max_column[edge.from_row].max(max_col);
-            }
-            if edge.to_row < row_max_column.len() {
-                row_max_column[edge.to_row] = row_max_column[edge.to_row].max(max_col);
+            let min_row = edge.from_row.min(edge.to_row);
+            let max_row = edge.from_row.max(edge.to_row);
+            for row in min_row..=max_row {
+                if row < row_max_column.len() {
+                    row_max_column[row] = row_max_column[row].max(max_col);
+                }
             }
             for &(row, col) in &edge.waypoints {
                 if row < row_max_column.len() {
