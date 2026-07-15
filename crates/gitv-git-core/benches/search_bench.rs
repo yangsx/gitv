@@ -1,7 +1,8 @@
 use chrono::Utc;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gitv_git_core::models::*;
 use gitv_git_core::search::{CombineMode, SearchEngine, SearchQuery};
+use std::hint::black_box;
 
 fn make_oid(seed: u64) -> Oid {
     let mut bytes = [0u8; 20];

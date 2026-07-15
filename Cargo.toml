@@ -13,13 +13,13 @@ license = "MIT"
 [workspace.dependencies]
 dirs = "6"
 gitv-git-core = { path = "crates/gitv-git-core" }
-gix = { version = "0.84", default-features = false, features = ["basic", "max-performance", "sha1", "blame", "status"] }
-gix-diff = "0.64"
-gix-index = "0.52"
-gix-object = "0.61"
+gix = { version = "0.85", default-features = false, features = ["basic", "max-performance", "sha1", "blame", "status"] }
+gix-diff = "0.65"
+gix-index = "0.53"
+gix-object = "0.62"
 postcard = { version = "1", features = ["alloc"] }
 regex = "1"
-roaring = "0.10"
+roaring = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
