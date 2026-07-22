@@ -8,6 +8,27 @@
 	color-scheme: light;
 }
 
+/* Deep dark background for the dark theme.
+ * Default Tailwind bg-gray-900 (#111827) is a warm mid-gray that leaves
+ * secondary text (text-gray-600) under contrast threshold on many
+ * surfaces. #0a0a0a is a neutral deep dark that preserves surface
+ * hierarchy (bg-gray-800 panels still read as elevated) while lifting
+ * secondary text into readable range. */
+.dark {
+	background-color: #0a0a0a;
+	color: #e5e7eb;
+}
+
+/* Dark-theme text overrides (parallel to the .light overrides below).
+ * Secondary/muted text is bumped one step brighter for WCAG AA contrast
+ * on the deep-dark background. */
+.dark .text-gray-600 {
+	color: #9ca3af;
+}
+.dark .text-gray-500 {
+	color: #a1a7b3;
+}
+
 @layer base {
 	*:focus-visible {
 		outline: 2px solid #3b82f6;
