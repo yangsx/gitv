@@ -130,16 +130,17 @@
 		onclick(commit.oid, !!(e.ctrlKey || e.metaKey))}
 	oncontextmenu={(e: MouseEvent) => oncontextmenu?.(e, commit.oid)}
 >
-	<!-- Sticky row-number column (frozen left, hover-reveal) -->
+	<!-- Sticky row-number column (frozen left, hover-reveal; every-5th row persistent) -->
 	{#if rowNumberColumnWidth > 0}
 		<span
 			class="sticky left-0 z-10 flex shrink-0 items-center justify-end {rowBgClass} {rowHoverClass}"
 			style="width: {rowNumberColumnWidth}px;"
 		>
 			{#if rowIndex !== undefined}
+				{@const isMilestone = rowIndex > 0 && rowIndex % 5 === 0}
 				<span
-					class="px-1 font-mono text-xs text-gray-500 opacity-0 transition-opacity duration-100 group-hover:opacity-100"
-					style="font-variant-numeric: tabular-nums;"
+					class="px-1 font-mono text-xs text-gray-500 {isMilestone ? 'opacity-70' : 'opacity-0 transition-opacity duration-100 group-hover:opacity-100'}"
+					style="font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';"
 				>
 					{rowIndex}
 				</span>
