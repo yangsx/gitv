@@ -10,6 +10,7 @@ export interface IpcTiming {
 export interface LoadPhaseTiming {
 	phase: string;
 	durationMs: number;
+	count?: number;
 }
 
 interface DebugState {

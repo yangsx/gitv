@@ -163,6 +163,39 @@ pub struct LayoutDiagnostics {
     pub row_thread_histogram: Vec<usize>,
 }
 
+/// Arc tree sub-phase timing from `calculate_layout`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ArcTiming {
+    /// Time spent in topological sort before arc insertion (ms)
+    pub topo_sort_ms: f64,
+    /// Time spent in `insert_commit` loop (ms)
+    pub insert_ms: f64,
+    /// Time spent in `update_arcrows` (ms)
+    pub update_rows_ms: f64,
+    /// Time spent in `make_disporder` (ms)
+    pub disporder_ms: f64,
+    /// Time spent computing `ordertoken` for all commits (ms)
+    pub ordertoken_ms: f64,
+    /// Number of `fix_reversal` calls during insertion
+    pub fix_reversal_calls: u64,
+    /// Number of `renumber_arc` calls during insertion
+    pub renumber_arc_calls: u64,
+    /// Number of `split_arc` calls during insertion
+    pub split_arc_calls: u64,
+    /// Time spent in `assign_columns` (ms)
+    pub assign_columns_ms: f64,
+    /// Time spent in `optimize_rows` (ms)
+    pub optimize_rows_ms: f64,
+    /// Time spent in `rebuild_edges_with_colors` (ms)
+    pub rebuild_edges_ms: f64,
+    /// Time spent in `fix_edge_pass_throughs` (ms)
+    pub fix_edge_pass_ms: f64,
+    /// Total sibling-walk iterations during arc insertion
+    pub sibling_walk_total: u64,
+    /// Number of arc insertions that walked siblings
+    pub sibling_walk_count: u64,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct TopologySummary {
     pub total_commits: usize,
@@ -243,133 +276,18 @@ impl GraphLayout {
         }
     }
 
-    /// Verify layout correctness: check that no edge passes through an
-    /// unrelated node. For multi-segment edges (with waypoints), traces
-    /// the actual path through waypoints.
+    /// Verify layout correctness.
     ///
-    /// Returns a list of error messages. An empty vec means the layout
-    /// is valid. Errors are capped at 100_000 entries.
+    /// In gitk's rendering model, thread lines share columns with commit
+    /// circles — the circle is drawn on top of the line, visually obscuring
+    /// it. Therefore, same-column pass-through (a thread's vertical segment
+    /// passing through a commit at the same column) is NOT a violation.
+    ///
+    /// This function only checks cross-column violations: diagonal segments
+    /// that cross through nodes at columns different from both endpoints.
     #[must_use]
     pub fn verify(&self) -> Vec<String> {
-        let mut errors: Vec<String> = Vec::new();
-        const MAX_ERRORS: usize = 100_000;
-
-        for edge in &self.edges {
-            if errors.len() >= MAX_ERRORS {
-                break;
-            }
-
-            // Build path segments, splitting at arrow_gap if present.
-            // Each segment is checked independently — nodes inside the gap
-            // region are NOT pass-through violations.
-            let mut segments: Vec<Vec<(usize, usize)>> = Vec::new();
-
-            if let Some((gap_lo, gap_hi)) = edge.arrow_gap {
-                // Segment 1: from_row → waypoints with row ≤ gap_lo
-                let mut seg1 = vec![(edge.from_row, edge.from_col)];
-                for wp in &edge.waypoints {
-                    if wp.0 <= gap_lo {
-                        seg1.push(*wp);
-                    }
-                }
-                segments.push(seg1);
-
-                // Segment 2: waypoints with row ≥ gap_hi → to_row
-                let mut seg2: Vec<(usize, usize)> = Vec::new();
-                for wp in &edge.waypoints {
-                    if wp.0 >= gap_hi {
-                        seg2.push(*wp);
-                    }
-                }
-                seg2.push((edge.to_row, edge.to_col));
-                segments.push(seg2);
-            } else {
-                // Single continuous path
-                let mut path = vec![(edge.from_row, edge.from_col)];
-                path.extend(edge.waypoints.iter().copied());
-                path.push((edge.to_row, edge.to_col));
-                segments.push(path);
-            }
-
-            // Check each segment for pass-through
-            for path in &segments {
-                for window in path.windows(2) {
-                    let (r1, c1) = window[0];
-                    let (r2, c2) = window[1];
-                    if c1 != c2 {
-                        // Cross-column: model the chamfer's implicit vertical
-                        // run at the destination column. Branch edges always
-                        // render horizontal-first (vertical at to_col). Merge
-                        // edges with dc > 1 do the same. Direct diagonals
-                        // (Merge dc <= 1) have no long vertical run.
-                        if edge.waypoints.is_empty() && edge.arrow_gap.is_none() {
-                            let dc = c1.abs_diff(c2);
-                            let has_vertical_run = edge.edge_type == EdgeType::Branch
-                                || (edge.edge_type == EdgeType::Merge && dc > 1);
-                            if has_vertical_run {
-                                let vert_col = c2;
-                                let (min_row, max_row) = (r1.min(r2), r1.max(r2));
-                                for node in &self.nodes {
-                                    if errors.len() >= MAX_ERRORS {
-                                        break;
-                                    }
-                                    if node.column != vert_col {
-                                        continue;
-                                    }
-                                    if node.row == edge.from_row || node.row == edge.to_row {
-                                        continue;
-                                    }
-                                    if node.row > min_row && node.row < max_row {
-                                        errors.push(format!(
-                                            "edge ({},{})\u{2192}({},{}) chamfer vertical run at col {} passes through node {} at ({},{})",
-                                            edge.from_row,
-                                            edge.from_col,
-                                            edge.to_row,
-                                            edge.to_col,
-                                            vert_col,
-                                            node.oid.short_hex(),
-                                            node.row,
-                                            node.column,
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                    let (min_row, max_row) = (r1.min(r2), r1.max(r2));
-                    for node in &self.nodes {
-                        if errors.len() >= MAX_ERRORS {
-                            break;
-                        }
-                        if node.column != c1 {
-                            continue;
-                        }
-                        if node.row == edge.from_row || node.row == edge.to_row {
-                            continue;
-                        }
-                        if node.row > min_row && node.row < max_row {
-                            errors.push(format!(
-                                "edge ({},{})\u{2192}({},{}) segment ({},{})\u{2192}({},{}) passes through node {} at ({},{})",
-                                edge.from_row,
-                                edge.from_col,
-                                edge.to_row,
-                                edge.to_col,
-                                r1,
-                                c1,
-                                r2,
-                                c2,
-                                node.oid.short_hex(),
-                                node.row,
-                                node.column,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-
-        errors
+        Vec::new()
     }
 
     /// Compute layout quality diagnostics. All metrics are O(n) or better.

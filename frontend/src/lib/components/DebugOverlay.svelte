@@ -104,7 +104,13 @@
 					{#each $debug.loadPhaseTimings as p, i (i)}
 						<div class="flex justify-between">
 							<span class="truncate max-w-[180px]">{p.phase}</span>
-							<span>{formatMs(p.durationMs)}ms</span>
+							<span>
+								{#if p.count !== undefined}
+									×{p.count}
+								{:else}
+									{formatMs(p.durationMs)}ms
+								{/if}
+							</span>
 						</div>
 					{/each}
 				</div>

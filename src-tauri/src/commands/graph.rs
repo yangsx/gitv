@@ -209,6 +209,20 @@ pub struct LoadTiming {
     pub refs_ms: f64,
     pub working_changes_ms: f64,
     pub total_ms: f64,
+    pub arc_topo_sort_ms: f64,
+    pub arc_insert_ms: f64,
+    pub arc_update_rows_ms: f64,
+    pub arc_disporder_ms: f64,
+    pub arc_ordertoken_ms: f64,
+    pub arc_fix_reversal_calls: u64,
+    pub arc_renumber_arc_calls: u64,
+    pub arc_split_arc_calls: u64,
+    pub assign_columns_ms: f64,
+    pub optimize_rows_ms: f64,
+    pub rebuild_edges_ms: f64,
+    pub fix_edge_pass_ms: f64,
+    pub sibling_walk_total: u64,
+    pub sibling_walk_count: u64,
 }
 
 #[derive(Serialize)]
@@ -236,6 +250,7 @@ struct InitialDataWork {
     refs_ms: f64,
     working_changes_ms: f64,
     total_ms: f64,
+    arc_timing: gitv_git_core::graph::ArcTiming,
     warnings: Vec<String>,
 }
 
@@ -296,7 +311,7 @@ pub async fn get_initial_data(
 
         let t1 = Instant::now();
         let calc = GraphCalculator::new(commits, refs_map, stashes, options);
-        let graph_layout = calc.calculate_layout();
+        let (graph_layout, arc_timing) = calc.calculate_layout_with_timing();
         let mut all_commits = calc.into_commits();
 
         // Sort commits by layout row so that lazy-loaded batches
@@ -335,6 +350,7 @@ pub async fn get_initial_data(
             refs_ms,
             working_changes_ms,
             total_ms,
+            arc_timing,
             warnings,
         })
     })
@@ -358,6 +374,20 @@ pub async fn get_initial_data(
             refs_ms: work.refs_ms,
             working_changes_ms: work.working_changes_ms,
             total_ms: work.total_ms,
+            arc_topo_sort_ms: work.arc_timing.topo_sort_ms,
+            arc_insert_ms: work.arc_timing.insert_ms,
+            arc_update_rows_ms: work.arc_timing.update_rows_ms,
+            arc_disporder_ms: work.arc_timing.disporder_ms,
+            arc_ordertoken_ms: work.arc_timing.ordertoken_ms,
+            arc_fix_reversal_calls: work.arc_timing.fix_reversal_calls,
+            arc_renumber_arc_calls: work.arc_timing.renumber_arc_calls,
+            arc_split_arc_calls: work.arc_timing.split_arc_calls,
+            assign_columns_ms: work.arc_timing.assign_columns_ms,
+            optimize_rows_ms: work.arc_timing.optimize_rows_ms,
+            rebuild_edges_ms: work.arc_timing.rebuild_edges_ms,
+            fix_edge_pass_ms: work.arc_timing.fix_edge_pass_ms,
+            sibling_walk_total: work.arc_timing.sibling_walk_total,
+            sibling_walk_count: work.arc_timing.sibling_walk_count,
         },
         warnings: work.warnings,
     })

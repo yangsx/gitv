@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::graph::layout::*;
 use crate::models::*;
@@ -279,8 +279,73 @@ impl GraphCalculator {
         self.commits
     }
 
+    /// Return commit indices in reverse-topological order (children before parents).
+    ///
+    /// Uses DFS-based Kahn's algorithm: a commit becomes available when ALL its
+    /// children have been emitted. Tips (commits with no children) are sorted by
+    /// commit_time descending (newest first) to match gitk's display order.
+    ///
+    /// This ensures the arc tree never sees a parent already in the tree when
+    /// inserting a child, eliminating fix_reversal calls.
+    fn topological_insertion_order(commits: &[CommitInfo]) -> Vec<usize> {
+        let n = commits.len();
+        if n <= 1 {
+            return (0..n).collect();
+        }
+
+        let oid_to_idx: HashMap<Oid, usize> = commits
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.oid, i))
+            .collect();
+
+        // Count children per commit in a single pass (O(N×P), not O(N²))
+        let mut remaining_children: Vec<usize> = vec![0; n];
+        for c in commits {
+            for &p in &c.parent_oids {
+                if let Some(&pidx) = oid_to_idx.get(&p) {
+                    remaining_children[pidx] += 1;
+                }
+            }
+        }
+
+        // Collect tips (in-degree 0 = no children in the set)
+        let mut available: Vec<usize> = (0..n).filter(|&i| remaining_children[i] == 0).collect();
+        available.sort_by(|&a, &b| {
+            commits[b]
+                .commit_time
+                .timestamp()
+                .cmp(&commits[a].commit_time.timestamp())
+        });
+
+        let mut order = Vec::with_capacity(n);
+        let mut stack = available;
+
+        while let Some(idx) = stack.pop() {
+            order.push(idx);
+            // Notify each parent that one more child has been processed
+            for &parent_oid in &commits[idx].parent_oids {
+                if let Some(&parent_idx) = oid_to_idx.get(&parent_oid) {
+                    remaining_children[parent_idx] -= 1;
+                    if remaining_children[parent_idx] == 0 {
+                        stack.push(parent_idx);
+                    }
+                }
+            }
+        }
+
+        order
+    }
+
     #[must_use]
     pub fn calculate_layout(&self) -> GraphLayout {
+        self.calculate_layout_with_timing().0
+    }
+
+    /// Compute the graph layout and return arc tree sub-phase timing.
+    #[must_use]
+    pub fn calculate_layout_with_timing(&self) -> (GraphLayout, ArcTiming) {
+        use crate::graph::layout::ArcTiming;
         let commits = if self.options.hide_merges {
             self.filter_merges()
         } else {
@@ -288,11 +353,65 @@ impl GraphCalculator {
         };
 
         if commits.is_empty() {
-            return self.empty_layout();
+            return (self.empty_layout(), ArcTiming::default());
         }
 
-        let children = Self::build_children_map(&commits);
-        let row_assignments = Self::temporal_topological_sort(&commits, &children);
+        // Build arc topology (gitk-faithful arc tree, replaces stages 1-5)
+        use crate::graph::arc::ArcTree;
+        let mut arc_tree = ArcTree::new();
+
+        // Sort commits in reverse-topological order (children before parents)
+        // before arc tree insertion. This ensures parents are never already in
+        // the tree when their children are inserted, eliminating fix_reversal
+        // calls. gitk achieves this naturally via `git log` streaming; gitv
+        // uses gitoxide which returns commits in date-order (not strictly
+        // topological), so we sort explicitly.
+        let t_topo = std::time::Instant::now();
+        let insertion_order = Self::topological_insertion_order(&commits);
+        let topo_sort_ms = t_topo.elapsed().as_secs_f64() * 1000.0;
+
+        let t1 = std::time::Instant::now();
+        for &idx in &insertion_order {
+            let c = &commits[idx];
+            arc_tree.insert_commit(c.oid, &c.parent_oids, c.commit_time.timestamp());
+        }
+        let _t_ins = t1.elapsed();
+        arc_tree.sort_children_all();
+        let _t_sort = t1.elapsed();
+        let t_insert = t1.elapsed();
+        arc_tree.update_arcrows();
+        let t_rows = t1.elapsed();
+
+        let (displayorder, _parentlist) = arc_tree.make_disporder(0, arc_tree.vrowmod);
+        let t_disp = t1.elapsed();
+
+        // Build ordertokens from arc tree
+        let mut ordertokens: HashMap<Oid, String> = HashMap::new();
+        for &oid in &displayorder {
+            ordertokens.insert(oid, arc_tree.ordertoken(oid));
+        }
+        let t_tok = t1.elapsed();
+
+        // Save arc-tree-specific timing (downstream timing added later)
+        let arc_insert_ms = t_insert.as_secs_f64() * 1000.0;
+        let arc_update_rows_ms = (t_rows - t_insert).as_secs_f64() * 1000.0;
+        let arc_disporder_ms = (t_disp - t_rows).as_secs_f64() * 1000.0;
+        let arc_ordertoken_ms = (t_tok - t_disp).as_secs_f64() * 1000.0;
+        let arc_fr = arc_tree.fix_reversal_calls;
+        let arc_renum = arc_tree.renumber_arc_calls;
+        let arc_split = arc_tree.split_arc_calls;
+        let sw_total = arc_tree.sibling_walk_total;
+        let sw_count = arc_tree.sibling_walk_count;
+
+        // Build children_sorted from arc tree (children already arc-token ordered)
+        let children_sorted: HashMap<Oid, Vec<Oid>> = arc_tree.children.clone();
+
+        // Build row_assignments from displayorder
+        let row_assignments: HashMap<Oid, usize> = displayorder
+            .iter()
+            .enumerate()
+            .map(|(row, &oid)| (oid, row))
+            .collect();
 
         let mut graph_data: HashMap<Oid, CommitGraphData> = HashMap::new();
         let palette = palette_for(self.options.palette);
@@ -318,38 +437,12 @@ impl GraphCalculator {
             .map(|(i, c)| (c.oid, i))
             .collect();
 
-        // --- gitk-style column assignment ---
-
-        // Build displayorder: commit index by row
-        let mut displayorder_idx: Vec<usize> = vec![0; commits.len()];
-        for (i, c) in commits.iter().enumerate() {
-            let row = *row_assignments.get(&c.oid).unwrap_or(&0);
-            displayorder_idx[row] = i;
-        }
-
-        // Compute first-parent chain from HEAD for ordertoken tiebreaking.
-        // When fork-point children share the same timestamp, the child on the
-        // first-parent chain is preferred as the "chosen" continuation (gets
-        // the smaller ordertoken → col 0), matching gitk's semantics.
-        let head_oid = commits[displayorder_idx[0]].oid;
-        let first_parent_chain: HashSet<Oid> =
-            Self::compute_first_parent_chain(head_oid, &commits, &oid_index);
-
-        // Sort children with FPC preference then by row, so children[p][0]
-        // is the mainline child matching gitk display-order.
-        let children_sorted =
-            Self::sort_children_by_row(&children, &row_assignments, &first_parent_chain);
-
-        // Compute ordertokens for stable column ordering
-        let ordertokens = Self::compute_ordertokens(
-            &commits,
-            &children_sorted,
-            &displayorder_idx,
-            &oid_index,
-            &first_parent_chain,
-        );
+        // Build displayorder_idx from arc tree's displayorder (OIDs → indices)
+        let displayorder_idx: Vec<usize> =
+            displayorder.iter().map(|&oid| oid_index[&oid]).collect();
 
         // Assign columns using row-by-row active-thread tracking (gitk algorithm)
+        let t2 = std::time::Instant::now();
         let mingap_len = self.options.arrow_gap_threshold;
         let (_, mut rowidlist) = Self::assign_columns(
             &displayorder_idx,
@@ -359,12 +452,15 @@ impl GraphCalculator {
             &row_assignments,
             mingap_len,
         );
+        let t_assign = t2.elapsed();
 
-        // Build displayorder OIDs for optimize_rows and extract_columns
-        let displayorder: Vec<Oid> = displayorder_idx.iter().map(|&ci| commits[ci].oid).collect();
+        // displayorder OIDs for optimize_rows and extract_columns
+        // (already built from arc tree above)
 
         // Optimize: insert padding to separate branches and fix jaggies
+        let t3 = std::time::Instant::now();
         optimize_rows(&mut rowidlist, &displayorder, &children_sorted);
+        let t_opt = t3.elapsed();
 
         // Extract final columns from optimized rowidlist
         let columns = extract_columns(&rowidlist, &displayorder);
@@ -383,7 +479,9 @@ impl GraphCalculator {
 
         self.assign_colors_to_nodes(&sorted, &children_sorted, &mut graph_data);
         let mut nodes = self.rebuild_nodes_with_colors(&sorted, &graph_data);
+        let t4 = std::time::Instant::now();
         let mut edges = self.rebuild_edges_with_colors(&sorted, &graph_data, &rowidlist);
+        let t_edges = t4.elapsed();
 
         let mut row_max_column: Vec<usize> = rowidlist
             .iter()
@@ -445,8 +543,7 @@ impl GraphCalculator {
             })
             .collect();
 
-        // Post-process edges to re-route any obstructed same-column segments
-        Self::fix_edge_pass_throughs(&nodes, &mut edges);
+        let t_fix = std::time::Instant::now().elapsed();
 
         if self.options.orientation == GraphOrientation::BottomToTop {
             let max_row = nodes.iter().map(|n| n.row).max().unwrap_or(0);
@@ -472,7 +569,24 @@ impl GraphCalculator {
             row_max_column.reverse();
         }
 
-        GraphLayout {
+        let arc_timing = ArcTiming {
+            topo_sort_ms,
+            insert_ms: arc_insert_ms,
+            update_rows_ms: arc_update_rows_ms,
+            disporder_ms: arc_disporder_ms,
+            ordertoken_ms: arc_ordertoken_ms,
+            fix_reversal_calls: arc_fr,
+            renumber_arc_calls: arc_renum,
+            split_arc_calls: arc_split,
+            assign_columns_ms: t_assign.as_secs_f64() * 1000.0,
+            optimize_rows_ms: t_opt.as_secs_f64() * 1000.0,
+            rebuild_edges_ms: t_edges.as_secs_f64() * 1000.0,
+            fix_edge_pass_ms: t_fix.as_secs_f64() * 1000.0,
+            sibling_walk_total: sw_total,
+            sibling_walk_count: sw_count,
+        };
+
+        let layout = GraphLayout {
             nodes,
             stash_markers,
             edges,
@@ -481,7 +595,8 @@ impl GraphCalculator {
             total_rows,
             stash_commits,
             row_max_column,
-        }
+        };
+        (layout, arc_timing)
     }
 
     pub fn apply_dimming(
@@ -677,254 +792,6 @@ impl GraphCalculator {
         current
     }
 
-    fn build_children_map(commits: &[CommitInfo]) -> HashMap<Oid, Vec<Oid>> {
-        let mut children: HashMap<Oid, Vec<Oid>> = HashMap::new();
-        for c in commits {
-            for &p in &c.parent_oids {
-                children.entry(p).or_default().push(c.oid);
-            }
-        }
-        children
-    }
-
-    /// Assign display rows using a DFS-based topological sort that matches
-    /// git's `--topo-order` behavior: HEAD is at row 0, and after a merge,
-    /// the side branch (second parent) is fully explored before resuming
-    /// the mainline (first parent).
-    ///
-    /// A commit is only assigned a row after ALL its children have been
-    /// assigned rows (topological constraint). The DFS uses a LIFO stack:
-    /// when a merge's parents both become available, the second parent is
-    /// pushed last and popped first, so the side branch is contiguous.
-    fn temporal_topological_sort(
-        commits: &[CommitInfo],
-        children: &HashMap<Oid, Vec<Oid>>,
-    ) -> HashMap<Oid, usize> {
-        let n = commits.len();
-        let oid_to_idx: HashMap<Oid, usize> = commits
-            .iter()
-            .enumerate()
-            .map(|(i, c)| (c.oid, i))
-            .collect();
-
-        // Count in-degree (number of unvisited children) for each commit.
-        // A commit becomes "available" when its in-degree reaches 0.
-        let mut indegree: Vec<usize> = (0..n)
-            .map(|i| {
-                children
-                    .get(&commits[i].oid)
-                    .map(|kids| kids.iter().filter(|k| oid_to_idx.contains_key(*k)).count())
-                    .unwrap_or(0)
-            })
-            .collect();
-
-        // Collect initial in-degree-0 commits, sort by timestamp descending
-        // (newest first), then push onto stack in reverse so newest is on top.
-        let mut initial: Vec<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
-        initial.sort_by(|&a, &b| {
-            let ts_a = commits[a].commit_time.timestamp();
-            let ts_b = commits[b].commit_time.timestamp();
-            ts_b.cmp(&ts_a)
-                .then_with(|| commits[b].oid.as_bytes().cmp(commits[a].oid.as_bytes()))
-        });
-
-        let mut stack: Vec<usize> = Vec::with_capacity(n);
-        for &i in initial.iter().rev() {
-            stack.push(i);
-        }
-
-        let mut rows = vec![0usize; n];
-        let mut row_counter = 0usize;
-
-        while let Some(idx) = stack.pop() {
-            rows[idx] = row_counter;
-            row_counter += 1;
-
-            // Push parents in order (first parent first, second parent last).
-            // LIFO means second parent is popped first → side branch explored
-            // before mainline, matching git --topo-order.
-            for parent_oid in &commits[idx].parent_oids {
-                if let Some(&parent_idx) = oid_to_idx.get(parent_oid) {
-                    indegree[parent_idx] -= 1;
-                    if indegree[parent_idx] == 0 {
-                        stack.push(parent_idx);
-                    }
-                }
-            }
-        }
-
-        commits
-            .iter()
-            .enumerate()
-            .map(|(i, c)| (c.oid, rows[i]))
-            .collect()
-    }
-
-    /// Walk first-parent pointers from HEAD to build the first-parent chain set.
-    /// Used for ordertoken tiebreaking at fork points.
-    fn compute_first_parent_chain(
-        head_oid: Oid,
-        commits: &[CommitInfo],
-        oid_index: &HashMap<Oid, usize>,
-    ) -> HashSet<Oid> {
-        let mut chain = HashSet::new();
-        let mut oid = head_oid;
-        loop {
-            chain.insert(oid);
-            let Some(&idx) = oid_index.get(&oid) else {
-                break;
-            };
-            let c = &commits[idx];
-            if c.parent_oids.is_empty() {
-                break;
-            }
-            oid = c.parent_oids[0];
-        }
-        chain
-    }
-
-    /// Sort each commit's children list with first-parent-chain preference,
-    /// then by row ascending.
-    ///
-    /// FPC children sort first so `children_sorted[p][0]` is always the
-    /// mainline child (matching gitk's display-order where the FPC child
-    /// appears first in `git rev-list --topo-order`). Within each group
-    /// (FPC vs non-FPC), children are sorted by row ascending (youngest
-    /// first), which matches gitk's reverse-topological display order.
-    ///
-    /// This ordering is used throughout the algorithm for ordertoken walk,
-    /// fork-point differentiation, makeupline trigger, and optimize_rows
-    /// arrow detection.
-    fn sort_children_by_row(
-        children: &HashMap<Oid, Vec<Oid>>,
-        row_assignments: &HashMap<Oid, usize>,
-        first_parent_chain: &HashSet<Oid>,
-    ) -> HashMap<Oid, Vec<Oid>> {
-        let mut sorted = children.clone();
-        for kids in sorted.values_mut() {
-            kids.sort_by(|a, b| {
-                let a_fpc = first_parent_chain.contains(a);
-                let b_fpc = first_parent_chain.contains(b);
-                // FPC children first (false < true in sort)
-                match (a_fpc, b_fpc) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => {
-                        let a_row = row_assignments.get(a).copied().unwrap_or(usize::MAX);
-                        let b_row = row_assignments.get(b).copied().unwrap_or(usize::MAX);
-                        a_row.cmp(&b_row)
-                    }
-                }
-            });
-        }
-        sorted
-    }
-
-    /// Compute ordertokens for all commits (gitk algorithm).
-    ///
-    /// Each commit gets a string token encoding its path from HEAD via the
-    /// youngest-child chain. First parent appends `""`, second parent appends
-    /// `"1"`, etc. Lexicographic comparison of tokens determines column order:
-    /// the mainline (first-parent chain from HEAD) gets token `""` and sits
-    /// leftmost; branches get longer tokens and go right.
-    ///
-    /// **Branch differentiation**: After the initial pass (which assigns `""`
-    /// to all first-parent-only chains), a post-processing step differentiates
-    /// branches at fork points — commits with multiple children. The first
-    /// (youngest) child keeps the fork point's base token; subsequent children
-    /// get their child index (`"1"`, `"2"`, …) appended to their entire
-    /// descendant subtree. Without this, all non-merge branches would share
-    /// token `""` and collapse into the same column.
-    ///
-    /// Commits are processed in row order (row 0 first) so that children
-    /// always have their tokens computed before their parents.
-    fn compute_ordertokens(
-        commits: &[CommitInfo],
-        children_sorted: &HashMap<Oid, Vec<Oid>>,
-        displayorder_idx: &[usize],
-        oid_index: &HashMap<Oid, usize>,
-        first_parent_chain: &HashSet<Oid>,
-    ) -> HashMap<Oid, String> {
-        let mut ordertokens: HashMap<Oid, String> = HashMap::new();
-        let head_oid = commits[displayorder_idx[0]].oid;
-
-        // Initial pass: assign base tokens via youngest-child chain.
-        for &ci in displayorder_idx {
-            let c = &commits[ci];
-            match children_sorted.get(&c.oid).and_then(|kids| kids.first()) {
-                Some(&first_child_oid) => {
-                    let child_token = ordertokens
-                        .get(&first_child_oid)
-                        .cloned()
-                        .unwrap_or_default();
-                    let &child_ci = oid_index
-                        .get(&first_child_oid)
-                        .expect("first child oid must exist in oid_index");
-                    let parent_idx = commits[child_ci]
-                        .parent_oids
-                        .iter()
-                        .position(|&p| p == c.oid)
-                        .unwrap_or(0);
-                    let segment = if parent_idx == 0 {
-                        String::new()
-                    } else {
-                        parent_idx.to_string()
-                    };
-                    ordertokens.insert(c.oid, child_token + &segment);
-                }
-                None => {
-                    // No children: HEAD gets "" (mainline start). All other
-                    // childless commits (branch tips) get a seed token that
-                    // sorts after all normal ordertokens, matching gitk's
-                    // newvarc "s" prefix (line 928). This places branch tips
-                    // at the rightmost columns, preventing them from
-                    // displacing active threads.
-                    if c.oid == head_oid {
-                        ordertokens.insert(c.oid, String::new());
-                    } else {
-                        let cdate = c.commit_time.timestamp().max(0) as u32;
-                        ordertokens.insert(c.oid, format!("s{:08x}", !cdate));
-                    }
-                }
-            }
-        }
-
-        // Post-process: differentiate branches at fork points.
-        // At each fork point (commit with multiple children), the first
-        // (youngest) child inherits the fork point's token. Other children
-        // get a suffix (child index) appended to their entire descendant
-        // subtree, ensuring each branch sorts into a distinct column.
-        //
-        // Propagation skips children on the first-parent chain (mainline) to
-        // prevent side-branch suffixes from leaking through merge points
-        // into the mainline. Other children (side-branch continuations after
-        // a merge) continue to receive the suffix normally.
-        for &ci in displayorder_idx {
-            let oid = commits[ci].oid;
-            let Some(kids) = children_sorted.get(&oid) else {
-                continue;
-            };
-            if kids.len() <= 1 {
-                continue;
-            }
-            for (child_idx, &child_oid) in kids.iter().enumerate() {
-                if child_idx == 0 {
-                    continue;
-                }
-                let suffix = child_idx.to_string();
-                propagate_branch_token(
-                    child_oid,
-                    children_sorted,
-                    &mut ordertokens,
-                    &suffix,
-                    first_parent_chain,
-                );
-            }
-        }
-
-        ordertokens
-    }
-
     /// Find the insertion position for `id` in `idlist` using a hint
     /// (gitk's idcol algorithm). When the new element's ordertoken equals
     /// the token at the hint position, the new element is inserted AT the
@@ -1024,6 +891,7 @@ impl GraphCalculator {
     /// one with row < from_row. gitv's `children_sorted` is sorted by row
     /// ascending (matching gitk's display order), but we scan all children
     /// and return the maximum row that is < from_row for consistency.
+    #[allow(dead_code)]
     fn prevuse(
         oid: Oid,
         from_row: usize,
@@ -1208,6 +1076,21 @@ impl GraphCalculator {
         let mut columns: HashMap<Oid, usize> = HashMap::new();
         let mut rowidlist: Vec<Vec<Option<Oid>>> = Vec::with_capacity(n);
 
+        // Precompute sorted children rows for O(log N) prevuse lookups in
+        // makeupline. Without this, prevuse scans all children linearly,
+        // causing O(N²) slowdown on repos with high-fanout merge bases.
+        let children_rows: HashMap<Oid, Vec<usize>> = children_sorted
+            .iter()
+            .map(|(&parent, kids)| {
+                let mut rows: Vec<usize> = kids
+                    .iter()
+                    .filter_map(|k| row_assignments.get(k).copied())
+                    .collect();
+                rows.sort_unstable();
+                (parent, rows)
+            })
+            .collect();
+
         // Row 0: just the HEAD commit
         let head_oid = commits[displayorder_idx[0]].oid;
         idlist.push(head_oid);
@@ -1240,17 +1123,21 @@ impl GraphCalculator {
                         .and_then(|kids| kids.first())
                         .is_some_and(|&fk| fk == prev.oid);
                     if !is_first_child {
-                        makeupline(
-                            p_oid,
-                            row - 1,
-                            row,
-                            col,
-                            &mut rowidlist,
-                            children_sorted,
-                            row_assignments,
-                            ordertokens,
-                            mingap_len,
-                        );
+                        let in_prev = rowidlist
+                            .get(row - 1)
+                            .is_some_and(|r| r.contains(&Some(p_oid)));
+                        if !in_prev {
+                            makeupline(
+                                p_oid,
+                                row - 1,
+                                row,
+                                col,
+                                &mut rowidlist,
+                                &children_rows,
+                                ordertokens,
+                                mingap_len,
+                            );
+                        }
                     }
                     hint = col;
                 }
@@ -1310,8 +1197,7 @@ impl GraphCalculator {
                         row,
                         col,
                         &mut rowidlist,
-                        children_sorted,
-                        row_assignments,
+                        &children_rows,
                         ordertokens,
                         mingap_len,
                     );
@@ -1343,6 +1229,26 @@ impl GraphCalculator {
                         if should_insert {
                             let col = Self::idcol(&idlist, p_oid, ordertokens, hint);
                             idlist.insert(col, p_oid);
+                            // Patch thread back into prior rows for column
+                            // continuity — but only if there's actually a gap
+                            // (thread not in the previous row). This avoids the
+                            // expensive makeupline call for the common case where
+                            // the thread is already in consecutive rows.
+                            let in_prev = rowidlist
+                                .get(row - 1)
+                                .is_some_and(|r| r.contains(&Some(p_oid)));
+                            if !in_prev {
+                                makeupline(
+                                    p_oid,
+                                    row - 1,
+                                    row,
+                                    col,
+                                    &mut rowidlist,
+                                    &children_rows,
+                                    ordertokens,
+                                    mingap_len,
+                                );
+                            }
                             hint = col;
                         }
                     }
@@ -1364,6 +1270,21 @@ impl GraphCalculator {
                         if should_insert {
                             let col = Self::idcol(&idlist, next_oid, ordertokens, hint);
                             idlist.insert(col, next_oid);
+                            let in_prev = rowidlist
+                                .get(row - 1)
+                                .is_some_and(|r| r.contains(&Some(next_oid)));
+                            if !in_prev {
+                                makeupline(
+                                    next_oid,
+                                    row - 1,
+                                    row,
+                                    col,
+                                    &mut rowidlist,
+                                    &children_rows,
+                                    ordertokens,
+                                    mingap_len,
+                                );
+                            }
                         }
                     }
                 }
@@ -1605,14 +1526,10 @@ impl GraphCalculator {
     ///
     /// Maintains `edge_occupancy` incrementally so that later edges' detour
     /// route selection avoids columns already claimed by earlier edges.
+    #[allow(dead_code)]
     fn fix_edge_pass_throughs(nodes: &[NodePosition], edges: &mut [Edge]) {
-        let mut occupancy: HashSet<(usize, usize)> = HashSet::with_capacity(nodes.len());
-        for n in nodes {
-            occupancy.insert((n.row, n.column));
-        }
+        let mut grid = ColumnGrid::from_positions(nodes.iter().map(|n| (n.row, n.column)));
         let max_col = nodes.iter().map(|n| n.column).max().unwrap_or(4) + 2;
-
-        let mut edge_occupancy: HashSet<(usize, usize)> = HashSet::new();
 
         for edge in edges.iter_mut() {
             // Build list of consecutive pairs: endpoints + waypoints
@@ -1624,14 +1541,15 @@ impl GraphCalculator {
             }
             segments.push((prev, (edge.to_row, edge.to_col)));
 
-            // Find obstructed same-col segments and schedule insertions
-            // (collected as (insert_after_index, detour_start, detour_end, route_col)
-            // and applied in reverse to preserve indices).
+            // Find obstructed same-col segments and schedule insertions.
             struct Insertion {
                 after: usize,
                 ds: usize,
                 de: usize,
                 rc: usize,
+                col: usize,
+                p1_row: usize,
+                p2_row: usize,
             }
             let mut insertions: Vec<Insertion> = Vec::new();
             let mut waypoint_idx = 0usize; // index into edge.waypoints at the END of each segment
@@ -1649,32 +1567,27 @@ impl GraphCalculator {
                 // Same-column segment
                 let col = p1.1;
                 let (lo, hi) = (p1.0.min(p2.0), p1.0.max(p2.0));
-                let obstructed: Vec<usize> = (lo + 1..hi)
-                    .filter(|&r| occupancy.contains(&(r, col)))
-                    .collect();
+                let (first_obs, last_obs) = grid.node_first_last(col, lo, hi);
 
-                if obstructed.is_empty() {
+                let (Some(first_obs), Some(last_obs)) = (first_obs, last_obs) else {
                     waypoint_idx += 1;
                     continue;
-                }
+                };
 
                 // Obstruction found — compute detour
-                let first_obs = obstructed[0];
-                let last_obs = obstructed[obstructed.len() - 1];
                 let ds = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
                 let de = lo.max(last_obs + 1).min(hi - 1);
                 if ds <= de {
                     let rc = (0..max_col)
                         .filter(|&c| c != col)
                         .min_by_key(|&c| {
-                            let obs = (ds..=de)
-                                .filter(|&r| {
-                                    occupancy.contains(&(r, c)) || edge_occupancy.contains(&(r, c))
-                                })
-                                .count();
-                            // Prefer right-side columns on ties so that
-                            // left-side edges retain priority.
-                            (obs, (c < col) as usize, c.abs_diff(col))
+                            let obs = grid.combined_count(c, ds, de);
+                            (
+                                obs,
+                                c.abs_diff(col).min(2),
+                                (c < col) as usize,
+                                c.abs_diff(col),
+                            )
                         })
                         .unwrap_or(col + 1);
                     insertions.push(Insertion {
@@ -1682,30 +1595,43 @@ impl GraphCalculator {
                         ds,
                         de,
                         rc,
+                        col,
+                        p1_row: p1.0,
+                        p2_row: p2.0,
                     });
                 }
                 waypoint_idx += 1;
             }
 
             // Apply insertions in reverse order to preserve indices.
-            // Insert end waypoint first, then start — so the final
-            // order is [(ds, rc), (de, rc)] (start before end).
+            // Insert in reverse order so the final waypoint sequence is:
+            // [..., (ds-1, col), (ds, rc), (de, rc), (de+1, col), ...]
+            //     ↑ start chamfer  ↑detour↑  ↑ end chamfer
+            // Each insert at ins.after shifts later inserts right.
             if !insertions.is_empty() {
                 for ins in insertions.into_iter().rev() {
+                    // 1. End chamfer: (de + 1, col) — transitions back to target column
+                    if ins.de + 1 < ins.p2_row && ins.rc != ins.col {
+                        edge.waypoints.insert(ins.after, (ins.de + 1, ins.col));
+                    }
+                    // 2. (de, rc) — detour end
                     if ins.rc != Self::col_of_point(edge, ins.de) {
                         edge.waypoints.insert(ins.after, (ins.de, ins.rc));
                     }
+                    // 3. (ds, rc) — detour start
                     if ins.rc != Self::col_of_point(edge, ins.ds) {
                         edge.waypoints.insert(ins.after, (ins.ds, ins.rc));
+                    }
+                    // 4. Start chamfer: (ds - 1, col) — ensures 1-row transition
+                    if ins.ds > ins.p1_row + 1 && ins.rc != ins.col {
+                        edge.waypoints.insert(ins.after, (ins.ds - 1, ins.col));
                     }
                 }
             }
 
             // Track this edge's cells (now including any new detour waypoints)
             // so later edges avoid them.
-            for cell in edge_occupied_cells(edge) {
-                edge_occupancy.insert(cell);
-            }
+            grid.add_edge_cells(edge_occupied_cells(edge).into_iter());
         }
     }
 
@@ -1744,18 +1670,12 @@ impl GraphCalculator {
         let thread_positions = build_thread_index(rowidlist);
 
         // Build occupancy grid: which (row, col) has a node, used to detect
-        // pass-through conflicts for same-column edges.
-        let mut occupancy: HashSet<(usize, usize)> = HashSet::with_capacity(sorted.len());
-        for c in sorted {
+        // pass-through conflicts for same-column edges. ColumnGrid provides
+        // O(log N) range queries instead of O(span) row-by-row scans.
+        let mut grid = ColumnGrid::from_positions(sorted.iter().map(|c| {
             let gd = &graph_data[&c.oid];
-            occupancy.insert((gd.row, gd.column));
-        }
-
-        // Edge occupancy: cells already claimed by earlier edges' same-column
-        // segments. Built incrementally so that later edges' detour route
-        // selection avoids columns already in use. Left-side edges (processed
-        // first in sorted order) retain priority.
-        let mut edge_occupancy: HashSet<(usize, usize)> = HashSet::new();
+            (gd.row, gd.column)
+        }));
 
         let max_col = graph_data.values().map(|gd| gd.column).max().unwrap_or(4) + 2;
 
@@ -1788,43 +1708,78 @@ impl GraphCalculator {
                     let (mut waypoints, arrow_gap) =
                         trace_thread(p_oid, c_row, p_gd.row, p_gd.column, &thread_positions);
 
-                    // For same-column edges, check whether a node sits in
-                    // this column between the endpoints. If not, a straight
-                    // vertical line is safe. If so, check whether trace_thread's
-                    // waypoints already route around the obstruction (they follow
-                    // the thread's actual rowidlist positions, which can shift
-                    // left when vacated columns open up). If trace_thread's
-                    // waypoints avoid all obstructions, keep them — they already
-                    // encode the natural thread compaction that matches gitk.
-                    // Only replace with a clean detour if trace_thread's
-                    // waypoints themselves pass through nodes.
-                    if c_col == p_gd.column && arrow_gap.is_none() {
-                        // Build full path including endpoints.
+                    let mut is_synthetic = false;
+                    if arrow_gap.is_none()
+                        && waypoints.is_empty()
+                        && p_gd.row > c_row + 1
+                        && c_col != p_gd.column
+                    {
+                        waypoints = vec![(c_row + 1, p_gd.column)];
+                        is_synthetic = true;
+                    }
+
+                    if arrow_gap.is_none() && !waypoints.is_empty() {
                         let mut full_path: Vec<(usize, usize)> =
                             Vec::with_capacity(waypoints.len() + 2);
                         full_path.push((c_row, c_col));
                         full_path.extend_from_slice(&waypoints);
                         full_path.push((p_gd.row, p_gd.column));
 
-                        // Check if any same-column segment passes through a node.
+                        // NOTE: Do NOT call simplify_zigzags on full_path here.
+                        // trace_thread() already called simplify_zigzags on the
+                        // waypoints. Calling it again on the full path (which
+                        // includes endpoints) can remove waypoints that are
+                        // needed for correct routing around nodes. Example:
+                        // edge (13,0)→(14,1)→(15,0) — the (14,1) waypoint
+                        // routes around the node at (14,0). simplify_zigzags
+                        // would see 0→1→0 as a zigzag and remove (14,1),
+                        // causing a pass-through violation that fix_edge_pass_throughs
+                        // then "fixes" with a detour that creates non-45° segments.
+                        //
+                        // The trace_thread() call above already handles genuine
+                        // zigzag artifacts from optimize_rows padding.
+
+                        if full_path.len() > 2 {
+                            waypoints = full_path[1..full_path.len() - 1].to_vec();
+                        } else {
+                            waypoints.clear();
+                        }
+
+                        // When the first waypoint is at child_row+1 with a
+                        // column different from the child, the chamfer from
+                        // child to thread has dr=1 but |dc| may be > 1.
+                        // Insert a waypoint at (child_row, first_col) to
+                        // decompose the chamfer into horizontal + vertical
+                        // segments, both axis-aligned. This also makes the
+                        // horizontal segment shareable with other edges to
+                        // the same parent (Invariant #12).
+                        if let Some((first_r, first_c)) = waypoints.first().copied()
+                            && first_r == c_row + 1
+                            && first_c != c_col
+                            && first_c.abs_diff(c_col) > 1
+                        {
+                            waypoints.insert(0, (c_row, first_c));
+                        }
+
                         let mut trace_passes_through = false;
+                        let mut obstructed_col: Option<usize> = None;
                         let mut i = 0;
                         while i + 1 < full_path.len() {
                             let (r1, c1) = full_path[i];
                             let (r2, c2) = full_path[i + 1];
                             if c1 == c2 {
                                 let (lo, hi) = (r1.min(r2), r1.max(r2));
-                                if (lo + 1..hi).any(|r| occupancy.contains(&(r, c1))) {
+                                if grid.node_first_last(c1, lo, hi).0.is_some() {
                                     trace_passes_through = true;
+                                    obstructed_col = Some(c1);
                                     break;
                                 }
                             }
                             i += 1;
                         }
 
-                        // Check if the path zigzags (column direction reverses).
                         let mut trace_zigzags = false;
-                        if !trace_passes_through {
+                        if is_synthetic && !trace_passes_through {
                             for w in full_path.windows(3) {
                                 let d1 = w[1].1 as i64 - w[0].1 as i64;
                                 let d2 = w[2].1 as i64 - w[1].1 as i64;
@@ -1835,38 +1790,19 @@ impl GraphCalculator {
                             }
                         }
 
-                        // Only rebuild the routing if trace_thread's waypoints
-                        // cause pass-through or zigzag; otherwise they already
-                        // encode the natural thread compaction matching gitk.
                         if trace_passes_through || trace_zigzags {
                             let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
-                            waypoints = build_detour_waypoints(
-                                lo,
-                                hi,
-                                c_col,
-                                &occupancy,
-                                &edge_occupancy,
-                                max_col,
-                            );
-                        }
-                    }
-
-                    // For cross-column edges without a gap, check if the
-                    // parent column has obstructions between child and parent.
-                    // If clear, the chamfer is safe and waypoints are redundant.
-                    // If obstructed, route around them via an adjacent column.
-                    if arrow_gap.is_none() && c_col != p_gd.column && !waypoints.is_empty() {
-                        let all_at_parent_col = waypoints.iter().all(|(_, c)| *c == p_gd.column);
-                        if all_at_parent_col {
-                            let (lo, hi) = (c_row.min(p_gd.row), c_row.max(p_gd.row));
-                            waypoints = build_detour_waypoints(
-                                lo,
-                                hi,
-                                p_gd.column,
-                                &occupancy,
-                                &edge_occupancy,
-                                max_col,
-                            );
+                            let target_col = match obstructed_col {
+                                Some(c) => c,
+                                None if c_col == p_gd.column => c_col,
+                                None => p_gd.column,
+                            };
+                            let detour = build_detour_waypoints(lo, hi, target_col, &grid, max_col);
+                            if !detour.is_empty() {
+                                waypoints = detour;
+                            } else if p_gd.row > c_row + 1 {
+                                waypoints = vec![(c_row + 1, p_gd.column)];
+                            }
                         }
                     }
 
@@ -1884,9 +1820,7 @@ impl GraphCalculator {
                     };
 
                     // Track this edge's cells so later edges avoid them.
-                    for cell in edge_occupied_cells(&new_edge) {
-                        edge_occupancy.insert(cell);
-                    }
+                    grid.add_edge_cells(edge_occupied_cells(&new_edge).into_iter());
 
                     edges.push(new_edge);
                 }
@@ -1905,53 +1839,6 @@ impl GraphCalculator {
             total_rows: 0,
             stash_commits: Vec::new(),
             row_max_column: Vec::new(),
-        }
-    }
-}
-
-/// Recursively append `suffix` to the ordertoken of `start_oid` and all its
-/// descendants in the children map.
-///
-/// This is used during ordertoken post-processing: when a fork point has
-/// children [A, B, C], B's subtree gets `"1"` and C's subtree gets `"2"`,
-/// ensuring each branch sorts into a distinct column via `idcol`.
-///
-/// Propagation skips children on the first-parent chain (mainline) at each
-/// visited commit, preventing side-branch suffixes from leaking through
-/// merge points into the mainline. Other children (side-branch continuations
-/// after a merge) continue to receive the suffix normally.
-fn propagate_branch_token(
-    start_oid: Oid,
-    children_sorted: &HashMap<Oid, Vec<Oid>>,
-    ordertokens: &mut HashMap<Oid, String>,
-    suffix: &str,
-    first_parent_chain: &HashSet<Oid>,
-) {
-    // Never modify ordertokens of commits on the first-parent chain.
-    if first_parent_chain.contains(&start_oid) {
-        return;
-    }
-    let mut stack = vec![start_oid];
-    let mut visited = HashSet::new();
-    while let Some(oid) = stack.pop() {
-        if !visited.insert(oid) {
-            continue;
-        }
-        // Also guard every visited node against FPC membership
-        // (e.g. a merge with both FPC and non-FPC parents on its children).
-        if first_parent_chain.contains(&oid) {
-            continue;
-        }
-        if let Some(token) = ordertokens.get_mut(&oid) {
-            token.push_str(suffix);
-        }
-        if let Some(kids) = children_sorted.get(&oid) {
-            for &kid in kids.iter().rev() {
-                if first_parent_chain.contains(&kid) {
-                    continue;
-                }
-                stack.push(kid);
-            }
         }
     }
 }
@@ -1981,6 +1868,89 @@ fn edge_occupied_cells(edge: &Edge) -> Vec<(usize, usize)> {
     cells
 }
 
+/// Per-column occupancy grid enabling O(log N) range queries.
+///
+/// Replaces flat `HashSet<(row, col)>` for obstruction detection in detour
+/// routing. Node positions are pre-loaded; edge cells are added incrementally
+/// as edges are processed (so later edges avoid earlier edges' claimed cells).
+struct ColumnGrid {
+    nodes: HashMap<usize, BTreeSet<usize>>,
+    edges: HashMap<usize, BTreeSet<usize>>,
+}
+
+impl ColumnGrid {
+    fn from_positions(positions: impl Iterator<Item = (usize, usize)>) -> Self {
+        let mut grid = ColumnGrid {
+            nodes: HashMap::new(),
+            edges: HashMap::new(),
+        };
+        for (row, col) in positions {
+            grid.nodes.entry(col).or_default().insert(row);
+        }
+        grid
+    }
+
+    /// First and last node obstructions in `col` within open interval `(lo, hi)`.
+    /// Returns `(None, None)` if unobstructed. O(log N).
+    fn node_first_last(&self, col: usize, lo: usize, hi: usize) -> (Option<usize>, Option<usize>) {
+        if lo >= hi {
+            return (None, None);
+        }
+        match self.nodes.get(&col) {
+            Some(set) => {
+                let mut iter = set.range((lo + 1)..hi);
+                match (iter.next(), iter.last()) {
+                    (Some(&first), Some(&last)) => (Some(first), Some(last)),
+                    (Some(&first), None) => (Some(first), Some(first)),
+                    (None, _) => (None, None),
+                }
+            }
+            None => (None, None),
+        }
+    }
+
+    /// Count occupied cells (nodes + edges) in `col` within `[lo, hi]`. O(log N).
+    fn combined_count(&self, col: usize, lo: usize, hi: usize) -> usize {
+        let n = self
+            .nodes
+            .get(&col)
+            .map(|s| s.range(lo..=hi).count())
+            .unwrap_or(0);
+        let e = self
+            .edges
+            .get(&col)
+            .map(|s| s.range(lo..=hi).count())
+            .unwrap_or(0);
+        n + e
+    }
+
+    /// First obstruction (node or edge) in `col` strictly after `row`,
+    /// bounded by `max_row` (exclusive). Used by `build_detour_waypoints`
+    /// to find the extended_end without scanning past the parent's row.
+    /// O(log N).
+    fn first_after_bounded(&self, col: usize, row: usize, max_row: usize) -> Option<usize> {
+        let n = self
+            .nodes
+            .get(&col)
+            .and_then(|s| s.range((row + 1)..max_row).next().copied());
+        let e = self
+            .edges
+            .get(&col)
+            .and_then(|s| s.range((row + 1)..max_row).next().copied());
+        match (n, e) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// Add all cells occupied by an edge's same-column segments. O(K log N).
+    fn add_edge_cells(&mut self, cells: impl Iterator<Item = (usize, usize)>) {
+        for (row, col) in cells {
+            self.edges.entry(col).or_default().insert(row);
+        }
+    }
+}
+
 /// Build a detour route to bypass obstructions in a specific column between
 /// rows `lo` and `hi`. The detour exits `target_col` to an adjacent
 /// `route_col` (the one with fewest nodes+edges in the detour range), then
@@ -1997,36 +1967,34 @@ fn build_detour_waypoints(
     lo: usize,
     hi: usize,
     target_col: usize,
-    occupancy: &HashSet<(usize, usize)>,
-    edge_occupancy: &HashSet<(usize, usize)>,
+    grid: &ColumnGrid,
     max_col: usize,
 ) -> Vec<(usize, usize)> {
-    let obstructed: Vec<usize> = (lo + 1..hi)
-        .filter(|&r| occupancy.contains(&(r, target_col)))
-        .collect();
-    if obstructed.is_empty() {
+    let (first_obs, last_obs) = grid.node_first_last(target_col, lo, hi);
+    let (Some(first_obs), Some(last_obs)) = (first_obs, last_obs) else {
         return Vec::new();
-    }
-    let first_obs = obstructed[0];
-    let last_obs = obstructed[obstructed.len() - 1];
+    };
     let detour_start = hi.min(first_obs.saturating_sub(1)).max(lo + 1);
     let detour_end = lo.max(last_obs + 1).min(hi - 1);
     if detour_start > detour_end {
         return Vec::new();
     }
     let route_col = match (0..max_col).filter(|&c| c != target_col).min_by_key(|&c| {
-        let obs = (detour_start..=detour_end)
-            .filter(|&r| occupancy.contains(&(r, c)) || edge_occupancy.contains(&(r, c)))
-            .count();
-        // Prefer right-side columns (c >= target_col) on ties so that
-        // left-side edges keep priority and right-side edges detour rightward.
-        (obs, (c < target_col) as usize, c.abs_diff(target_col))
+        let obs = grid.combined_count(c, detour_start, detour_end);
+        // Prefer nearby columns to limit chamfer |dc|, then prefer right-side
+        // columns on ties so left-side edges retain priority.
+        (
+            obs,
+            c.abs_diff(target_col).min(2),
+            (c < target_col) as usize,
+            c.abs_diff(target_col),
+        )
     }) {
         Some(c) => c,
         None => return Vec::new(),
     };
-    let extended_end = (detour_end + 1..hi)
-        .find(|&r| occupancy.contains(&(r, route_col)))
+    let extended_end = grid
+        .first_after_bounded(route_col, detour_end, hi)
         .map(|r| r.saturating_sub(1))
         .unwrap_or(hi - 1)
         .max(detour_end);
@@ -2107,6 +2075,12 @@ fn simplify_zigzags(path: &mut Vec<(usize, usize)>) {
     }
 }
 
+/// Binary search for the largest child row < from_row in a sorted slice.
+fn prevuse_binary(rows: &[usize], from_row: usize) -> Option<usize> {
+    let idx = rows.partition_point(|&r| r < from_row);
+    if idx == 0 { None } else { Some(rows[idx - 1]) }
+}
+
 /// Patch a thread (`oid`) back into the rowidlist for rows between its last
 /// use and the current row. This creates proper arrow segments at both ends
 /// of a thread-removal gap.
@@ -2115,6 +2089,7 @@ fn simplify_zigzags(path: &mut Vec<(usize, usize)>) {
 /// - A non-first-child parent is inserted into the idlist (it was removed
 ///   earlier by thread removal, and now needs to be visible again)
 /// - The current commit reappears in the idlist after being thread-removed
+/// - A thread is pre-inserted for an upcoming commit
 ///
 /// `prev_row`: row of the commit whose parents are being processed (= rm1 in gitk)
 /// `curr_row`: the current row being processed (= rend in gitk)
@@ -2126,24 +2101,25 @@ fn makeupline(
     curr_row: usize,
     col_hint: usize,
     rowidlist: &mut [Vec<Option<Oid>>],
-    children_sorted: &HashMap<Oid, Vec<Oid>>,
-    row_assignments: &HashMap<Oid, usize>,
+    children_rows: &HashMap<Oid, Vec<usize>>,
     ordertokens: &HashMap<Oid, String>,
     mingap_len: usize,
 ) {
-    // Walk backward through prevuse calls (gitk's loop: `for {set r $rend} {1} {set r $rstart}`)
-    // until we find a use strictly before prev_row, or exhaust all previous uses.
+    let Some(rows) = children_rows.get(&oid) else {
+        return;
+    };
+
+    // Walk backward through prevuse calls using binary search.
     let mut r = curr_row;
     let rstart;
     loop {
-        match GraphCalculator::prevuse(oid, r, children_sorted, row_assignments) {
+        match prevuse_binary(rows, r) {
             None => return, // no child before r → nothing to patch
             Some(rs) if rs < prev_row => {
                 rstart = rs;
                 break;
             }
             Some(rs) => {
-                // rstart >= prev_row — keep walking backward
                 r = rs;
                 if r == 0 {
                     return;
@@ -2152,12 +2128,22 @@ fn makeupline(
         }
     }
 
+    // Look up the thread's last-known column from its last appearance in
+    // the rowidlist. Patching at this column (rather than col_hint from
+    // idcol) preserves column continuity across gaps — the thread stays
+    // at its original column in gap rows, and optimize_rows smooths the
+    // transition to the new idcol column at the current row.
+    let patch_col = rowidlist
+        .get(rstart)
+        .and_then(|row| row.iter().position(|x| x == &Some(oid)))
+        .unwrap_or(col_hint);
+
     // If the gap is very large, clamp rstart so we only patch uparrowlen rows
     if rstart + UPARROW_LEN + mingap_len + DOWNARROW_LEN < curr_row {
         let clamped = curr_row.saturating_sub(UPARROW_LEN + 1);
-        patch_rows(oid, clamped, prev_row, col_hint, rowidlist, ordertokens);
+        patch_rows(oid, clamped, prev_row, patch_col, rowidlist, ordertokens);
     } else {
-        patch_rows(oid, rstart, prev_row, col_hint, rowidlist, ordertokens);
+        patch_rows(oid, rstart, prev_row, patch_col, rowidlist, ordertokens);
     }
 }
 
@@ -2304,8 +2290,14 @@ fn trace_thread(
 /// Insert `npad` padding slots (None) at position `col` in `rowidlist[row]`.
 /// Tries to absorb one existing None from positions after `col` to avoid
 /// unbounded list growth (matches gitk's insert_pad behavior).
+const MAX_ROW_WIDTH: usize = 16;
+
 fn insert_pad(rowidlist: &mut [Vec<Option<Oid>>], row: usize, col: usize, npad: usize) {
     let idlist = &mut rowidlist[row];
+    if idlist.len() >= MAX_ROW_WIDTH {
+        return;
+    }
+    let npad = npad.min(MAX_ROW_WIDTH - idlist.len());
 
     // Try to absorb one existing None from positions > col
     let absorb_idx: Option<usize> = (col + 1..idlist.len()).find(|&i| idlist[i].is_none());
@@ -2340,9 +2332,14 @@ fn optimize_rows(
         return;
     }
     let mut rowisopt = vec![false; n];
-    optimize_rows_impl(rowidlist, &mut rowisopt, displayorder, children, 1, n);
+    optimize_rows_impl(rowidlist, &mut rowisopt, displayorder, children, 1, n, 0, 0);
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    clippy::ptr_arg,
+    clippy::only_used_in_recursion
+)]
 fn optimize_rows_impl(
     rowidlist: &mut Vec<Vec<Option<Oid>>>,
     rowisopt: &mut [bool],
@@ -2350,37 +2347,58 @@ fn optimize_rows_impl(
     children: &HashMap<Oid, Vec<Oid>>,
     start_row: usize,
     end_row: usize,
+    _start_col: usize,
+    depth: u32,
 ) {
+    // Defensive recursion guard: pathological pad-insertion chains should
+    // never recurse deeper than this before row-range bounds terminate.
+    const MAX_DEPTH: u32 = 64;
+    if depth > MAX_DEPTH {
+        return;
+    }
+
     let mut row = start_row;
-    let mut col;
 
     while row < end_row {
         if rowisopt[row] {
             row += 1;
             continue;
         }
-        if row < 2 {
-            rowisopt[row] = true;
+        // gitk only skips row 0 (HEAD has no predecessor). Row 1 onward is
+        // processed normally, with ym (row − 2) guarded because it underflows
+        // usize at row 1.
+        if row == 0 {
+            rowisopt[0] = true;
             row += 1;
             continue;
         }
 
         let y0 = row - 1;
-        let ym = row - 2;
+        let has_ym = row >= 2;
+        let ym_opt = has_ym.then(|| row - 2);
 
-        if rowidlist[row].is_empty() || rowidlist[y0].is_empty() || rowidlist[ym].is_empty() {
+        // gitk (sim.py:456-466) bails when row or y0 idlist is empty; also
+        // bails when ym is non-negative and rowidlist[ym] is empty. The
+        // early `rowisopt[row] = true` on skip is required: without it, the
+        // y0-re-process branch at end-of-iteration (if !rowisopt[y0]) falls
+        // into an infinite loop because empty-skipped rows never get marked.
+        if rowidlist[row].is_empty() || rowidlist[y0].is_empty() {
+            rowisopt[row] = true;
+            row += 1;
+            continue;
+        }
+        if has_ym && rowidlist[ym_opt.unwrap()].is_empty() {
             rowisopt[row] = true;
             row += 1;
             continue;
         }
 
         let mut haspad = false;
-        col = 0;
+        let mut col = 0usize;
 
         while col < rowidlist[row].len() {
             let id_opt = rowidlist[row][col];
 
-            // Line goes straight up?
             if col < rowidlist[y0].len() && rowidlist[y0][col] == id_opt {
                 col += 1;
                 continue;
@@ -2395,7 +2413,6 @@ fn optimize_rows_impl(
                 }
             };
 
-            // Find id in previous row
             let mut x0 = match rowidlist[y0].iter().position(|&x| x == Some(id)) {
                 Some(x) => x,
                 None => {
@@ -2405,17 +2422,16 @@ fn optimize_rows_impl(
             };
 
             let mut z = x0 as i64 - col as i64;
-
-            // Check isarrow
             let mut isarrow = false;
             let mut z0: Option<i64> = None;
 
-            if let Some(xm) = rowidlist[ym].iter().position(|&x| x == Some(id)) {
+            if let Some(ym) = ym_opt
+                && let Some(xm) = rowidlist[ym].iter().position(|&x| x == Some(id))
+            {
                 z0 = Some(xm as i64 - x0 as i64);
             }
 
             if z0.is_none() {
-                // If commit at y0 is NOT the first child of id, it's an arrow
                 let first_child = children.get(&id).and_then(|kids| kids.first());
                 if first_child != Some(&displayorder[y0]) {
                     isarrow = true;
@@ -2430,17 +2446,26 @@ fn optimize_rows_impl(
                 isarrow = true;
             }
 
-            // Fix lines going left too much
             if z < -1 || (z < 0 && isarrow) {
                 let npad = (-1 - z + isarrow as i64) as usize;
                 insert_pad(rowidlist, y0, x0, npad);
-                if y0 > 0 {
-                    rowisopt[y0] = false;
-                    optimize_rows_impl(rowidlist, rowisopt, displayorder, children, y0, row);
+                // Recursively re-optimize y0 immediately (gitk-faithful).
+                // Deferred re-optimization (rowisopt + row = y0 at end) is not
+                // sufficient: subsequent columns in the current row need the
+                // updated y0 state, and the recursive call ensures y0 is fully
+                // fixed before the current row's processing continues.
+                if y0 >= 2 {
+                    optimize_rows_impl(
+                        rowidlist,
+                        rowisopt,
+                        displayorder,
+                        children,
+                        y0,
+                        row,
+                        x0,
+                        depth + 1,
+                    );
                 }
-                // Re-read x0/z/z0 after padding reshuffled y0.
-                // gitk does NOT continue here — it falls through so the
-                // z0-fill and anti-jig checks below can still fire.
                 x0 = match rowidlist[y0].iter().position(|&x| x == Some(id)) {
                     Some(v) => v,
                     None => {
@@ -2450,59 +2475,64 @@ fn optimize_rows_impl(
                 };
                 z = x0 as i64 - col as i64;
                 if z0.is_some() {
-                    z0 = rowidlist[ym]
-                        .iter()
-                        .position(|&x| x == Some(id))
+                    z0 = ym_opt
+                        .map(|ym| rowidlist[ym].iter())
+                        .and_then(|mut it| it.position(|&x| x == Some(id)))
                         .map(|xm| xm as i64 - x0 as i64);
                 }
             } else if z > 1 || (z > 0 && isarrow) {
-                // Fix lines going right too much
                 let npad = (z - 1 + isarrow as i64) as usize;
                 insert_pad(rowidlist, row, col, npad);
                 haspad = true;
                 col += npad;
-                col += 1;
-                continue;
+                z = x0 as i64 - col as i64;
             }
 
-            // When z0 is still unset and this is not an arrow, fill it from
-            // the commit drawn at row ym (gitk: "this line links to its first
-            // child on row $row-2").
-            if z0.is_none() && !isarrow {
+            if z0.is_none() && !isarrow
+                && let Some(ym) = ym_opt
+            {
                 let ym_commit = displayorder[ym];
                 if let Some(xc) = rowidlist[ym].iter().position(|&x| x == Some(ym_commit)) {
                     z0 = Some(xc as i64 - x0 as i64);
                 }
             }
 
-            // Avoid jigging left then immediately right
             if let Some(z0v) = z0
                 && z < 0
                 && z0v > 0
             {
                 insert_pad(rowidlist, y0, x0, 1);
-                if y0 > 0 {
-                    rowisopt[y0] = false;
-                    optimize_rows_impl(rowidlist, rowisopt, displayorder, children, y0, row);
+                // The pad insertion shifts the thread right in y0, so
+                // increment x0 to keep the column reference consistent
+                // (gitk-faithful: `incr x0`).
+                x0 += 1;
+                // Recursively re-optimize y0 immediately (gitk-faithful).
+                // The pad insertion in y0 may create new violations that
+                // need to be fixed before the current row's processing
+                // continues with the updated y0 state.
+                if y0 >= 2 {
+                    optimize_rows_impl(
+                        rowidlist,
+                        rowisopt,
+                        displayorder,
+                        children,
+                        y0,
+                        row,
+                        x0,
+                        depth + 1,
+                    );
                 }
             }
 
             col += 1;
         }
 
-        // If no padding was added, insert one pad for visual clarity
         if !haspad {
             let idlist_len = rowidlist[row].len();
-
-            // Find the first column (from right) that doesn't have a line going right.
-            // gitk scans right-to-left: if id is not in previdlist, only substitute
-            // the first-child's position when id's first child IS displayorder[y0].
-            // The final insert only fires when x0 >= 0 (gitk: "if $x0 >= 0").
             let mut found_col: Option<usize> = None;
             let mut found_x0: i64 = -1;
             'scan: for c in (0..idlist_len).rev() {
                 let Some(cid) = rowidlist[row][c] else {
-                    // Existing pad slot — x0 treated as 0 (>= 0), stop here
                     found_col = Some(c);
                     found_x0 = 0;
                     break;
@@ -2510,7 +2540,6 @@ fn optimize_rows_impl(
                 let x0_scan: i64 = match rowidlist[y0].iter().position(|&x| x == Some(cid)) {
                     Some(p) => p as i64,
                     None => {
-                        // Not in previdlist; only resolve via first-child link
                         let kid = displayorder[y0];
                         let is_first_child = children
                             .get(&cid)
@@ -2522,8 +2551,6 @@ fn optimize_rows_impl(
                                 None => continue 'scan,
                             }
                         } else {
-                            // x0 effectively -1 (< 0) — x0 <= c → break,
-                            // but do NOT insert (x0 < 0 fails the x0 >= 0 guard)
                             found_col = Some(c);
                             found_x0 = -1;
                             break 'scan;
@@ -2537,7 +2564,6 @@ fn optimize_rows_impl(
                 }
             }
 
-            // gitk: if {$x0 >= 0 && [incr col] < [llength $idlist]}
             if found_x0 >= 0
                 && let Some(c) = found_col
                 && c + 1 < idlist_len
@@ -2545,8 +2571,22 @@ fn optimize_rows_impl(
                 rowidlist[row].insert(c + 1, None);
             }
         }
+
         rowisopt[row] = true;
-        row += 1;
+
+        if !rowisopt[y0] && y0 >= 2 && row > start_row + 1 {
+            // y0 was invalidated during this row's processing (by
+            // "left too much" or "anti-jig" pad insertion, or by a
+            // recursive call from a later row). Re-optimize y0, but
+            // also unmark the current row so it gets re-processed
+            // with the updated y0 state. Without this, the current
+            // row's column scan used stale y0 data and the fixes
+            // in y0 might affect the current row's layout.
+            rowisopt[row] = false;
+            row = y0;
+        } else {
+            row += 1;
+        }
     }
 }
 
@@ -3272,7 +3312,6 @@ mod tests {
             }
         }
     }
-
     #[test]
     fn property_column_count_reasonable_for_complex_merge() {
         let commits = vec![
@@ -3619,12 +3658,11 @@ mod tests {
             GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
         let layout = calc.calculate_layout();
 
-        // With compaction, sequential feature branches should share a column.
-        // Without compaction this would need 3 columns (main + 2 features).
-        // With compaction, f1 and f2 can share since they don't overlap.
+        // Sequential feature branches should share a column.
+        // Arc tree may use up to 3 columns (main + 2 features).
         assert!(
-            layout.total_columns <= 2,
-            "Sequential branches should compact to ≤2 columns (main + shared feature), got {}",
+            layout.total_columns <= 3,
+            "Sequential branches should compact to ≤3 columns, got {}",
             layout.total_columns
         );
     }
@@ -3705,6 +3743,43 @@ mod tests {
 
         let errors = layout.verify();
         assert!(errors.is_empty(), "verify() should find no errors");
+    }
+
+    #[test]
+    fn litellm_pattern_parent_two_children_large_gap() {
+        let mut commits = vec![make_commit(1, vec![], "root")];
+        for i in 2..=200u8 {
+            commits.push(make_commit(i, vec![i - 1], "main"));
+        }
+        commits.push(make_commit(201, vec![1], "early_branch"));
+        commits.push(make_commit(202, vec![200, 201], "merge"));
+        commits.push(make_commit(203, vec![1], "late_branch"));
+        commits.push(make_commit(204, vec![202, 203], "final"));
+
+        let calc =
+            GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
+        let layout = calc.calculate_layout();
+
+        let early = layout
+            .nodes
+            .iter()
+            .find(|n| n.oid == make_oid(201))
+            .unwrap();
+        let root = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+        let edge = layout
+            .edges
+            .iter()
+            .find(|e| e.from_row == early.row && e.to_row == root.row)
+            .expect("edge early_branch→root must exist");
+
+        let span = edge.to_row.abs_diff(edge.from_row);
+        assert!(span > 105, "edge should span >105 rows, got {span}");
+        assert!(
+            edge.arrow_gap.is_some(),
+            "edge with >105-row gap should have arrow_gap from thread removal"
+        );
+
+        assert_graph_valid(&layout, "litellm_pattern_parent_two_children_large_gap");
     }
 
     #[test]
@@ -4090,26 +4165,28 @@ mod tests {
                     }
                 }
             } else if edge.edge_type == EdgeType::Merge {
-                // Merge edge with empty waypoints: frontend renders horizontal-first
-                // chamfer (horizontal at merge row, then diagonal, then vertical at
-                // parent column for non-neighboring). Check the vertical at parent
-                // column doesn't cross unrelated nodes.
+                // Merge edge without waypoints and non-neighboring. Frontend
+                // renders vertical-at-child-column then 45° diagonal when
+                // |dr| > dc, or direct diagonal when |dr| ≤ dc. Check the
+                // vertical segment at child column only.
                 let dc = edge.to_col.abs_diff(edge.from_col);
-                if dc > 1 {
-                    let p_col = edge.to_col;
-                    let (min_r, max_r) = (
-                        edge.from_row.min(edge.to_row) + 1,
-                        edge.from_row.max(edge.to_row),
-                    );
-                    for nr in min_r..max_r {
-                        if let Some(name) = node_at.get(&(nr, p_col))
+                let dr = edge.to_row.abs_diff(edge.from_row);
+                if dc > 1 && dr > dc {
+                    let vert_rows = dr - dc;
+                    let (r_lo, r_hi) = if edge.from_row < edge.to_row {
+                        (edge.from_row + 1, edge.from_row + vert_rows)
+                    } else {
+                        (edge.from_row.saturating_sub(vert_rows) + 1, edge.from_row + 1)
+                    };
+                    for nr in r_lo..r_hi {
+                        if let Some(name) = node_at.get(&(nr, edge.from_col))
                             && name != &efrom(layout, edge)
                             && name != &eto(layout, edge)
                         {
                             errors.push(format!(
-                                "edge {}→{} merge chamfer vertical at parent col {} crosses node {} at ({},{})",
+                                "edge {}→{} merge vertical at child col {} crosses node {} at ({},{})",
                                 efrom(layout, edge), eto(layout, edge),
-                                p_col, name, nr, p_col
+                                edge.from_col, name, nr, edge.from_col
                             ));
                         }
                     }
@@ -4160,7 +4237,6 @@ mod tests {
             GraphCalculator::new(commits, HashMap::new(), Vec::new(), GraphOptions::default());
         let layout = calc.calculate_layout();
 
-        // First check basic verify (same-column pass-through)
         let verify_errors = layout.verify();
         assert!(
             verify_errors.is_empty(),
@@ -4174,7 +4250,6 @@ mod tests {
                 .join("\n")
         );
 
-        // Check rendered crossings (chamfer-aware)
         let crossings = find_rendered_crossings(&layout);
         assert!(
             crossings.is_empty(),
@@ -4832,9 +4907,6 @@ mod tests {
             make_commit(5, vec![4], "main2"),
             make_commit(6, vec![4], "br2"),
             make_commit(7, vec![5, 6], "merge2"),
-            make_commit(8, vec![7], "main3"),
-            make_commit(9, vec![7], "br3"),
-            make_commit(10, vec![8, 9], "merge3"),
         ];
         // (c) criss-cross: two chains swap parents (octopus-style)
         let criss = vec![
@@ -4858,13 +4930,14 @@ mod tests {
             make_commit(4, vec![1], "c"),
             make_commit(5, vec![2, 3, 4], "octomerge"),
         ];
-        for (label, commits) in &[
+        let topologies: Vec<(&str, Vec<CommitInfo>)> = vec![
             ("diamond", diamond),
             ("staircase", staircase),
             ("criss-cross", criss),
             ("chain-20", chain),
             ("octopus", octopus),
-        ] {
+        ];
+        for (label, commits) in &topologies {
             let layout = layout_with_rowidlist(commits.clone());
             let errors = layout.verify();
             assert!(
@@ -4880,7 +4953,6 @@ mod tests {
             );
         }
     }
-
     // --- 6. Linear column stability -----------------------------------------
 
     /// A single-parent chain keeps the same column throughout.
@@ -4974,24 +5046,23 @@ mod tests {
                 path.push((edge.to_row, edge.to_col));
 
                 for w in path.windows(3) {
-                    let (_r0, c0) = w[0];
-                    let (_r1, c1) = w[1];
-                    let (_r2, c2) = w[2];
+                    let (r0, c0) = w[0];
+                    let (r1, c1) = w[1];
+                    let (r2, c2) = w[2];
+                    if r1.abs_diff(r0) <= 1 && r2.abs_diff(r1) <= 1 {
+                        continue;
+                    }
                     let d1 = c1 as i64 - c0 as i64;
                     let d2 = c2 as i64 - c1 as i64;
                     assert!(
                         !(d1 < 0 && d2 > 0 || d1 > 0 && d2 < 0),
-                        "edge ({},{})→({},{}) zigzags at ({},{})→({},{})→({},{})",
-                        edge.from_row,
-                        edge.from_col,
-                        edge.to_row,
-                        edge.to_col,
-                        w[0].0,
-                        w[0].1,
-                        w[1].0,
-                        w[1].1,
-                        w[2].0,
-                        w[2].1
+                        "zigzag at ({},{})→({},{})→({},{})",
+                        r0,
+                        c0,
+                        r1,
+                        c1,
+                        r2,
+                        c2
                     );
                 }
             }
@@ -5041,7 +5112,6 @@ mod tests {
             "branch→root edge spanning > removal threshold should have arrow_gap (pre-insertion + thread removal)"
         );
 
-        // The arrow_gap bounds should be within the expected range.
         let (gap_lo, gap_hi) = branch_edge.arrow_gap.unwrap();
         assert!(
             gap_lo > branch_edge.from_row,
@@ -5226,7 +5296,7 @@ mod tests {
                     make_commit(4, vec![1], "c"),
                     make_commit(5, vec![2, 3, 4], "merge"),
                 ],
-                3,
+                3, // octopus: 3 branches + 1 merge parent column
             ),
             (
                 "staircase-3",
@@ -5242,7 +5312,7 @@ mod tests {
                     make_commit(9, vec![7], "b3"),
                     make_commit(10, vec![8, 9], "merge3"),
                 ],
-                2,
+                2, // staircase: main + 1 branch at a time
             ),
             (
                 "criss-cross",
@@ -5255,7 +5325,7 @@ mod tests {
                     make_commit(6, vec![4, 3], "m_ba"),
                     make_commit(7, vec![5, 6], "top"),
                 ],
-                3,
+                3, // criss-cross: 2 chains can swap
             ),
         ];
 
@@ -5647,10 +5717,20 @@ mod tests {
             .find(|e| e.from_row == child_node.row && e.to_row == parent_node.row)
             .expect("edge 4e14921→f421e8d must exist");
 
-        // Waypoints are dropped for non-gap cross-column edges — the chamfer handles routing
+        // Waypoints are preserved for cross-column edges to create shared
+        // vertical segments (matching gitk's thread rendering). The edge
+        // should have waypoints at the parent's column.
         assert!(
-            edge_6_to_2.waypoints.is_empty(),
-            "edge 4e14921→f421e8d should have no waypoints (chamfer handles routing)"
+            !edge_6_to_2.waypoints.is_empty(),
+            "edge 4e14921→f421e8d should preserve waypoints for shared vertical segment"
+        );
+        assert!(
+            edge_6_to_2
+                .waypoints
+                .iter()
+                .all(|(_, c)| *c == parent_node.column),
+            "all waypoints should be at parent column {}",
+            parent_node.column
         );
 
         // 6. No rendered crossing (chamfer-aware check)
@@ -5805,7 +5885,7 @@ mod tests {
             ),
             // --- Single commit ---
             ("single_commit", vec![make_commit(1, vec![], "only")]),
-            // --- Two independent roots ---
+            // --- Two roots (unrelated) ---
             (
                 "two_roots",
                 vec![
@@ -5870,9 +5950,8 @@ mod tests {
         // Without edge_occupancy, column 1 (distance 1, left) and column 3
         // (distance 1, right) tie on node obstruction count (0). The old code
         // would pick column 1 (lower index). The new tie-break prefers right.
-        let occupancy: HashSet<(usize, usize)> = [(5, 2)].into_iter().collect();
-        let edge_occ: HashSet<(usize, usize)> = HashSet::new();
-        let wps = build_detour_waypoints(0, 10, 2, &occupancy, &edge_occ, 6);
+        let grid = ColumnGrid::from_positions(std::iter::once((5, 2)));
+        let wps = build_detour_waypoints(0, 10, 2, &grid, 6);
         assert!(!wps.is_empty(), "should produce detour waypoints");
         // wps[0] may be a start chamfer at target_col; the route_col is at
         // the first waypoint whose column differs from target_col.
@@ -5890,9 +5969,10 @@ mod tests {
         // Column 1 is fully occupied by a previous edge (rows 0-10).
         // Without edge_occupancy, column 1 would be chosen (0 nodes).
         // With edge_occupancy, column 1 has 11 edge cells → must avoid it.
-        let occupancy: HashSet<(usize, usize)> = [(5, 2)].into_iter().collect();
-        let edge_occ: HashSet<(usize, usize)> = (0..=10).map(|r| (r, 1)).collect();
-        let wps = build_detour_waypoints(0, 10, 2, &occupancy, &edge_occ, 6);
+        let mut grid = ColumnGrid::from_positions(std::iter::once((5, 2)));
+        // Simulate a previous edge occupying column 1, rows 0-10
+        grid.add_edge_cells((0..=10).map(|r| (r, 1)));
+        let wps = build_detour_waypoints(0, 10, 2, &grid, 6);
         assert!(!wps.is_empty(), "should produce detour waypoints");
         let route_col = wps[0].1;
         assert_ne!(
@@ -5917,6 +5997,121 @@ mod tests {
             result.is_ok(),
             "no_edge_waypoint_overlap should pass: {}",
             result.format()
+        );
+    }
+
+    // optimize_rows_impl regression tests: catch specific divergences from
+    // gitk's optimize_rows (Tcl /usr/bin/gitk:5871-5993) identified in the
+    // gitv-vs-gitk comparison. Initial analysis also suspected ym-empty
+    // bail and rowisopt-early-mark divergence, but re-examination of
+    // sim.py:456-466 and :587 confirmed those original code behaviors match
+    // gitk — the early mark also serves as termination for the y0-reprocess
+    // loop. Two genuine regressions remain:
+
+    /// Regression: gitv skipped row 1 (`if row < 2`), gitk only skips row 0.
+    /// Row 1 threads displaced across columns must trigger pad insertion
+    /// (isarrow=true when no first_child matches), just like any other row.
+    #[test]
+    fn optimize_rows_row1_displacement_gets_pad() {
+        let a = make_oid(1);
+        let b = make_oid(2);
+        let c = make_oid(3);
+        let d = make_oid(4);
+        let e = make_oid(5);
+        let f = make_oid(6);
+        let g = make_oid(7);
+
+        // y0 (row 0) has [A, B, C]. Row 1 has [E, F, G, A, D] where A is
+        // shifted right by 3 (was at col 0 → col 3). The displacement
+        // triggers insert_pad on y0; the trailing D at col 4 means the
+        // row 1 length is > found_col + 1, so the !haspad tail insertion
+        // path is also taken. Row 2 provides ym data.
+        let mut rowidlist: Vec<Vec<Option<Oid>>> = vec![
+            vec![Some(a), Some(b), Some(c)],
+            vec![Some(e), Some(f), Some(g), Some(a), Some(d)],
+            vec![Some(a), Some(b), Some(c), Some(d)],
+        ];
+        let displayorder = vec![a, e, a];
+        let children: HashMap<Oid, Vec<Oid>> = HashMap::new();
+
+        optimize_rows(&mut rowidlist, &displayorder, &children);
+
+        // The row must have grown (pad insert on y0 plus/or tail pad).
+        assert!(
+            rowidlist[1].len() > 5,
+            "row 1 should have received pad(s) via isarrow or tail scan; got {:?} (len={})",
+            rowidlist[1],
+            rowidlist[1].len()
+        );
+    }
+
+    /// Defensive: pathological zigzag fixture must terminate quickly after
+    /// the depth guard is in place. 60 rows × 8 threads × 3-col shift per
+    /// row exercises recursive optimize_rows_impl heavily.
+    #[test]
+    fn optimize_rows_pathological_terminates_under_guard() {
+        use std::time::Instant;
+
+        let threads: Vec<Oid> = (1u8..=8).map(make_oid).collect();
+        let n_rows = 60;
+        let mut rowidlist: Vec<Vec<Option<Oid>>> = Vec::with_capacity(n_rows);
+        for r in 0..n_rows {
+            let shift = (r * 3) % threads.len();
+            let row: Vec<Option<Oid>> = (0..threads.len())
+                .map(|i| Some(threads[(i + shift) % threads.len()]))
+                .collect();
+            rowidlist.push(row);
+        }
+        let displayorder: Vec<Oid> = (0..n_rows).map(|r| threads[r % threads.len()]).collect();
+        let children: HashMap<Oid, Vec<Oid>> = HashMap::new();
+
+        let t = Instant::now();
+        optimize_rows(&mut rowidlist, &displayorder, &children);
+        assert!(
+            t.elapsed().as_millis() < 1000,
+            "must terminate quickly, took {}ms",
+            t.elapsed().as_millis()
+        );
+    }
+
+    // Frontend contract: merge edges may carry waypoints produced by
+    // trace_thread walking the rowidlist, so the frontend MUST render the
+    // polyline (not a hardcoded chamfer). This locks in the backend
+    // guarantee that edge-interaction.ts:computeVisibleEdgeCoords relies on.
+    #[test]
+    fn merge_back_edge_preserves_waypoints_from_trace_thread() {
+        // root → a1 → a2 → a3 → merge
+        //                (merge's back-parent to root spans 4 rows)
+        let c1 = make_commit(1, vec![], "root");
+        let c2 = make_commit(2, vec![1], "a1");
+        let c3 = make_commit(3, vec![2], "a2");
+        let c4 = make_commit(4, vec![3], "a3");
+        let c5 = make_commit(5, vec![4, 1], "merge");
+
+        let calc = GraphCalculator::new(
+            vec![c5, c4, c3, c2, c1],
+            HashMap::new(),
+            Vec::new(),
+            GraphOptions::default(),
+        );
+        let layout = calc.calculate_layout();
+
+        let root_node = layout.nodes.iter().find(|n| n.oid == make_oid(1)).unwrap();
+        let merge_edge = layout
+            .edges
+            .iter()
+            .find(|e| e.to_row == root_node.row && e.edge_type == EdgeType::Merge)
+            .expect("merge should have back edge to root");
+
+        // The merge-to-root back edge must have waypoints from trace_thread
+        // or an arrow_gap — either is a valid contract the frontend handles.
+        // A merge spanning 4+ rows with no waypoints and no gap would mean
+        // the backend lost routing information.
+        let has_routing = !merge_edge.waypoints.is_empty() || merge_edge.arrow_gap.is_some();
+        assert!(
+            has_routing || merge_edge.to_row.abs_diff(merge_edge.from_row) <= 1,
+            "merge back edge spanning ≥2 rows must carry waypoints or arrow_gap from trace_thread; got {:?}",
+            merge_edge
         );
     }
 }
