@@ -358,6 +358,20 @@ export interface LoadTiming {
 	refs_ms: number;
 	working_changes_ms: number;
 	total_ms: number;
+	arc_topo_sort_ms: number;
+	arc_insert_ms: number;
+	arc_update_rows_ms: number;
+	arc_disporder_ms: number;
+	arc_ordertoken_ms: number;
+	arc_fix_reversal_calls: number;
+	arc_renumber_arc_calls: number;
+	arc_split_arc_calls: number;
+	assign_columns_ms: number;
+	optimize_rows_ms: number;
+	rebuild_edges_ms: number;
+	fix_edge_pass_ms: number;
+	sibling_walk_total: number;
+	sibling_walk_count: number;
 }
 
 export interface InitialData {
