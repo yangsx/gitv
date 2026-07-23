@@ -2488,7 +2488,8 @@ fn optimize_rows_impl(
                 z = x0 as i64 - col as i64;
             }
 
-            if z0.is_none() && !isarrow
+            if z0.is_none()
+                && !isarrow
                 && let Some(ym) = ym_opt
             {
                 let ym_commit = displayorder[ym];
@@ -4176,7 +4177,10 @@ mod tests {
                     let (r_lo, r_hi) = if edge.from_row < edge.to_row {
                         (edge.from_row + 1, edge.from_row + vert_rows)
                     } else {
-                        (edge.from_row.saturating_sub(vert_rows) + 1, edge.from_row + 1)
+                        (
+                            edge.from_row.saturating_sub(vert_rows) + 1,
+                            edge.from_row + 1,
+                        )
                     };
                     for nr in r_lo..r_hi {
                         if let Some(name) = node_at.get(&(nr, edge.from_col))

@@ -139,7 +139,9 @@
 			{#if rowIndex !== undefined}
 				{@const isMilestone = rowIndex > 0 && rowIndex % 5 === 0}
 				<span
-					class="px-1 font-mono text-xs text-gray-500 {isMilestone ? 'opacity-70' : 'opacity-0 transition-opacity duration-100 group-hover:opacity-100'}"
+					class="px-1 font-mono text-xs text-gray-500 {isMilestone
+						? 'opacity-70'
+						: 'opacity-0 transition-opacity duration-100 group-hover:opacity-100'}"
 					style="font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';"
 				>
 					{rowIndex}

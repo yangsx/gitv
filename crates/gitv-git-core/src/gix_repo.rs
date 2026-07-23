@@ -266,6 +266,16 @@ impl Repository for GixRepository {
             return self.commit_details(oid, include_counts);
         }
 
+        if is_stash_commit(&repo, &parent_oids) {
+            tracing::info!(
+                %oid,
+                include_counts,
+                parents = parent_oids.len(),
+                "combined_diff: stash detected, delegating to commit_details"
+            );
+            return self.commit_details(oid, include_counts);
+        }
+
         let tree_id = commit.tree_id().map_err(|e| GitError::Gix(e.to_string()))?;
         let tree_oid = gix_id_to_oid(&tree_id);
         let info = commit_to_commit_info(&oid, &commit, Vec::new());
@@ -433,6 +443,22 @@ impl Repository for GixRepository {
 
         let parent_oids: Vec<Oid> = commit.parent_ids().map(|id| gix_id_to_oid(&id)).collect();
         if parent_oids.len() < 2 {
+            return self.file_diff(
+                parent_oids.first().copied(),
+                merge_oid,
+                path,
+                mode,
+                whitespace,
+            );
+        }
+
+        if is_stash_commit(&repo, &parent_oids) {
+            tracing::info!(
+                %merge_oid,
+                path = %path.display(),
+                parents = parent_oids.len(),
+                "combined_file_diff: stash detected, delegating to file_diff"
+            );
             return self.file_diff(
                 parent_oids.first().copied(),
                 merge_oid,
@@ -1866,6 +1892,28 @@ fn gix_object_id_to_oid(oid: gix::ObjectId) -> Oid {
 
 pub(crate) fn oid_to_gix_object_id(oid: &Oid) -> gix::ObjectId {
     gix::ObjectId::from(*oid.as_bytes())
+}
+
+/// Detect stash commits by checking if extra parents (index/untracked) have HEAD as their parent.
+fn is_stash_commit(repo: &gix::Repository, parent_oids: &[Oid]) -> bool {
+    if parent_oids.len() < 2 || parent_oids.len() > 3 {
+        return false;
+    }
+    let head_oid = parent_oids[0];
+    for &extra_oid in &parent_oids[1..] {
+        let gix_id = oid_to_gix_object_id(&extra_oid);
+        let Ok(obj) = repo.find_object(gix_id) else {
+            return false;
+        };
+        let Ok(commit) = obj.try_into_commit() else {
+            return false;
+        };
+        let dominated = commit.parent_ids().any(|p| gix_id_to_oid(&p) == head_oid);
+        if !dominated {
+            return false;
+        }
+    }
+    true
 }
 
 fn gix_signature_to_author(sig: &gix::actor::SignatureRef) -> Author {
@@ -4759,6 +4807,58 @@ mod tests {
         assert!(
             details.changed_files.is_empty(),
             "merge with no overlapping changes should have empty changed_files"
+        );
+    }
+
+    #[test]
+    fn combined_diff_for_stash_returns_changes_when_fully_staged() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        std::fs::write(temp.dir.path().join("a.txt"), "modified content").expect("write");
+        run_git(temp.path(), &["add", "a.txt"]);
+        run_git(temp.path(), &["stash"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let stashes = repo.stash_list().expect("stash_list");
+        assert!(!stashes.is_empty(), "should have stash");
+        let details = repo
+            .combined_diff(stashes[0].oid, true)
+            .expect("combined_diff");
+        assert!(
+            !details.changed_files.is_empty(),
+            "stash with fully staged changes should show changed_files"
+        );
+        assert!(
+            details.changed_files[0].additions > 0 || details.changed_files[0].deletions > 0,
+            "stash combined_diff should populate line counts, got additions={}, deletions={}",
+            details.changed_files[0].additions,
+            details.changed_files[0].deletions
+        );
+    }
+
+    #[test]
+    fn combined_file_diff_for_stash_returns_hunks_when_fully_staged() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "hello\n", "first commit");
+        std::fs::write(temp.dir.path().join("a.txt"), "modified\n").expect("write");
+        run_git(temp.path(), &["add", "a.txt"]);
+        run_git(temp.path(), &["stash"]);
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let stashes = repo.stash_list().expect("stash_list");
+        assert!(!stashes.is_empty(), "should have stash");
+        let diff = repo
+            .combined_file_diff(
+                stashes[0].oid,
+                std::path::Path::new("a.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::None,
+                None,
+            )
+            .expect("combined_file_diff");
+        assert!(
+            !diff.hunks.is_empty(),
+            "combined_file_diff for stash should have hunks (got is_binary={}, is_submodule={})",
+            diff.is_binary,
+            diff.is_submodule
         );
     }
 

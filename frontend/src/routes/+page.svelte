@@ -678,8 +678,11 @@
 				commitDetails = null;
 				return;
 			}
-			// For non-merge commits, load counts from first-parent diff
-			if (commitDetails && commitDetails.info.parent_oids.length <= 1) {
+			// Refresh counts (additions/deletions) from first-parent diff for every
+			// commit. For merge commits and stashes, getCombinedCommitDetails already
+			// populates counts, but we call loadFileCounts as a safety net in case
+			// those counts were zeroed for any reason.
+			if (commitDetails) {
 				void loadFileCounts(oid);
 			}
 		} catch {
