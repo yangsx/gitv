@@ -148,18 +148,36 @@
 		}
 	}
 
+	let resizeRafId = 0;
+
 	function handleResize() {
 		if (containerEl) {
-			containerHeight = containerEl.clientHeight;
-			containerWidth = containerEl.clientWidth;
+			const h = containerEl.clientHeight;
+			const w = containerEl.clientWidth;
+			if (h !== containerHeight || w !== containerWidth) {
+				containerHeight = h;
+				containerWidth = w;
+			}
+		}
+	}
+
+	function handleResizeDebounced() {
+		if (!resizeRafId) {
+			resizeRafId = requestAnimationFrame(() => {
+				handleResize();
+				resizeRafId = 0;
+			});
 		}
 	}
 
 	$effect(() => {
 		handleResize();
-		const observer = new ResizeObserver(handleResize);
+		const observer = new ResizeObserver(handleResizeDebounced);
 		if (containerEl) observer.observe(containerEl);
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			if (resizeRafId) cancelAnimationFrame(resizeRafId);
+		};
 	});
 
 	$effect(() => {
