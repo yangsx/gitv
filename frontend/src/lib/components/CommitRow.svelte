@@ -94,11 +94,21 @@
 		return 'text-gray-400';
 	}
 
+	let isSearchMatch = $derived(highlights.length > 0 || matchType !== undefined);
+
 	let rowBgClass = $derived(
-		isSelected ? 'bg-blue-900/40' : isComparison ? 'bg-indigo-900/40' : 'bg-gray-800'
+		isSelected
+			? 'bg-blue-900/40'
+			: isComparison
+				? 'bg-indigo-900/40'
+				: isSearchMatch
+					? 'bg-amber-900/20'
+					: 'bg-gray-800'
 	);
 
-	let rowHoverClass = $derived(isSelected || isComparison ? '' : 'group-hover:bg-gray-700');
+	let rowHoverClass = $derived(
+		isSelected || isComparison || isSearchMatch ? '' : 'group-hover:bg-gray-700'
+	);
 
 	let textClass = $derived(
 		isSelected

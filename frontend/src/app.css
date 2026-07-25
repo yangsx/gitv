@@ -390,6 +390,9 @@
 .light .bg-amber-900\/90 {
 	background-color: color-mix(in srgb, #fde68a 90%, transparent);
 }
+.light .bg-amber-900\/20 {
+	background-color: color-mix(in srgb, #fef3c7 50%, transparent);
+}
 .light .bg-amber-700\/50 {
 	background-color: color-mix(in srgb, #fcd34d 50%, transparent);
 }

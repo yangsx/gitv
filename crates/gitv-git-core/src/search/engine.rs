@@ -54,8 +54,15 @@ impl CommitMessageIndex {
         }
     }
 
-    fn search_term(&self, term: &str) -> Option<&RoaringBitmap> {
-        self.postings.get(&term.to_lowercase())
+    fn search_prefix(&self, prefix: &str) -> RoaringBitmap {
+        let prefix_lower = prefix.to_lowercase();
+        let mut bitmap = RoaringBitmap::new();
+        for (token, token_bitmap) in &self.postings {
+            if token.starts_with(&prefix_lower) {
+                bitmap |= token_bitmap;
+            }
+        }
+        bitmap
     }
 }
 
@@ -245,16 +252,16 @@ impl SearchEngine {
 
         let mut result: Option<RoaringBitmap> = None;
         for term in terms {
-            let lower = term.to_lowercase();
-            let matches = self.message_index.search_term(&lower);
-            match (result, matches) {
-                (None, Some(bm)) => result = Some(bm.clone()),
-                (None, None) => return RoaringBitmap::new(),
-                (Some(mut acc), Some(bm)) => {
-                    acc &= bm;
+            let matches = self.message_index.search_prefix(term);
+            if matches.is_empty() {
+                return RoaringBitmap::new();
+            }
+            match result {
+                None => result = Some(matches),
+                Some(mut acc) => {
+                    acc &= matches;
                     result = Some(acc);
                 }
-                (Some(_), None) => return RoaringBitmap::new(),
             }
         }
 
@@ -478,6 +485,34 @@ mod tests {
         };
         let results = engine.search(&query).unwrap();
         assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn text_search_prefix_partial() {
+        let engine = SearchEngine::new(make_commits());
+        // "feat" should match "feature" (prefix match)
+        let query = SearchQuery {
+            text: Some("feat".to_string()),
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        assert_eq!(results.len(), 2, "prefix 'feat' should match 'feature'");
+
+        // "docum" should match "documentation"
+        let query = SearchQuery {
+            text: Some("docum".to_string()),
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        assert_eq!(results.len(), 1, "prefix 'docum' should match 'documentation'");
+
+        // Multi-term prefix AND
+        let query = SearchQuery {
+            text: Some("fix bug".to_string()),
+            ..Default::default()
+        };
+        let results = engine.search(&query).unwrap();
+        assert_eq!(results.len(), 1, "prefix 'fix' AND 'bug' should match commit 3 only");
     }
 
     #[test]
