@@ -152,6 +152,10 @@ export async function getCommitsBatch(
 	return timedInvoke<CommitInfo[]>('get_commits_batch', { path, offset, limit });
 }
 
+export async function getCommitsByOids(path: string, oids: string[]): Promise<CommitInfo[]> {
+	return timedInvoke<CommitInfo[]>('get_commits_by_oids', { path, oids });
+}
+
 export async function getDiff(
 	path: string,
 	from: string | null,

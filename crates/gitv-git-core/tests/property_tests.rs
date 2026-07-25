@@ -115,6 +115,7 @@ proptest! {
         let commits: Vec<CommitInfo> = (0..100u64)
             .map(|i| make_commit(i, if i > 0 { vec![i - 1] } else { vec![] }, "author"))
             .collect();
+        let valid_oids: std::collections::HashSet<Oid> = commits.iter().map(|c| c.oid).collect();
         let engine = SearchEngine::new(commits);
         let query = SearchQuery {
             text: Some(query_str),
@@ -128,8 +129,11 @@ proptest! {
         };
         if let Ok(results) = engine.search(&query) {
             for r in &results {
-                assert!(r.commit_oid == make_oid(0) || r.commit_oid.to_hex().starts_with("00"),
-                    "all results should reference valid commits");
+                assert!(
+                    valid_oids.contains(&r.commit_oid),
+                    "result references commit not in the index: {}",
+                    r.commit_oid.to_hex(),
+                );
             }
         }
     }

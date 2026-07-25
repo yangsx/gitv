@@ -1,8 +1,10 @@
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use regex::Regex;
 use roaring::RoaringBitmap;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::BitOrAssign;
+use tracing::instrument;
 
 use crate::error::SearchError;
 use crate::models::{CommitInfo, DateRange, Oid};
@@ -16,24 +18,24 @@ pub struct SearchEngine {
 }
 
 struct CommitMessageIndex {
-    postings: HashMap<String, RoaringBitmap>,
+    postings: BTreeMap<String, RoaringBitmap>,
 }
 
 impl CommitMessageIndex {
     fn new() -> Self {
         Self {
-            postings: HashMap::new(),
+            postings: BTreeMap::new(),
         }
     }
 
     fn index_commits(&mut self, commits: &[CommitInfo], start_idx: u32) {
         // Build per-commit postings in parallel, then merge
-        let per_commit: Vec<HashMap<String, RoaringBitmap>> = commits
+        let per_commit: Vec<BTreeMap<String, RoaringBitmap>> = commits
             .par_iter()
             .enumerate()
             .map(|(i, commit)| {
                 let idx = start_idx + i as u32;
-                let mut local: HashMap<String, RoaringBitmap> = HashMap::new();
+                let mut local: BTreeMap<String, RoaringBitmap> = BTreeMap::new();
 
                 // Index message tokens
                 let terms = tokenize(&commit.message);
@@ -54,14 +56,24 @@ impl CommitMessageIndex {
         }
     }
 
+    #[instrument(level = "debug", skip(self), fields(
+        token_count = self.postings.len(),
+        matched,
+        prefix_len = prefix.len(),
+    ))]
     fn search_prefix(&self, prefix: &str) -> RoaringBitmap {
         let prefix_lower = prefix.to_lowercase();
         let mut bitmap = RoaringBitmap::new();
-        for (token, token_bitmap) in &self.postings {
-            if token.starts_with(&prefix_lower) {
-                bitmap |= token_bitmap;
+        let mut matched = 0usize;
+        // BTreeMap::range gives O(log n + k) iteration over matching keys
+        for (token, token_bitmap) in self.postings.range(prefix_lower.clone()..) {
+            if !token.starts_with(&prefix_lower) {
+                break;
             }
+            bitmap |= token_bitmap;
+            matched += 1;
         }
+        tracing::Span::current().record("matched", matched);
         bitmap
     }
 }
@@ -115,6 +127,14 @@ impl SearchEngine {
         self.commits.iter().map(|c| c.oid).collect()
     }
 
+    #[instrument(level = "debug", skip(self), fields(
+        commit_count = self.commits.len(),
+        has_text = query.text.is_some(),
+        has_sha = query.sha_prefix.is_some(),
+        has_author = query.author.is_some(),
+        has_date = query.date_range.is_some(),
+        has_file = query.file_path.is_some(),
+    ))]
     pub fn search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
         let mut result_bitmap: Option<RoaringBitmap> = None;
         let mut compiled_regex: Option<Regex> = None;
@@ -244,6 +264,7 @@ impl SearchEngine {
         self.commits.len()
     }
 
+    #[instrument(level = "debug", skip(self), fields(term_count = text.split_whitespace().count()))]
     fn search_text(&self, text: &str) -> RoaringBitmap {
         let terms = tokenize(text);
         if terms.is_empty() {

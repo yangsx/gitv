@@ -7,6 +7,7 @@
 		getCombinedCommitDetails,
 		getCommitFileCounts,
 		getCommitsBatch,
+		getCommitsByOids,
 		getDiff,
 		getInitialData,
 		getWorkingChanges,
@@ -546,6 +547,22 @@
 				layout.total_columns
 			);
 		}
+	});
+
+	$effect(() => {
+		const results = $searchResults;
+		if (results.length === 0 || !repoPath) return;
+
+		const loadedOids = new Set(commits.map((c) => c.oid));
+		const missing = results.filter((r) => !loadedOids.has(r.commit_oid));
+		if (missing.length === 0) return;
+
+		getCommitsByOids(
+			repoPath,
+			missing.map((r) => r.commit_oid)
+		).then((newCommits) => {
+			commits = [...commits, ...newCommits];
+		});
 	});
 
 	$effect(() => {

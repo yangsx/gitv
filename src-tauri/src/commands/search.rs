@@ -30,14 +30,23 @@ pub struct PatchSearchError {
 
 #[tauri::command]
 #[instrument(skip(state, app_handle, path), fields(command = "search_commits"))]
-pub fn search_commits(
+pub async fn search_commits(
     app_handle: AppHandle,
-    state: State<AppState>,
+    state: State<'_, AppState>,
     path: String,
     query: gitv_git_core::search::SearchQuery,
 ) -> Result<SearchResponse, String> {
     let repo_path = PathBuf::from(&path);
-    let outcome = state.search(&repo_path, &query)?;
+
+    let app_handle_clone = app_handle.clone();
+    let repo_path_clone = repo_path.clone();
+    let query_clone = query.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle_clone.state::<AppState>();
+        state.search(&repo_path_clone, &query_clone)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     let results = outcome.results;
 

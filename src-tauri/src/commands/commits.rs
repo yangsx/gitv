@@ -1,5 +1,6 @@
-use gitv_git_core::models::{CommitBatch, CommitFilter};
+use gitv_git_core::models::{CommitBatch, CommitFilter, CommitInfo, Oid};
 use gitv_git_core::stream::CommitStream;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tauri::{Emitter, State};
 use tracing::instrument;
@@ -14,7 +15,7 @@ pub fn get_commits(
     state: State<'_, AppState>,
     path: String,
     filter: Option<CommitFilter>,
-) -> Result<Vec<gitv_git_core::models::CommitInfo>, String> {
+) -> Result<Vec<CommitInfo>, String> {
     let repo_path = PathBuf::from(&path);
     let repo = state.get_repo(&repo_path).map_err(|e| e.to_string())?;
     let repo = repo.as_ref().clone();
@@ -34,6 +35,21 @@ pub fn get_commits(
         }
     }
     Ok(all)
+}
+
+#[tauri::command]
+#[instrument(skip(state, path), fields(command = "get_commits_by_oids"))]
+pub fn get_commits_by_oids(
+    state: State<'_, AppState>,
+    path: String,
+    oids: Vec<String>,
+) -> Result<Vec<CommitInfo>, String> {
+    let repo_path = PathBuf::from(&path);
+    let wanted: HashSet<Oid> = oids
+        .iter()
+        .filter_map(|s| Oid::from_hex(s).ok())
+        .collect();
+    state.get_commits_by_oids(&repo_path, &wanted)
 }
 
 #[tauri::command]

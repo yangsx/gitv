@@ -39,6 +39,7 @@
 	let searchToastId: number | null = null;
 	let unlistenPatch: (() => void) | null = null;
 	let expectedPatchSearchId: number | null = null;
+	let searchVersion = 0;
 
 	function handleInput() {
 		if (debounceTimer) clearTimeout(debounceTimer);
@@ -88,6 +89,7 @@
 
 	async function executeSearch() {
 		if (!inputText && !authorFilter && !dateFrom && !dateTo && !filePath) {
+			searchVersion++;
 			searchQuery.set(null);
 			searchResults.set([]);
 			if (searchToastId !== null) {
@@ -120,6 +122,8 @@
 
 		if (!repoPath) return;
 		operationState.set('Searching');
+
+		const version = ++searchVersion;
 
 		try {
 			await cancelActivePatchSearch();
@@ -156,6 +160,13 @@
 			}
 
 			const response = await searchCommits(repoPath, query);
+			if (version !== searchVersion) {
+				teardownPatchListener();
+				if (response.patch_search_id !== null) {
+					cancelPatchSearch(response.patch_search_id).catch(() => {});
+				}
+				return;
+			}
 			searchResults.set(response.results);
 
 			const totalCount = response.results.length;

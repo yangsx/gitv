@@ -185,6 +185,7 @@ pub fn run() {
 
     init_tracing(cli.log_level.as_deref());
     commands::diagnostics::install_panic_hook(env!("CARGO_PKG_VERSION"));
+    commands::debug::start_memory_tracking();
 
     // Canonicalize CLI paths so that `gitv .` resolves to the absolute path
     // before the frontend ever sees it.
@@ -226,6 +227,7 @@ pub fn run() {
             commands::repository::quit_app,
             commands::commits::stream_commits,
             commands::commits::get_commits,
+            commands::commits::get_commits_by_oids,
             commands::graph::get_graph_layout,
             commands::graph::get_initial_data,
             commands::graph::get_commits_batch,
