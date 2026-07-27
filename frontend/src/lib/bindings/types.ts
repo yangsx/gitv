@@ -436,3 +436,15 @@ export interface SelfTestResult {
 	property_checks: PropertyCheckResult[];
 	hide_merges_property_checks: PropertyCheckResult[];
 }
+
+export interface RepoPathValidation {
+	kind: string;
+	valid: boolean;
+	is_git: boolean;
+	message: string | null;
+}
+
+export interface PathSuggestion {
+	path: string;
+	is_dir: boolean;
+}

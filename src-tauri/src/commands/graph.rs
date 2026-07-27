@@ -1,4 +1,4 @@
-use crate::state::AppState;
+use crate::state::{AppState, resolve_repo_key};
 use gitv_git_core::cache::RepositoryCache;
 use gitv_git_core::graph::{
     GraphCalculator, GraphColorMode, GraphOptions, GraphOrientation, GraphPalette,
@@ -10,7 +10,7 @@ use gitv_git_core::models::{
 use gitv_git_core::repository::Repository;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::State;
@@ -256,18 +256,37 @@ struct InitialDataWork {
 
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-#[instrument(skip(state, path), fields(command = "get_initial_data"))]
+#[instrument(skip(state, path, auth_token), fields(command = "get_initial_data"))]
 pub async fn get_initial_data(
     state: State<'_, AppState>,
     path: String,
+    auth_token: Option<String>,
+    force_refresh: Option<bool>,
     hide_merges: Option<bool>,
     orientation: Option<String>,
     color_mode: Option<String>,
     palette: Option<String>,
     arrow_gap_threshold: Option<usize>,
 ) -> Result<InitialData, String> {
-    let repo_path = PathBuf::from(&path);
-    let repo = state.get_repo(&repo_path)?;
+    let repo_path = resolve_repo_key(&path);
+    let repo = if gitv_git_core::gix_repo::is_remote_url(&path) {
+        state
+            .get_or_clone_remote(&path, auth_token.as_deref(), force_refresh.unwrap_or(false))
+            .map_err(|e| {
+                if e.starts_with("authentication required:") {
+                    "remote_auth_required".to_string()
+                } else if e.starts_with("remote repository error:") {
+                    format!(
+                        "remote_failed:{}",
+                        e.strip_prefix("remote repository error:").unwrap_or(&e)
+                    )
+                } else {
+                    e
+                }
+            })?
+    } else {
+        state.get_repo(&repo_path)?
+    };
     let repo_for_blocking = Arc::clone(&repo);
     let repo_path_for_blocking = repo_path.clone();
     let options = parse_graph_options(
@@ -401,7 +420,7 @@ pub fn get_commits_batch(
     offset: usize,
     limit: usize,
 ) -> Result<Vec<CommitInfo>, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     state.get_commit_batch(&repo_path, offset, limit)
 }
 
@@ -418,7 +437,7 @@ pub async fn get_graph_layout(
     arrow_gap_threshold: Option<usize>,
     focus_branch_oid: Option<String>,
 ) -> Result<gitv_git_core::graph::GraphLayout, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let repo_for_blocking = Arc::clone(&repo);
     let repo_path_for_blocking = repo_path.clone();

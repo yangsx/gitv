@@ -1,11 +1,10 @@
 use gitv_git_core::models::{CommitBatch, CommitFilter, CommitInfo, Oid};
 use gitv_git_core::stream::CommitStream;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use tauri::{Emitter, State};
 use tracing::instrument;
 
-use crate::state::AppState;
+use crate::state::{AppState, resolve_repo_key};
 
 const STREAM_BATCH_SIZE: usize = 100;
 
@@ -16,7 +15,7 @@ pub fn get_commits(
     path: String,
     filter: Option<CommitFilter>,
 ) -> Result<Vec<CommitInfo>, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path).map_err(|e| e.to_string())?;
     let repo = repo.as_ref().clone();
     let commit_filter = filter.unwrap_or_default();
@@ -44,11 +43,8 @@ pub fn get_commits_by_oids(
     path: String,
     oids: Vec<String>,
 ) -> Result<Vec<CommitInfo>, String> {
-    let repo_path = PathBuf::from(&path);
-    let wanted: HashSet<Oid> = oids
-        .iter()
-        .filter_map(|s| Oid::from_hex(s).ok())
-        .collect();
+    let repo_path = resolve_repo_key(&path);
+    let wanted: HashSet<Oid> = oids.iter().filter_map(|s| Oid::from_hex(s).ok()).collect();
     state.get_commits_by_oids(&repo_path, &wanted)
 }
 
@@ -60,7 +56,7 @@ pub fn stream_commits(
     filter: Option<CommitFilter>,
     window: tauri::Window,
 ) -> Result<(), String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path).map_err(|e| e.to_string())?;
     let repo = repo.as_ref().clone();
     let commit_filter = filter.unwrap_or_default();

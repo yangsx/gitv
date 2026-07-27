@@ -219,6 +219,8 @@ pub fn run() {
             commands::args::get_startup_info,
             commands::args::get_commit_sha,
             commands::repository::open_repository,
+            commands::repository::validate_repo_path,
+            commands::repository::suggest_paths,
             commands::repository::get_refs,
             commands::repository::get_recent_repositories,
             commands::repository::save_recent_repository,

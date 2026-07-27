@@ -122,6 +122,15 @@ pub trait Repository {
         pattern: &str,
         regex: Option<&regex::Regex>,
     ) -> Result<Vec<crate::search::PatchMatchLocation>, GitError>;
+
+    /// Incremental fetch against the default remote. Pulls new commits/refs
+    /// without deleting the local clone. Only meaningful for bare clone caches
+    /// that have a `origin` remote configured (i.e., repos produced by
+    /// `open_remote_with_token`). Returns `GitError::FetchFailed` on network
+    /// or protocol failure. Non-bare repos without a remote return
+    /// `GitError::Remote("no remote configured")`.
+    fn fetch_remote(&self) -> Result<(), GitError>;
+
     /// For merge commits (2+ parents): returns files that differ from ALL parents
     /// with a `diff_parent` hint per file.  For non-merge commits delegates to
     /// [`commit_details`](Self::commit_details).

@@ -2,11 +2,10 @@ use gitv_git_core::models::Oid;
 use gitv_git_core::repository::Repository;
 use gitv_git_core::search::{MatchType, SearchResponse, SearchResult};
 use serde::Serialize;
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tracing::instrument;
 
-use crate::state::AppState;
+use crate::state::{AppState, resolve_repo_key};
 
 #[derive(Serialize, Clone)]
 pub struct PatchSearchProgress {
@@ -36,7 +35,7 @@ pub async fn search_commits(
     path: String,
     query: gitv_git_core::search::SearchQuery,
 ) -> Result<SearchResponse, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
 
     let app_handle_clone = app_handle.clone();
     let repo_path_clone = repo_path.clone();

@@ -525,7 +525,11 @@ mod tests {
             ..Default::default()
         };
         let results = engine.search(&query).unwrap();
-        assert_eq!(results.len(), 1, "prefix 'docum' should match 'documentation'");
+        assert_eq!(
+            results.len(),
+            1,
+            "prefix 'docum' should match 'documentation'"
+        );
 
         // Multi-term prefix AND
         let query = SearchQuery {
@@ -533,7 +537,11 @@ mod tests {
             ..Default::default()
         };
         let results = engine.search(&query).unwrap();
-        assert_eq!(results.len(), 1, "prefix 'fix' AND 'bug' should match commit 3 only");
+        assert_eq!(
+            results.len(),
+            1,
+            "prefix 'fix' AND 'bug' should match commit 3 only"
+        );
     }
 
     #[test]

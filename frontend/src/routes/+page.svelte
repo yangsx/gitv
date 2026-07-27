@@ -17,6 +17,8 @@
 		openInNewWindow,
 		setWindowTitle,
 		quitApp,
+		validateRepoPath,
+		suggestPaths,
 		cancelPatchSearch
 	} from '$lib/bindings/commands';
 	import type {
@@ -27,6 +29,8 @@
 		Ref,
 		WorkingChangesDiff,
 		FileChange,
+		RepoPathValidation,
+		PathSuggestion,
 		RecentRepository
 	} from '$lib/bindings/types';
 	import {
@@ -86,6 +90,7 @@
 	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
 	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
 	import InfoDialog from '$lib/components/InfoDialog.svelte';
+	import OpenRepoInput from '$lib/components/OpenRepoInput.svelte';
 	import {
 		initPreferences,
 		resolvedTheme,
@@ -100,7 +105,16 @@
 	let repoPath = $state('');
 	let startupComplete = $state(false);
 	let autoDialogShown = $state(false);
+	let pendingNewWindow = $state(false);
 	let recentRepos = $state<RecentRepository[]>([]);
+	let repoInput = $state('');
+	let authToken = $state('');
+	let showRemoteAuth = $state(false);
+	let validation = $state<RepoPathValidation | null>(null);
+	let pathSuggestions = $state<PathSuggestion[]>([]);
+	let showSuggestions = $state(false);
+	let suggestionIndex = $state(-1);
+	let validationTimer = $state<ReturnType<typeof setTimeout> | null>(null);
 	let commits = $state<CommitInfo[]>([]);
 	let totalCommitCount = $state(0);
 	let loadingMoreCommits = $state(false);
@@ -121,6 +135,7 @@
 	let sidebarGotoTab = $state<'refs' | 'stash' | 'reflog' | 'history'>('refs');
 	let workingChangesDiff = $state<WorkingChangesDiff | null>(null);
 	let showCommandPalette = $state(false);
+	let showOpenRepoDialog = $state(false);
 	let compareMode = $state(false);
 	let contextMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 	let isDragging = $state(false);
@@ -291,7 +306,57 @@
 		getRecentRepositories().then((r) => (recentRepos = r));
 	}
 
-	async function loadRepo(path: string) {
+	function openRepoFromDialog() {
+		if (validationTimer) clearTimeout(validationTimer);
+		const input = repoInput.trim();
+		if (!input) return;
+		const kind = detectRepoKind(input);
+		showOpenRepoDialog = false;
+		showRemoteAuth = false;
+		closeRepo();
+		loadRepo(input, kind === 'remote' ? authToken.trim() || undefined : undefined);
+	}
+
+	function closeRepoAndLoad() {
+		const input = repoInput.trim();
+		if (!input) return;
+		const kind = detectRepoKind(input);
+		showRemoteAuth = false;
+		showSuggestions = false;
+		pathSuggestions = [];
+		suggestionIndex = -1;
+		pendingNewWindow = false;
+		closeRepo();
+		loadRepo(input, kind === 'remote' ? authToken.trim() || undefined : undefined);
+	}
+
+	async function openInNewWindowFromInput() {
+		const input = repoInput.trim();
+		if (!input) return;
+		showRemoteAuth = false;
+		showSuggestions = false;
+		pathSuggestions = [];
+		suggestionIndex = -1;
+		pendingNewWindow = false;
+		try {
+			await openInNewWindow(input);
+		} catch {
+			showToast(translate('page.open_failed'), 'error');
+		}
+	}
+
+	function focusOpenRepoInput(newWindow: boolean) {
+		pendingNewWindow = newWindow;
+		setTimeout(() => {
+			const input = document.getElementById('repo-url-input') as HTMLInputElement | null;
+			if (input) {
+				input.focus();
+				input.select();
+			}
+		}, 0);
+	}
+
+	async function loadRepo(path: string, token?: string, forceRefresh = false) {
 		resetRepoState();
 		operationState.set('LoadingRepo');
 		try {
@@ -300,6 +365,8 @@
 				color_mode: $graphColorMode,
 				arrow_gap_threshold: $arrowGapThreshold,
 				palette: $graphPalette,
+				force_refresh: forceRefresh,
+				auth_token: token,
 				hide_merges: $graphHideMerges
 			});
 			const repoRoot = data.repo_info.path;
@@ -314,7 +381,7 @@
 			graphLayout = data.graph_layout;
 			allRefs = data.refs;
 			workingChangesDiff = data.working_changes;
-			await saveRecentRepository(repoRoot).catch(() => {});
+			await saveRecentRepository(path).catch(() => {});
 			recentRepos = await getRecentRepositories();
 			updateLoadPhaseTimings([
 				{ phase: 'load_commits', durationMs: data.timing.load_commits_ms },
@@ -347,6 +414,14 @@
 			} else if (code === 'open_failed') {
 				error.set(translate('page.open_failed', { path }));
 				announce(translate('page.open_failed', { path }));
+			} else if (code === 'remote_auth_required') {
+				showRemoteAuth = true;
+				error.set(translate('page.remote_auth_required', { path }));
+				announce(translate('page.remote_auth_required', { path }));
+			} else if (code.startsWith('remote_failed:')) {
+				const details = code.slice('remote_failed:'.length).trim();
+				error.set(translate('page.remote_failed', { path, details }));
+				announce(translate('page.remote_failed', { path, details }));
 			} else {
 				loadError = code;
 				showToast(translate('page.load_failed'), 'error');
@@ -385,14 +460,72 @@
 		}
 	}
 
+	function detectRepoKind(input: string): 'remote' | 'local' | 'unknown' {
+		if (/^(https?|git|ssh|file):\/\//.test(input) || /^git@/.test(input)) return 'remote';
+		if (/^[/~.]/.test(input)) return 'local';
+		return 'unknown';
+	}
+
+	async function validateInput(input: string) {
+		const trimmed = input.trim();
+		if (!trimmed) {
+			validation = null;
+			pathSuggestions = [];
+			showSuggestions = false;
+			return;
+		}
+		const kind = detectRepoKind(trimmed);
+		if (kind === 'remote') {
+			pathSuggestions = [];
+			showSuggestions = false;
+			validation = { kind: 'remote', valid: true, is_git: false, message: null };
+			return;
+		}
+		const [v, s] = await Promise.all([
+			validateRepoPath(trimmed).catch(() => null),
+			kind === 'local'
+				? suggestPaths(trimmed).catch(() => [])
+				: Promise.resolve([] as PathSuggestion[])
+		]);
+		validation = v;
+		pathSuggestions = s;
+		showSuggestions = s.length > 0;
+	}
+
+	function onInputChange() {
+		suggestionIndex = -1;
+		if (validationTimer) clearTimeout(validationTimer);
+		validationTimer = setTimeout(() => validateInput(repoInput), 200);
+	}
+
+	function acceptSuggestion(path: string) {
+		repoInput = path;
+		pathSuggestions = [];
+		showSuggestions = false;
+		suggestionIndex = -1;
+		validateInput(path);
+	}
+
+	function submitRepo() {
+		if (validationTimer) clearTimeout(validationTimer);
+		const input = repoInput.trim();
+		if (!input) return;
+		const kind = detectRepoKind(input);
+		showRemoteAuth = false;
+		showSuggestions = false;
+		pathSuggestions = [];
+		error.set(null);
+		loadRepo(input, kind === 'remote' ? authToken.trim() || undefined : undefined);
+	}
+
 	async function browseForRepo() {
 		try {
 			const { open } = await import('@tauri-apps/plugin-dialog');
 			const title = translate('page.select_repo_title');
 			const selected = await open({ directory: true, multiple: false, title });
 			if (selected) {
-				repoPath = selected;
-				loadRepo(selected);
+				repoInput = selected;
+				validateInput(selected);
 			}
 		} catch {
 			showToast(translate('page.dialog_failed'), 'error');
@@ -464,7 +597,7 @@
 		if (!repoPath) return;
 		refreshSignal++;
 		operationState.set('LoadingRepo');
-		loadRepo(repoPath);
+		loadRepo(repoPath, undefined, true);
 	}
 
 	let allCommits = $derived.by(() => {
@@ -748,12 +881,12 @@
 		}
 		if ((e.key === 'O' || e.key === 'o') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
 			e.preventDefault();
-			browseForRepoNewWindow();
+			focusOpenRepoInput(true);
 			return;
 		}
 		if (e.key === 'o' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
 			e.preventDefault();
-			browseForRepo();
+			focusOpenRepoInput(false);
 			return;
 		}
 		if (e.key === 'F12' || (e.key === 'D' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
@@ -920,14 +1053,14 @@
 			label: translate('page.cmd_open_repo'),
 			shortcut: 'Ctrl+O',
 			category: 'File',
-			action: browseForRepo
+			action: () => focusOpenRepoInput(false)
 		});
 		registerCommand({
 			id: 'open-repo-new-window',
 			label: translate('page.cmd_open_repo_new_window'),
 			shortcut: 'Ctrl+Shift+O',
 			category: 'File',
-			action: browseForRepoNewWindow
+			action: () => focusOpenRepoInput(true)
 		});
 		registerCommand({
 			id: 'close-repo',
@@ -1346,14 +1479,25 @@
 						<h1 class="text-2xl font-bold">{$t('page.title')}</h1>
 						<p class="text-gray-400">{$t('page.subtitle')}</p>
 					</div>
-					<div class="flex justify-center">
-						<button
-							class="rounded bg-blue-600 px-6 py-3 text-sm hover:bg-blue-700"
-							onclick={browseForRepo}
-							aria-label={$t('page.browse_repo')}
-						>
-							{$t('page.browse_repo')}
-						</button>
+					<div class="space-y-2">
+						<OpenRepoInput
+							bind:repoInput
+							bind:authToken
+							bind:showRemoteAuth
+							bind:validation
+							bind:pathSuggestions
+							bind:showSuggestions
+							bind:suggestionIndex
+							onSubmit={submitRepo}
+							onBrowse={() => {
+								repoInput = '';
+								authToken = '';
+								validation = null;
+								showOpenRepoDialog = true;
+							}}
+							{onInputChange}
+							{acceptSuggestion}
+						/>
 					</div>
 					{#if $error}
 						<p class="text-sm text-red-400 text-center" role="alert">{$error}</p>
@@ -1457,13 +1601,80 @@
 			<header
 				class="relative flex items-center gap-3 overflow-visible border-b border-gray-800 px-4 py-2"
 			>
-				<button
-					class="rounded bg-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-600 shrink-0"
-					onclick={browseForRepo}
-					aria-label={$t('page.browse_repo')}
-				>
-					{$t('page.browse_repo')}
-				</button>
+				<div class="shrink-0 flex items-center gap-1">
+					<div class="relative">
+						<input
+							id="repo-url-input"
+							type="text"
+							class="w-48 rounded bg-gray-800 py-1.5 pl-2 pr-6 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 {pendingNewWindow
+								? 'focus:ring-purple-500'
+								: 'focus:ring-blue-500'} {pendingNewWindow ? 'ring-1 ring-purple-500/60' : ''}"
+							placeholder={pendingNewWindow
+								? $t('page.repo_input_placeholder_new_window')
+								: $t('page.repo_input_placeholder')}
+							bind:value={repoInput}
+							oninput={onInputChange}
+							onkeydown={(e) => {
+								if (showSuggestions && pathSuggestions.length > 0) {
+									if (e.key === 'ArrowDown') {
+										e.preventDefault();
+										suggestionIndex = Math.min(suggestionIndex + 1, pathSuggestions.length - 1);
+									} else if (e.key === 'ArrowUp') {
+										e.preventDefault();
+										suggestionIndex = Math.max(suggestionIndex - 1, 0);
+									} else if (e.key === 'Enter' && suggestionIndex >= 0) {
+										e.preventDefault();
+										acceptSuggestion(pathSuggestions[suggestionIndex].path);
+									} else if (e.key === 'Escape') {
+										e.preventDefault();
+										showSuggestions = false;
+										pathSuggestions = [];
+										suggestionIndex = -1;
+										pendingNewWindow = false;
+									}
+									return;
+								}
+								if (e.key === 'Escape') {
+									pendingNewWindow = false;
+								}
+								if (e.key === 'Enter' && repoInput.trim()) {
+									if (pendingNewWindow) {
+										openInNewWindowFromInput();
+									} else {
+										closeRepoAndLoad();
+									}
+								}
+							}}
+						/>
+						{#if validation}
+							<span
+								class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] {validation.valid
+									? 'text-green-500'
+									: 'text-amber-500'}"
+							>
+								{validation.kind === 'remote' ? '🌐' : validation.valid ? '✓' : '!'}
+							</span>
+						{/if}
+					</div>
+					<button
+						class="flex-shrink-0 rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+						onclick={browseForRepo}
+						title={$t('page.browse_repo')}
+						aria-label={$t('page.browse_repo')}
+					>
+						<svg
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							viewBox="0 0 24 24"
+							aria-hidden="true"
+							><path
+								d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+							/></svg
+						>
+					</button>
+				</div>
 				<div class="flex-1 min-w-0 overflow-x-auto">
 					<div class="flex items-center gap-1.5 w-max">
 						{#each recentRepos as repo (repo.path)}
@@ -1763,6 +1974,59 @@
 				restoreFocus();
 			}}
 		/>
+	{/if}
+	{#if showOpenRepoDialog}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[15vh]"
+			onkeydown={(e) => {
+				if (e.key === 'Escape') {
+					showOpenRepoDialog = false;
+					restoreFocus();
+				}
+			}}
+			role="dialog"
+			aria-label={$t('page.open_repo_title')}
+			tabindex="-1"
+		>
+			<div class="w-full max-w-md rounded-lg bg-gray-900 p-6 shadow-xl border border-gray-700">
+				<h2 class="mb-4 text-lg font-semibold">{$t('page.open_repo_title')}</h2>
+				<div class="space-y-3">
+					<OpenRepoInput
+						bind:repoInput
+						bind:authToken
+						bind:showRemoteAuth
+						bind:validation
+						bind:pathSuggestions
+						bind:showSuggestions
+						bind:suggestionIndex
+						onSubmit={openRepoFromDialog}
+						onBrowse={browseForRepo}
+						{onInputChange}
+						{acceptSuggestion}
+						showAuthButton={false}
+					/>
+					<div class="flex justify-end gap-2">
+						<button
+							class="rounded px-4 py-2 text-sm text-gray-400 hover:text-white"
+							onclick={() => {
+								showOpenRepoDialog = false;
+								restoreFocus();
+							}}
+						>
+							{$t('page.cancel')}
+						</button>
+						<button
+							class="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-40"
+							onclick={openRepoFromDialog}
+							disabled={!repoInput.trim()}
+						>
+							{$t('page.open')}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
 	{/if}
 	{#if showCommandPalette}
 		<CommandPalette

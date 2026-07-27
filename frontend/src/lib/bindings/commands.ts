@@ -21,6 +21,8 @@ import type {
 	WorkingChangesDiff,
 	AppPreferences,
 	SelfTestResult,
+	RepoPathValidation,
+	PathSuggestion,
 	InitialData
 } from './types';
 
@@ -62,6 +64,14 @@ export async function quitApp(): Promise<void> {
 	return timedInvoke<void>('quit_app');
 }
 
+export async function validateRepoPath(path: string): Promise<RepoPathValidation> {
+	return timedInvoke<RepoPathValidation>('validate_repo_path', { path });
+}
+
+export async function suggestPaths(prefix: string): Promise<PathSuggestion[]> {
+	return timedInvoke<PathSuggestion[]>('suggest_paths', { prefix });
+}
+
 export async function getCommits(path: string): Promise<CommitInfo[]> {
 	return timedInvoke<CommitInfo[]>('get_commits', { path, filter: null });
 }
@@ -74,10 +84,14 @@ export async function getInitialData(
 		color_mode?: string;
 		arrow_gap_threshold?: number;
 		palette?: string;
+		auth_token?: string;
+		force_refresh?: boolean;
 	}
 ): Promise<InitialData> {
 	return timedInvoke<InitialData>('get_initial_data', {
 		path,
+		authToken: options?.auth_token ?? null,
+		forceRefresh: options?.force_refresh ?? false,
 		hideMerges: options?.hide_merges ?? false,
 		orientation: options?.orientation ?? 'top-to-bottom',
 		colorMode: options?.color_mode ?? 'by-branch',
