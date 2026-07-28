@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::instrument;
 
 static CACHED_MEMORY: AtomicU64 = AtomicU64::new(0);
@@ -10,10 +10,12 @@ fn memory_updater() -> &'static std::thread::JoinHandle<()> {
         if let Some(stats) = memory_stats::memory_stats() {
             CACHED_MEMORY.store(stats.physical_mem as u64, Ordering::Relaxed);
         }
-        std::thread::spawn(|| loop {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            if let Some(stats) = memory_stats::memory_stats() {
-                CACHED_MEMORY.store(stats.physical_mem as u64, Ordering::Relaxed);
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                if let Some(stats) = memory_stats::memory_stats() {
+                    CACHED_MEMORY.store(stats.physical_mem as u64, Ordering::Relaxed);
+                }
             }
         })
     })

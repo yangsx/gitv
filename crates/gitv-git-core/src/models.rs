@@ -17,14 +17,17 @@ const _: () = {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[must_use]
-pub struct Oid([u8; 20]);
+pub enum Oid {
+    Sha1([u8; 20]),
+    Sha256([u8; 32]),
+}
 
 /// Sentinel OID for the staged-changes virtual commit.
 /// All-`ff` bytes — cannot collide with a real SHA-1 hash.
-pub const STAGED_OID: Oid = Oid([0xff; 20]);
+pub const STAGED_OID: Oid = Oid::Sha1([0xff; 20]);
 /// Sentinel OID for the unstaged-changes virtual commit.
 /// All-`fe` bytes — cannot collide with a real SHA-1 hash.
-pub const UNSTAGED_OID: Oid = Oid([0xfe; 20]);
+pub const UNSTAGED_OID: Oid = Oid::Sha1([0xfe; 20]);
 
 const SENTINEL_STAGED_STR: &str = "__staged__";
 const SENTINEL_UNSTAGED_STR: &str = "__unstaged__";
@@ -54,38 +57,70 @@ impl<'de> Deserialize<'de> for Oid {
 
 impl Oid {
     pub fn from_bytes(bytes: [u8; 20]) -> Self {
-        Self(bytes)
+        Self::Sha1(bytes)
     }
 
     #[must_use]
-    pub fn as_bytes(&self) -> &[u8; 20] {
-        &self.0
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Sha1(b) => b,
+            Self::Sha256(b) => b,
+        }
     }
 
     pub fn from_hex(s: &str) -> Result<Self, OidError> {
-        if s.len() != 40 {
-            return Err(OidError::InvalidLength(s.len()));
+        match s.len() {
+            40 => {
+                let s_bytes = s.as_bytes();
+                let mut bytes = [0u8; 20];
+                for (i, chunk) in s_bytes.chunks_exact(2).enumerate() {
+                    let hi = hex_val(chunk[0], i * 2)?;
+                    let lo = hex_val(chunk[1], i * 2 + 1)?;
+                    bytes[i] = (hi << 4) | lo;
+                }
+                Ok(Self::Sha1(bytes))
+            }
+            64 => {
+                let s_bytes = s.as_bytes();
+                let mut bytes = [0u8; 32];
+                for (i, chunk) in s_bytes.chunks_exact(2).enumerate() {
+                    let hi = hex_val(chunk[0], i * 2)?;
+                    let lo = hex_val(chunk[1], i * 2 + 1)?;
+                    bytes[i] = (hi << 4) | lo;
+                }
+                Ok(Self::Sha256(bytes))
+            }
+            n => Err(OidError::InvalidLength(n)),
         }
-        let s_bytes = s.as_bytes();
-        let mut bytes = [0u8; 20];
-        for (i, chunk) in s_bytes.chunks_exact(2).enumerate() {
-            let hi = hex_val(chunk[0], i * 2)?;
-            let lo = hex_val(chunk[1], i * 2 + 1)?;
-            bytes[i] = (hi << 4) | lo;
-        }
-        Ok(Self(bytes))
     }
 
     #[must_use]
     pub fn to_hex(&self) -> String {
-        let mut buf = [0u8; 40];
-        self.to_hex_into(&mut buf);
-        // SAFETY: buf contains only ASCII hex characters
-        unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+        match self {
+            Self::Sha1(bytes) => {
+                let mut buf = [0u8; 40];
+                for (i, &byte) in bytes.iter().enumerate() {
+                    buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
+                    buf[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
+                }
+                // SAFETY: buf contains only ASCII hex characters
+                unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+            }
+            Self::Sha256(bytes) => {
+                let mut buf = [0u8; 64];
+                for (i, &byte) in bytes.iter().enumerate() {
+                    buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
+                    buf[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
+                }
+                // SAFETY: buf contains only ASCII hex characters
+                unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+            }
+        }
     }
 
-    pub fn to_hex_into(&self, buf: &mut [u8; 40]) {
-        for (i, &byte) in self.0.iter().enumerate() {
+    pub fn to_hex_into(&self, buf: &mut [u8]) {
+        let bytes = self.as_bytes();
+        for (i, &byte) in bytes.iter().enumerate() {
             buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
             buf[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
         }
@@ -94,13 +129,14 @@ impl Oid {
     #[must_use]
     pub fn short_hex(&self) -> String {
         // 7 hex chars = 3 full bytes + first nibble of byte 3
+        let bytes = self.as_bytes();
         let mut buf = [0u8; 7];
         for i in 0..3 {
-            let byte = self.0[i];
+            let byte = bytes[i];
             buf[i * 2] = HEX_CHARS[(byte >> 4) as usize];
             buf[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
         }
-        buf[6] = HEX_CHARS[(self.0[3] >> 4) as usize];
+        buf[6] = HEX_CHARS[(bytes[3] >> 4) as usize];
         // SAFETY: buf contains only ASCII hex characters
         unsafe { String::from_utf8_unchecked(buf.to_vec()) }
     }
@@ -110,10 +146,17 @@ impl Oid {
     #[must_use]
     pub fn starts_with_hex(&self, prefix: &str) -> bool {
         let prefix_bytes = prefix.as_bytes();
-        let prefix_len = prefix_bytes.len().min(40);
-        let mut buf = [0u8; 40];
+        let prefix_len = prefix_bytes.len().min(self.hex_len());
+        let mut buf = [0u8; 64];
         self.to_hex_into(&mut buf);
         buf[..prefix_len].eq_ignore_ascii_case(&prefix_bytes[..prefix_len])
+    }
+
+    fn hex_len(&self) -> usize {
+        match self {
+            Self::Sha1(_) => 40,
+            Self::Sha256(_) => 64,
+        }
     }
 
     /// Returns `true` if this OID is the staged or unstaged sentinel.

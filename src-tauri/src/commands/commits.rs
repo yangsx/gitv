@@ -45,10 +45,7 @@ pub fn get_commits_by_oids(
     oids: Vec<String>,
 ) -> Result<Vec<CommitInfo>, String> {
     let repo_path = PathBuf::from(&path);
-    let wanted: HashSet<Oid> = oids
-        .iter()
-        .filter_map(|s| Oid::from_hex(s).ok())
-        .collect();
+    let wanted: HashSet<Oid> = oids.iter().filter_map(|s| Oid::from_hex(s).ok()).collect();
     state.get_commits_by_oids(&repo_path, &wanted)
 }
 

@@ -1884,14 +1884,17 @@ fn gix_id_to_oid(id: &gix::Id) -> Oid {
 
 fn gix_object_id_to_oid(oid: gix::ObjectId) -> Oid {
     match oid {
-        gix::ObjectId::Sha1(bytes) => Oid::from_bytes(bytes),
-        // SHA256 not yet supported by gix configuration (sha1 feature only)
-        other => unreachable!("unsupported hash algorithm: {:?}", other),
+        gix::ObjectId::Sha1(bytes) => Oid::Sha1(bytes),
+        gix::ObjectId::Sha256(bytes) => Oid::Sha256(bytes),
+        _ => panic!("unsupported hash algorithm: {:?}", oid),
     }
 }
 
 pub(crate) fn oid_to_gix_object_id(oid: &Oid) -> gix::ObjectId {
-    gix::ObjectId::from(*oid.as_bytes())
+    match oid {
+        Oid::Sha1(bytes) => gix::ObjectId::Sha1(*bytes),
+        Oid::Sha256(bytes) => gix::ObjectId::Sha256(*bytes),
+    }
 }
 
 /// Detect stash commits by checking if extra parents (index/untracked) have HEAD as their parent.
