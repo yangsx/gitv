@@ -1,7 +1,6 @@
-use crate::state::AppState;
+use crate::state::{AppState, resolve_repo_key};
 use gitv_git_core::models::{DiffMode, Oid, WhitespaceMode};
 use gitv_git_core::repository::Repository;
-use std::path::PathBuf;
 use tauri::State;
 use tracing::instrument;
 
@@ -13,7 +12,7 @@ pub async fn get_commit_details(
     oid: String,
     include_counts: Option<bool>,
 ) -> Result<gitv_git_core::models::CommitDetails, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
     let include = include_counts.unwrap_or(false);
@@ -33,7 +32,7 @@ pub async fn get_combined_commit_details(
     oid: String,
     include_counts: Option<bool>,
 ) -> Result<gitv_git_core::models::CommitDetails, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
     let include = include_counts.unwrap_or(false);
@@ -52,7 +51,7 @@ pub async fn get_commit_file_counts(
     path: String,
     oid: String,
 ) -> Result<Vec<gitv_git_core::models::FileLineStats>, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -72,7 +71,7 @@ pub async fn get_diff(
     to: String,
     whitespace: Option<String>,
 ) -> Result<gitv_git_core::models::DiffSummary, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let from_oid = from
         .map(|s| Oid::from_hex(&s))
@@ -101,7 +100,7 @@ pub async fn get_file_diff(
     whitespace: Option<String>,
     full: Option<bool>,
 ) -> Result<gitv_git_core::models::FileDiff, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let from_oid = from
         .map(|s| Oid::from_hex(&s))
@@ -137,7 +136,7 @@ pub async fn get_file_tree(
     path: String,
     at_commit: Option<String>,
 ) -> Result<gitv_git_core::models::FileTreeNode, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let oid = at_commit
         .map(|s| Oid::from_hex(&s))
@@ -163,7 +162,7 @@ pub async fn get_combined_file_diff(
     whitespace: Option<String>,
     full: Option<bool>,
 ) -> Result<gitv_git_core::models::FileDiff, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let commit_oid = Oid::from_hex(&oid).map_err(|e| e.to_string())?;
     let mode = parse_diff_mode(diff_mode.as_deref());
@@ -203,7 +202,7 @@ pub async fn get_file_history(
     file_path: String,
     max_count: Option<usize>,
 ) -> Result<Vec<gitv_git_core::models::FileHistoryEntry>, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     tauri::async_runtime::spawn_blocking(move || {
         repo.file_history(std::path::Path::new(&file_path), max_count)
@@ -221,7 +220,7 @@ pub async fn get_blob_content(
     at_commit: String,
     file_path: String,
 ) -> Result<String, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let file_path = std::path::Path::new(&file_path).to_path_buf();
 
@@ -255,7 +254,7 @@ pub async fn get_working_changes(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<gitv_git_core::models::WorkingChangesDiff, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     tauri::async_runtime::spawn_blocking(move || {
         repo.working_changes_diff().map_err(|e| e.to_string())
@@ -273,7 +272,7 @@ pub async fn get_working_changes_diffs(
     diff_mode: Option<String>,
     whitespace: Option<String>,
 ) -> Result<Vec<gitv_git_core::models::FileDiff>, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
@@ -296,7 +295,7 @@ pub async fn get_working_changes_combined_diff(
     diff_mode: Option<String>,
     whitespace: Option<String>,
 ) -> Result<Vec<gitv_git_core::models::FileDiff>, String> {
-    let repo_path = PathBuf::from(&path);
+    let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());

@@ -23,6 +23,10 @@ impl Clone for GixRepository {
 }
 
 impl GixRepository {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn open(path: &Path) -> Result<Self, GitError> {
         let repo = gix::discover(path).map_err(|e| {
             // gix doesn't expose a structured error kind for this; string match is fragile
@@ -57,10 +61,109 @@ impl GixRepository {
         })
     }
 
+    pub fn open_bare(path: &Path) -> Result<Self, GitError> {
+        let repo = gix::open(path).map_err(|e| {
+            let err_msg = e.to_string();
+            let lower = err_msg.to_lowercase();
+            if lower.contains("not a git")
+                || lower.contains("could not find")
+                || lower.contains("no git repository")
+                || (lower.contains("repository") && lower.contains("not found"))
+            {
+                GitError::NotAGitRepository(path.display().to_string())
+            } else {
+                GitError::Gix(err_msg)
+            }
+        })?;
+        if !repo.is_bare() {
+            return Err(GitError::Gix(format!(
+                "repository at {} is not bare; use open() instead",
+                path.display()
+            )));
+        }
+        let root = repo
+            .path()
+            .canonicalize()
+            .unwrap_or_else(|_| repo.path().to_path_buf());
+        Ok(Self {
+            inner: repo.into_sync(),
+            path: root,
+        })
+    }
+
+    pub fn open_remote(url: &str, cache_root: &Path) -> Result<Self, GitError> {
+        Self::open_remote_with_token(url, cache_root, None)
+    }
+
+    pub fn open_remote_with_token(
+        url: &str,
+        cache_root: &Path,
+        token: Option<&str>,
+    ) -> Result<Self, GitError> {
+        let cache_path = cache_root.join(remote_cache_subdir(url));
+        if let Ok(canonical) = cache_path.canonicalize()
+            && !canonical.starts_with(cache_root)
+        {
+            return Err(GitError::Remote("path traversal detected".to_string()));
+        }
+        if cache_path.exists() {
+            let repo = Self::open_bare(&cache_path)?;
+            let _ = fetch_remote_impl(&repo).inspect_err(|e| {
+                tracing::warn!("incremental remote fetch failed: {e}");
+            });
+            return Ok(repo);
+        }
+        if let Some(parent) = cache_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| GitError::Remote(format!("failed to create cache dir: {e}")))?;
+        }
+        let fetch_url = match token {
+            Some(tok) => inject_token_into_url(url, tok, None),
+            None => url.to_string(),
+        };
+        let mut prepare = gix::prepare_clone_bare(fetch_url.as_str(), &cache_path)
+            .map_err(|e| GitError::Remote(format!("prepare clone failed: {e}")))?
+            .with_shallow(gix::remote::fetch::Shallow::DepthAtRemote(
+                std::num::NonZeroU32::new(crate::DEFAULT_REMOTE_CLONE_DEPTH)
+                    .expect("non-zero default"),
+            ));
+        let should_interrupt = std::sync::atomic::AtomicBool::new(false);
+        let (repo, _outcome) = prepare
+            .fetch_only(gix::progress::Discard, &should_interrupt)
+            .map_err(|e| {
+                let _ = std::fs::remove_dir_all(&cache_path);
+                let msg = e.to_string();
+                let lower = msg.to_lowercase();
+                if lower.contains("authentication")
+                    || lower.contains("authorization")
+                    || lower.contains("credentials")
+                    || lower.contains("401")
+                    || lower.contains("403")
+                {
+                    GitError::AuthRequired(url.to_string())
+                } else {
+                    GitError::Remote(format!("fetch failed: {msg}"))
+                }
+            })?;
+        let root = repo
+            .path()
+            .canonicalize()
+            .unwrap_or_else(|_| repo.path().to_path_buf());
+        Ok(Self {
+            inner: repo.into_sync(),
+            path: root,
+        })
+    }
+
     pub fn thread_local(&self) -> gix::Repository {
         let mut repo = self.inner.to_thread_local();
-        repo.object_cache_size(crate::OBJECT_CACHE_SIZE);
+        repo.object_cache_size_if_unset(1024 * 1024 * 512);
         repo
+    }
+
+    /// Incremental fetch against the default remote. See `fetch_remote_impl`.
+    pub fn fetch_remote(&self) -> Result<(), GitError> {
+        fetch_remote_impl(self)
     }
 
     /// Enumerate all refs and categorize them using a precomputed HEAD
@@ -1762,6 +1865,10 @@ impl Repository for GixRepository {
         }
 
         Ok(all_matches)
+    }
+
+    fn fetch_remote(&self) -> Result<(), GitError> {
+        fetch_remote_impl(self)
     }
 }
 
@@ -3760,6 +3867,190 @@ fn build_file_tree(
     })
 }
 
+pub fn is_remote_url(s: &str) -> bool {
+    let s = s.trim();
+    s.starts_with("https://")
+        || s.starts_with("http://")
+        || s.starts_with("ssh://")
+        || s.starts_with("git://")
+        || s.starts_with("git@")
+}
+
+/// Incremental fetch against the default remote of a cloned repo.
+///
+/// Works for both bare clones produced by `open_remote_with_token` (which have
+/// `remote.origin.url` baked in, possibly with an injected token) and for
+/// bare repos cloned externally.
+pub fn fetch_remote_impl(repo: &GixRepository) -> Result<(), GitError> {
+    let thread_local = repo.thread_local();
+    let remote = thread_local
+        .find_default_remote(gix::remote::Direction::Fetch)
+        .ok_or_else(|| GitError::FetchFailed("no remote configured".to_string()))?
+        .map_err(|e| GitError::FetchFailed(e.to_string()))?;
+    let connection = remote
+        .connect(gix::remote::Direction::Fetch)
+        .map_err(|e| GitError::FetchFailed(e.to_string()))?;
+    let prepare = connection
+        .prepare_fetch(gix::progress::Discard, Default::default())
+        .map_err(|e| GitError::FetchFailed(e.to_string()))?;
+    let should_interrupt = std::sync::atomic::AtomicBool::new(false);
+    prepare
+        .receive(gix::progress::Discard, &should_interrupt)
+        .map_err(|e| {
+            let msg = e.to_string();
+            let lower = msg.to_lowercase();
+            if lower.contains("authentication")
+                || lower.contains("authorization")
+                || lower.contains("credentials")
+                || lower.contains("401")
+                || lower.contains("403")
+            {
+                GitError::AuthRequired(msg)
+            } else {
+                GitError::FetchFailed(msg)
+            }
+        })?;
+    Ok(())
+}
+
+fn inject_token_into_url(url: &str, token: &str, username: Option<&str>) -> String {
+    let scheme_end = match url.find("://") {
+        Some(i) if i == 5 || i == 4 || i == 3 => i + 3,
+        _ => return url.to_string(),
+    };
+    let scheme = &url[..scheme_end];
+    if !scheme.starts_with("https://") && !scheme.starts_with("http://") {
+        return url.to_string();
+    }
+    let rest = &url[scheme_end..];
+    if rest.contains('@') {
+        return url.to_string();
+    }
+    let host = rest.split('/').next().unwrap_or("").to_lowercase();
+    let user = match username {
+        Some(u) => u,
+        None => {
+            if host.contains("github") {
+                "x-access-token"
+            } else if host.contains("gitlab") {
+                "oauth2"
+            } else if host.contains("bitbucket") {
+                "x-token-auth"
+            } else if host.contains("azure") || host.contains("visualstudio") {
+                ""
+            } else {
+                "x-access-token"
+            }
+        }
+    };
+    let encoded: String = token
+        .chars()
+        .flat_map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
+                let mut b = [0u8; 4];
+                let s = c.encode_utf8(&mut b);
+                vec![format!("{}", s)]
+            } else {
+                let mut b = [0u8; 4];
+                let s = c.encode_utf8(&mut b);
+                s.bytes().map(|byte| format!("%{:02X}", byte)).collect()
+            }
+        })
+        .collect();
+    if user.is_empty() {
+        format!("{scheme}:{encoded}@{rest}")
+    } else {
+        format!("{scheme}{user}:{encoded}@{rest}")
+    }
+}
+
+pub fn remote_cache_root() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("gitv")
+        .join("remote")
+}
+
+pub fn remote_cache_subdir(url: &str) -> PathBuf {
+    let normalized = normalize_remote_url(url);
+    let safe: String = normalized
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let mut p = PathBuf::from(safe);
+    if !p.to_string_lossy().ends_with(".git") {
+        let name = p
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned() + ".git")
+            .unwrap_or_else(|| "repo.git".to_string());
+        p.set_file_name(name);
+    }
+    p
+}
+
+fn normalize_remote_url(url: &str) -> String {
+    let mut s = url.trim().to_string();
+
+    if let Some(rest) = s.strip_prefix("git@") {
+        s = match rest.split_once(':') {
+            Some((host, path)) => format!("{host}/{path}"),
+            None => rest.to_string(),
+        };
+    } else {
+        let lowered = s.to_lowercase();
+        for scheme in ["https://", "http://", "ssh://", "git://", "file://"] {
+            if lowered.strip_prefix(scheme).is_some() {
+                let strip_len = scheme.len();
+                s = s[strip_len..].to_string();
+                if let Some(at_pos) = s.find('@')
+                    && let Some(slash_pos) = s.find('/')
+                    && at_pos < slash_pos
+                {
+                    s = s[at_pos + 1..].to_string();
+                }
+                break;
+            }
+        }
+    }
+
+    if let Some(slash_pos) = s.find('/') {
+        let (host, rest) = s.split_at(slash_pos);
+        s = format!("{}{}", host.to_lowercase(), rest);
+    } else {
+        s = s.to_lowercase();
+    }
+
+    if let Some(idx) = s.rfind('/') {
+        let last_segment = &s[idx + 1..];
+        if last_segment.ends_with(".git") {
+            s.truncate(s.len() - 4);
+        }
+    } else if s.ends_with(".git") {
+        s.truncate(s.len() - 4);
+    }
+
+    while s.ends_with('/') {
+        s.pop();
+    }
+    while s.starts_with('/') {
+        s.remove(0);
+    }
+
+    let segments: Vec<&str> = s
+        .split('/')
+        .filter(|seg| *seg != ".." && *seg != ".")
+        .collect();
+    s = segments.join("/");
+
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3828,6 +4119,158 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("temp dir");
         let result = GixRepository::open(dir.path());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn open_bare_opens_existing_bare_repo() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        let bare_dir = tempfile::TempDir::new().expect("bare dir");
+        run_git(
+            bare_dir.path().parent().unwrap(),
+            &[
+                "clone",
+                "--bare",
+                temp.path().to_str().unwrap(),
+                bare_dir.path().to_str().unwrap(),
+            ],
+        );
+        let repo = GixRepository::open_bare(bare_dir.path()).expect("open bare");
+        let info = repo.info().expect("info");
+        assert!(info.is_bare);
+        assert!(info.head_commit.is_some());
+        let commits = repo.commits(None, &[]).expect("commits");
+        assert_eq!(commits.len(), 1);
+    }
+
+    #[test]
+    fn open_bare_rejects_non_bare_repo() {
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("a.txt", "hello", "first commit");
+        let result = GixRepository::open_bare(temp.path());
+        let err = result.err().expect("expected error for non-bare repo");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not bare"),
+            "expected 'not bare' in error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn open_remote_reuses_existing_cache() {
+        let temp = TempRepo::new();
+        let head = temp.commit_file("a.txt", "hello", "first commit");
+        let cache_root = tempfile::TempDir::new().expect("cache root");
+        let url = format!("file://{}", temp.path().display());
+        let subdir = remote_cache_subdir(&url);
+        let cache_path = cache_root.path().join(&subdir);
+        std::fs::create_dir_all(cache_path.parent().unwrap()).expect("create cache parent");
+        run_git(
+            cache_root.path(),
+            &[
+                "clone",
+                "--bare",
+                temp.path().to_str().unwrap(),
+                cache_path.to_str().unwrap(),
+            ],
+        );
+        let repo = GixRepository::open_remote(&url, cache_root.path()).expect("open remote");
+        let commits = repo.commits(None, &[]).expect("commits");
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].oid, head);
+    }
+
+    #[test]
+    fn open_remote_clones_from_local_file_url() {
+        let temp = TempRepo::new();
+        let head = temp.commit_file("a.txt", "hello", "first commit");
+        let cache_root = tempfile::TempDir::new().expect("cache root");
+        let url = format!("file://{}", temp.path().display());
+        let repo = GixRepository::open_remote(&url, cache_root.path()).expect("open remote");
+        let info = repo.info().expect("info");
+        assert!(info.is_bare);
+        let commits = repo.commits(None, &[]).expect("commits");
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].oid, head);
+        let expected_cache = cache_root.path().join(remote_cache_subdir(&url));
+        assert!(
+            expected_cache.exists(),
+            "cache dir should persist after clone"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires network access to github.com"]
+    fn open_remote_clones_from_https() {
+        let cache_root = tempfile::TempDir::new().expect("cache root");
+        let url = "https://github.com/octocat/Hello-World.git";
+        let repo = GixRepository::open_remote(url, cache_root.path()).expect("open remote");
+        let info = repo.info().expect("info");
+        assert!(info.is_bare);
+        let commits = repo.commits(None, &[]).expect("commits");
+        assert!(
+            !commits.is_empty(),
+            "Hello-World should have at least one commit"
+        );
+    }
+
+    #[test]
+    fn normalize_remote_url_strips_scheme_and_suffix() {
+        assert_eq!(
+            normalize_remote_url("https://github.com/foo/bar.git"),
+            "github.com/foo/bar"
+        );
+        assert_eq!(
+            normalize_remote_url("http://github.com/foo/bar.git"),
+            "github.com/foo/bar"
+        );
+        assert_eq!(
+            normalize_remote_url("git://github.com/foo/bar.git"),
+            "github.com/foo/bar"
+        );
+        assert_eq!(
+            normalize_remote_url("ssh://github.com/foo/bar.git"),
+            "github.com/foo/bar"
+        );
+        assert_eq!(normalize_remote_url("file:///tmp/repo.git"), "tmp/repo");
+    }
+
+    #[test]
+    fn normalize_remote_url_handles_scp_style() {
+        assert_eq!(
+            normalize_remote_url("git@github.com:foo/bar.git"),
+            "github.com/foo/bar"
+        );
+    }
+
+    #[test]
+    fn normalize_remote_url_lowercases_host_only() {
+        assert_eq!(
+            normalize_remote_url("HTTPS://GitHub.Com/Foo/Bar.git"),
+            "github.com/Foo/Bar"
+        );
+    }
+
+    #[test]
+    fn normalize_remote_url_equivalent_urls_match() {
+        let a = normalize_remote_url("https://github.com/foo/bar.git");
+        let b = normalize_remote_url("git@github.com:foo/bar.git");
+        assert_eq!(a, b, "HTTPS and SCP forms should normalize identically");
+    }
+
+    #[test]
+    fn remote_cache_subdir_ends_with_git() {
+        let p = remote_cache_subdir("https://github.com/foo/bar.git");
+        assert!(
+            p.to_string_lossy().ends_with(".git"),
+            "cache subdir should end with .git, got: {}",
+            p.display()
+        );
+        assert!(
+            p.to_string_lossy().contains("github.com/foo/bar"),
+            "cache subdir should be human-readable, got: {}",
+            p.display()
+        );
     }
 
     #[test]

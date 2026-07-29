@@ -7,7 +7,9 @@
 		"preferences": "Open preferences",
 		"preferences_aria": "Open preferences",
 		"info": "Info",
-		"info_aria": "Open info dialog"
+		"info_aria": "Open info dialog",
+		"open_repo": "Open repository",
+		"open_repo_aria": "Open a repository"
 	},
 	"info": {
 		"title": "Info",
@@ -131,6 +133,17 @@
 		"title": "gitv",
 		"subtitle": "Modern Git repository visualizer",
 		"browse_repo": "Browse for Repository…",
+		"repo_input_placeholder": "Repository URL or local path…",
+		"repo_input_placeholder_new_window": "Open in new window → URL or path…",
+		"remote_url_placeholder": "https://github.com/owner/repo.git",
+		"auth_token_placeholder": "Personal access token",
+		"clone": "Clone",
+		"authenticate": "Authenticate",
+		"cancel": "Cancel",
+		"open": "Open",
+		"open_repo_title": "Open Repository",
+		"remote_auth_required": "Authentication required for {path}",
+		"remote_failed": "Failed to clone remote repository: {path} — {details}",
 		"skip_to_content": "Skip to commit list",
 		"select_repo_title": "Select Git Repository",
 		"recent_title": "Recent Repositories",

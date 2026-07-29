@@ -13,7 +13,7 @@ license = "MIT"
 [workspace.dependencies]
 dirs = "6"
 gitv-git-core = { path = "crates/gitv-git-core" }
-gix = { version = "0.86", default-features = false, features = ["basic", "max-performance", "sha1", "sha256", "blame", "status"] }
+gix = { version = "0.86", default-features = false, features = ["basic", "max-performance", "sha1", "sha256", "blame", "status", "blocking-network-client", "blocking-http-transport-reqwest-rust-tls"] }
 gix-diff = "0.66"
 gix-index = "0.54"
 gix-object = "0.63"

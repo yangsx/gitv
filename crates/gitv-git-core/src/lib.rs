@@ -19,3 +19,6 @@ pub const SEARCH_MATCH_MAX_LEN: usize = 200;
 
 /// In-memory object cache size for gix (gitoxide) repositories, in bytes.
 pub const OBJECT_CACHE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Shallow clone depth (in commits) for remote repos opened via `open_remote`.
+pub const DEFAULT_REMOTE_CLONE_DEPTH: u32 = 1000;

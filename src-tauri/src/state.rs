@@ -1,4 +1,6 @@
-use gitv_git_core::gix_repo::GixRepository;
+use gitv_git_core::gix_repo::{
+    GixRepository, is_remote_url, remote_cache_root, remote_cache_subdir,
+};
 use gitv_git_core::models::{CommitInfo, Oid};
 use gitv_git_core::repository::Repository;
 use gitv_git_core::search::{SearchEngine, SearchQuery};
@@ -10,6 +12,14 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use tracing::instrument;
+
+pub fn resolve_repo_key(path_or_url: &str) -> PathBuf {
+    if is_remote_url(path_or_url) {
+        remote_cache_root().join(remote_cache_subdir(path_or_url))
+    } else {
+        PathBuf::from(shellexpand::tilde(path_or_url).as_ref())
+    }
+}
 
 pub struct AppState {
     search_engines: Mutex<HashMap<PathBuf, SearchEngine>>,
@@ -195,9 +205,40 @@ impl AppState {
         if let Some(repo) = cache.get(path) {
             return Ok(Arc::clone(repo));
         }
-        let repo = GixRepository::open(path).map_err(|e| e.to_string())?;
+        let repo = GixRepository::open(path)
+            .or_else(|first_err| GixRepository::open_bare(path).map_err(|_| first_err))
+            .map_err(|e| e.to_string())?;
         let repo = Arc::new(repo);
         cache.insert(path.to_path_buf(), Arc::clone(&repo));
+        Ok(repo)
+    }
+
+    pub fn get_or_clone_remote(
+        &self,
+        url: &str,
+        token: Option<&str>,
+        force_refresh: bool,
+    ) -> Result<Arc<GixRepository>, String> {
+        let cache_root = remote_cache_root();
+        let cache_path = cache_root.join(remote_cache_subdir(url));
+
+        if !force_refresh {
+            let cache = self.repo_cache.lock().map_err(|e| e.to_string())?;
+            if let Some(repo) = cache.get(&cache_path) {
+                return Ok(Arc::clone(repo));
+            }
+        } else {
+            let mut cache = self.repo_cache.lock().map_err(|e| e.to_string())?;
+            cache.remove(&cache_path);
+        }
+
+        let repo = GixRepository::open_remote_with_token(url, &cache_root, token)
+            .map_err(|e| e.to_string())?;
+        let repo = Arc::new(repo);
+        let actual_path = repo.path().to_path_buf();
+        let mut cache = self.repo_cache.lock().map_err(|e| e.to_string())?;
+        cache.insert(actual_path, Arc::clone(&repo));
+        cache.insert(cache_path, Arc::clone(&repo));
         Ok(repo)
     }
 

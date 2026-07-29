@@ -20,6 +20,14 @@ pub enum GitError {
     PermissionDenied(String),
     #[error("gix error: {0}")]
     Gix(String),
+    #[error("remote repository error: {0}")]
+    Remote(String),
+    #[error("fetch failed: {0}")]
+    FetchFailed(String),
+    #[error("authentication required: {0}")]
+    AuthRequired(String),
+    #[error("worktree required but repository is bare: {0}")]
+    WorktreeRequired(String),
 }
 
 #[derive(Error, Debug)]
