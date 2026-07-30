@@ -26,6 +26,7 @@ const DEFAULTS: AppPreferences = {
 	font_size: FONT_SIZE_DEFAULT,
 	high_contrast: false,
 	arrow_gap_threshold: 100,
+	highlight_line_cap: 5000,
 	language: 'en'
 };
 
@@ -37,6 +38,7 @@ export const diffWhitespace = writable<
 export const diffViewMode = writable<'unified' | 'side-by-side'>(DEFAULTS.diff_view_mode);
 export const fontSize = writable(DEFAULTS.font_size);
 export const highContrast = writable(DEFAULTS.high_contrast);
+export const highlightLineCap = writable(DEFAULTS.highlight_line_cap);
 
 function detectSystemTheme(): 'dark' | 'light' {
 	if (typeof window === 'undefined') return 'dark';
@@ -105,6 +107,7 @@ function toPreferences(): AppPreferences {
 		font_size: get(fontSize),
 		high_contrast: get(highContrast),
 		arrow_gap_threshold: get(arrowGapThreshold),
+		highlight_line_cap: get(highlightLineCap),
 		language: get(locale)
 	};
 }
@@ -142,6 +145,9 @@ function updateFromPreferences(p: AppPreferences) {
 	}
 	if (typeof p.arrow_gap_threshold === 'number' && p.arrow_gap_threshold >= 30) {
 		arrowGapThreshold.set(p.arrow_gap_threshold);
+	}
+	if (typeof p.highlight_line_cap === 'number' && p.highlight_line_cap >= 0) {
+		highlightLineCap.set(p.highlight_line_cap);
 	}
 }
 

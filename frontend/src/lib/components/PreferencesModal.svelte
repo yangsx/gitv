@@ -13,6 +13,7 @@
 		theme,
 		fontSize,
 		highContrast,
+		highlightLineCap,
 		FONT_SIZE_MIN,
 		FONT_SIZE_MAX,
 		savePreferences
@@ -165,6 +166,14 @@
 		const target = e.target as HTMLInputElement;
 		const val = Math.max(30, Math.min(200, parseInt(target.value, 10) || 100));
 		arrowGapThreshold.set(val);
+		target.value = String(val);
+		savePreferences();
+	}
+
+	function setHighlightLineCap(e: Event) {
+		const target = e.target as HTMLInputElement;
+		const val = Math.max(0, Math.min(50000, parseInt(target.value, 10) || 5000));
+		highlightLineCap.set(val);
 		target.value = String(val);
 		savePreferences();
 	}
@@ -378,6 +387,19 @@
 							min="30"
 							max="200"
 							aria-label={$t('preferences.arrow_gap_threshold_aria')}
+						/>
+					</div>
+
+					<div class="flex items-center justify-between">
+						<span class="text-gray-300">{$t('preferences.highlight_line_cap')}</span>
+						<input
+							type="number"
+							class="w-20 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200 text-right"
+							value={$highlightLineCap}
+							onchange={setHighlightLineCap}
+							min="0"
+							max="50000"
+							aria-label={$t('preferences.highlight_line_cap_aria')}
 						/>
 					</div>
 				</div>

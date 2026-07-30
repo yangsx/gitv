@@ -1,11 +1,11 @@
 import type { Highlighter } from 'shiki';
+import { get } from 'svelte/store';
+import { highlightLineCap } from '$lib/stores/preferences';
 
 export interface HighlightToken {
 	content: string;
 	color?: string;
 }
-
-const HIGHLIGHT_LINE_CAP = 5000;
 
 const THEME = 'github-dark';
 
@@ -146,7 +146,8 @@ export async function highlightLines(
 	filePath: string
 ): Promise<HighlightToken[][] | null> {
 	const lineCount = code.split('\n').length;
-	if (lineCount > HIGHLIGHT_LINE_CAP) return null;
+	const cap = get(highlightLineCap);
+	if (lineCount > cap) return null;
 
 	const lang = detectLanguage(filePath);
 	if (!lang) return null;

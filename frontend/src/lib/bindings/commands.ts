@@ -273,13 +273,15 @@ export async function getWorkingChangesDiffs(
 	path: string,
 	staged: boolean,
 	diffMode?: string,
-	whitespace?: string
+	whitespace?: string,
+	full?: boolean
 ): Promise<FileDiff[]> {
 	return timedInvoke<FileDiff[]>('get_working_changes_diffs', {
 		path,
 		staged,
 		diffMode: diffMode ?? null,
-		whitespace: whitespace ?? null
+		whitespace: whitespace ?? null,
+		full: full ?? null
 	});
 }
 

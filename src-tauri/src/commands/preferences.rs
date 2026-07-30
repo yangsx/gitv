@@ -116,6 +116,8 @@ pub struct AppPreferences {
     pub language: Language,
     #[serde(default = "default_arrow_gap_threshold")]
     pub arrow_gap_threshold: usize,
+    #[serde(default = "default_highlight_line_cap")]
+    pub highlight_line_cap: usize,
 }
 
 fn default_font_size() -> f64 {
@@ -124,6 +126,10 @@ fn default_font_size() -> f64 {
 
 fn default_arrow_gap_threshold() -> usize {
     100
+}
+
+fn default_highlight_line_cap() -> usize {
+    5000
 }
 
 impl Default for AppPreferences {
@@ -141,6 +147,7 @@ impl Default for AppPreferences {
             high_contrast: false,
             language: Language::En,
             arrow_gap_threshold: default_arrow_gap_threshold(),
+            highlight_line_cap: default_highlight_line_cap(),
         }
     }
 }

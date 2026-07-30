@@ -110,6 +110,7 @@ pub trait Repository {
         staged: bool,
         mode: DiffMode,
         whitespace: WhitespaceMode,
+        line_limit: Option<usize>,
     ) -> Result<Vec<FileDiff>, DiffError>;
     fn working_changes_combined_diff(
         &self,

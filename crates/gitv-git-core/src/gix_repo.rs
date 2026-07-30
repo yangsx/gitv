@@ -1345,6 +1345,7 @@ impl Repository for GixRepository {
         staged: bool,
         mode: DiffMode,
         whitespace: WhitespaceMode,
+        line_limit: Option<usize>,
     ) -> Result<Vec<FileDiff>, DiffError> {
         if self.is_bare() {
             return Ok(Vec::new());
@@ -1385,6 +1386,23 @@ impl Repository for GixRepository {
                     }
                 }
             }
+        }
+
+        let limit = line_limit.unwrap_or(usize::MAX);
+        for diff in &mut diffs {
+            let mut total_lines = 0usize;
+            let mut kept = Vec::new();
+            let hunks = std::mem::take(&mut diff.hunks);
+            for hunk in hunks {
+                let hunk_lines = hunk.lines.len();
+                if total_lines + hunk_lines > limit {
+                    diff.truncated_at = Some(total_lines);
+                    break;
+                }
+                total_lines += hunk_lines;
+                kept.push(hunk);
+            }
+            diff.hunks = kept;
         }
 
         Ok(diffs)
@@ -5078,7 +5096,7 @@ mod tests {
         .expect("write");
         let repo = GixRepository::open(temp.path()).expect("open");
         let diffs = repo
-            .working_changes_file_diffs(false, DiffMode::Normal, WhitespaceMode::None)
+            .working_changes_file_diffs(false, DiffMode::Normal, WhitespaceMode::None, None)
             .expect("diffs");
         assert_eq!(diffs.len(), 1, "should have 1 unstaged file diff");
         let diff = &diffs[0];
@@ -5110,7 +5128,7 @@ mod tests {
         run_git(temp.path(), &["add", "a.txt"]);
         let repo = GixRepository::open(temp.path()).expect("open");
         let diffs = repo
-            .working_changes_file_diffs(true, DiffMode::Normal, WhitespaceMode::None)
+            .working_changes_file_diffs(true, DiffMode::Normal, WhitespaceMode::None, None)
             .expect("diffs");
         assert_eq!(diffs.len(), 1, "should have 1 staged file diff");
         let diff = &diffs[0];

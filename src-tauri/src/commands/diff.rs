@@ -271,13 +271,19 @@ pub async fn get_working_changes_diffs(
     staged: bool,
     diff_mode: Option<String>,
     whitespace: Option<String>,
+    full: Option<bool>,
 ) -> Result<Vec<gitv_git_core::models::FileDiff>, String> {
     let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let mode = parse_diff_mode(diff_mode.as_deref());
     let ws = parse_whitespace(whitespace.as_deref());
+    let line_limit = if full.unwrap_or(false) {
+        None
+    } else {
+        Some(gitv_git_core::DIFF_LINE_LIMIT)
+    };
     tauri::async_runtime::spawn_blocking(move || {
-        repo.working_changes_file_diffs(staged, mode, ws)
+        repo.working_changes_file_diffs(staged, mode, ws, line_limit)
             .map_err(|e| e.to_string())
     })
     .await

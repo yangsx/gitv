@@ -403,6 +403,7 @@ export interface AppPreferences {
 	high_contrast: boolean;
 	language: string;
 	arrow_gap_threshold: number;
+	highlight_line_cap: number;
 }
 
 export interface PropertyCheckResult {

@@ -240,7 +240,8 @@
 					repoPath,
 					details.info.oid === STAGED_OID,
 					localDiffMode,
-					localDiffWhitespace
+					localDiffWhitespace,
+					false
 				);
 				if (diffGen.isStale(gen)) return;
 				const map = new SvelteMap<string, FileDiff>();
@@ -249,10 +250,12 @@
 				}
 				fileDiffs.clear();
 				for (const [k, v] of map) fileDiffs.set(k, v);
-			} catch {
+			} catch (err) {
+				console.error('[CommitDetailPanel] getWorkingChangesDiffs failed:', err);
 				if (!diffGen.isStale(gen)) fileDiffs.clear();
+			} finally {
+				if (!diffGen.isStale(gen)) diffsLoading = false;
 			}
-			if (!diffGen.isStale(gen)) diffsLoading = false;
 			return;
 		}
 
@@ -312,6 +315,24 @@
 
 	async function loadFullFileDiff(path: string, _fromOidOverride?: string | null) {
 		const gen = diffGen.next();
+		if (details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID) {
+			try {
+				const diffs = await getWorkingChangesDiffs(
+					repoPath,
+					details.info.oid === STAGED_OID,
+					localDiffMode,
+					localDiffWhitespace,
+					true
+				);
+				if (!diffGen.isStale(gen)) {
+					const match = diffs.find((d) => d.path === path);
+					if (match) fileDiffs.set(path, match);
+				}
+			} catch {
+				// keep existing truncated diff
+			}
+			return;
+		}
 		const to = diffToOid();
 		try {
 			const isMerge = !isComparison && details.info.parent_oids.length > 1;
@@ -801,9 +822,13 @@
 											matches={matchesByFile.get(file.path) ?? []}
 										/>
 									</div>
-								{:else}
+								{:else if diff.truncated_at == null}
 									<div class="px-4 py-3 text-xs text-gray-500">
 										{$t('commit_detail.no_content_changes')}
+									</div>
+								{:else}
+									<div class="px-4 py-3 text-xs text-gray-500">
+										{$t('commit_detail.diff_too_large')}
 									</div>
 								{/if}
 								{#if diff.truncated_at != null}
