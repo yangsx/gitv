@@ -63,6 +63,7 @@ pub fn get_blame(
     let repo_path = resolve_repo_key(&path);
     let repo = state.get_repo(&repo_path)?;
     let oid = at_commit
+        .filter(|s| s != "__staged__" && s != "__unstaged__")
         .map(|s| Oid::from_hex(&s))
         .transpose()
         .map_err(|e| e.to_string())?;

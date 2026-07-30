@@ -844,7 +844,9 @@
 			<BlamePanel
 				{repoPath}
 				filePath={blameFilePath}
-				atCommit={details.info.oid}
+				atCommit={details.info.oid === STAGED_OID || details.info.oid === UNSTAGED_OID
+					? undefined
+					: details.info.oid}
 				oncommitclick={(oid) => {
 					blameFilePath = null;
 					oncommitselect?.(oid);
