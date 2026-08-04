@@ -133,7 +133,7 @@
 		: $t('commit_row.aria_label', {
 				summary: commitSummary(commit),
 				author: commit.author.name,
-				date: formatGitDateTime(commit.commit_time)
+				date: formatGitDateTime(commit.author_time)
 			}) +
 			(commit.refs.length > 0 ? ', ' + commit.refs.map(refLabel).filter(Boolean).join(', ') : '')}
 	onclick={(e: Event & { ctrlKey?: boolean; metaKey?: boolean }) =>
@@ -237,6 +237,6 @@
 		class="sticky right-0 z-10 shrink-0 truncate px-2 text-right text-xs text-gray-600 {rowBgClass} {rowHoverClass}"
 		style="width: {DATE_COLUMN_WIDTH}px;"
 	>
-		{formatGitDateTime(commit.commit_time)}
+		{formatGitDateTime(commit.author_time)}
 	</span>
 </button>
