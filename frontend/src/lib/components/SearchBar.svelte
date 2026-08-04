@@ -102,7 +102,12 @@
 		}
 
 		const date_range =
-			dateFrom || dateTo ? { from: dateFrom || undefined, to: dateTo || undefined } : undefined;
+			dateFrom || dateTo
+				? {
+						from: dateFrom ? `${dateFrom}T00:00:00Z` : undefined,
+						to: dateTo ? `${dateTo}T23:59:59.999Z` : undefined
+					}
+				: undefined;
 
 		const trimmed = inputText.trim();
 		const isHex = /^[0-9a-fA-F]{3,}$/.test(trimmed);
@@ -152,12 +157,12 @@
 							patchSearchActive.set(false);
 							patchSearchId.set(null);
 							patchSearchProgress.set(null);
-						expectedPatchSearchId = null;
-						if (searchToastId !== null) {
-							updateToast(searchToastId, payload.message, 'error');
-						} else {
-							searchToastId = showToast(payload.message, 'error');
-						}
+							expectedPatchSearchId = null;
+							if (searchToastId !== null) {
+								updateToast(searchToastId, payload.message, 'error');
+							} else {
+								searchToastId = showToast(payload.message, 'error');
+							}
 						}
 					}
 				);
