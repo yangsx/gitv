@@ -152,8 +152,12 @@
 							patchSearchActive.set(false);
 							patchSearchId.set(null);
 							patchSearchProgress.set(null);
-							expectedPatchSearchId = null;
-							showToast(payload.message, 'error');
+						expectedPatchSearchId = null;
+						if (searchToastId !== null) {
+							updateToast(searchToastId, payload.message, 'error');
+						} else {
+							searchToastId = showToast(payload.message, 'error');
+						}
 						}
 					}
 				);
@@ -193,7 +197,12 @@
 			}
 		} catch {
 			searchResults.set([]);
-			showToast(translate('page.search_failed'), 'error');
+			const msg = translate('page.search_failed');
+			if (searchToastId !== null) {
+				updateToast(searchToastId, msg, 'error');
+			} else {
+				searchToastId = showToast(msg, 'error');
+			}
 			teardownPatchListener();
 		} finally {
 			operationState.set('Idle');
