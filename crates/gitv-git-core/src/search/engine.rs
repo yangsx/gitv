@@ -353,12 +353,12 @@ impl SearchEngine {
         let mut result = RoaringBitmap::new();
         for (i, commit) in self.commits.iter().enumerate() {
             if let Some(from) = range.from
-                && commit.commit_time < from
+                && commit.author_time < from
             {
                 continue;
             }
             if let Some(to) = range.to
-                && commit.commit_time > to
+                && commit.author_time > to
             {
                 continue;
             }
@@ -620,6 +620,46 @@ mod tests {
         };
         let results = engine.search(&query).unwrap();
         assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn date_range_filter_uses_author_time() {
+        // Simulate a cherry-picked commit: authored at t=1001 but committed at t=5000.
+        // The date-range filter must match on author_time, not commit_time, so the
+        // commit is found by its original author date and not by the cherry-pick date.
+        let mut cherry_picked = make_commit(1, vec![], "cherry-picked fix", "alice");
+        cherry_picked.commit_time = Utc.timestamp_opt(5000, 0).single().unwrap();
+        let engine = SearchEngine::new(vec![cherry_picked]);
+
+        // Range covers only commit_time (5000), not author_time (1001) → no match.
+        let query_by_commit_date = SearchQuery {
+            date_range: Some(DateRange {
+                from: Some(Utc.timestamp_opt(4000, 0).single().unwrap()),
+                to: Some(Utc.timestamp_opt(6000, 0).single().unwrap()),
+            }),
+            ..Default::default()
+        };
+        let results = engine.search(&query_by_commit_date).unwrap();
+        assert_eq!(
+            results.len(),
+            0,
+            "cherry-picked commit must not match by committer date"
+        );
+
+        // Range covers author_time (1001), not commit_time (5000) → match.
+        let query_by_author_date = SearchQuery {
+            date_range: Some(DateRange {
+                from: Some(Utc.timestamp_opt(0, 0).single().unwrap()),
+                to: Some(Utc.timestamp_opt(2000, 0).single().unwrap()),
+            }),
+            ..Default::default()
+        };
+        let results = engine.search(&query_by_author_date).unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "commit must match by author date even when commit_time is outside range"
+        );
     }
 
     #[test]
