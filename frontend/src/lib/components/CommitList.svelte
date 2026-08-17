@@ -210,7 +210,9 @@
 
 	$effect(() => {
 		if (!containerEl || !selectedOid || !orderedCommits.length) return;
-		const idx = orderedCommits.findIndex((c) => c?.oid === selectedOid);
+		const idx = sortedLayoutNodes
+			? sortedLayoutNodes.findIndex((n) => n.oid === selectedOid)
+			: orderedCommits.findIndex((c) => c?.oid === selectedOid);
 		if (idx < 0) return;
 		const targetTop = idx * rowHeight;
 		const viewTop = containerEl.scrollTop;
@@ -293,7 +295,9 @@
 	}
 
 	function handleEdgeNavigate(oid: string) {
-		const idx = orderedCommits.findIndex((c) => c?.oid === oid);
+		const idx = sortedLayoutNodes
+			? sortedLayoutNodes.findIndex((n) => n.oid === oid)
+			: orderedCommits.findIndex((c) => c?.oid === oid);
 		if (idx >= 0) scrollToIndex(idx, true);
 	}
 
