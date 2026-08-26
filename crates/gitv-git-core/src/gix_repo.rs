@@ -369,7 +369,7 @@ impl Repository for GixRepository {
             return self.commit_details(oid, include_counts);
         }
 
-        if is_stash_commit(&repo, &parent_oids) {
+        if is_stash_commit(&repo, &commit) {
             tracing::info!(
                 %oid,
                 include_counts,
@@ -555,7 +555,7 @@ impl Repository for GixRepository {
             );
         }
 
-        if is_stash_commit(&repo, &parent_oids) {
+        if is_stash_commit(&repo, &commit) {
             tracing::info!(
                 %merge_oid,
                 path = %path.display(),
@@ -2023,8 +2023,25 @@ pub(crate) fn oid_to_gix_object_id(oid: &Oid) -> gix::ObjectId {
 }
 
 /// Detect stash commits by checking if extra parents (index/untracked) have HEAD as their parent.
-fn is_stash_commit(repo: &gix::Repository, parent_oids: &[Oid]) -> bool {
+///
+/// That parent shape alone is ambiguous: a merge whose topic branch sat exactly
+/// one commit ahead of its first parent (the classic single-commit PR merge)
+/// looks identical to a stash's `[HEAD, index]` shape. Require one of git's
+/// canonical stash message prefixes (`WIP on `, `On `, `index on `) as well.
+fn is_stash_commit(repo: &gix::Repository, commit: &gix::Commit) -> bool {
+    let parent_oids: Vec<Oid> = commit.parent_ids().map(|id| gix_id_to_oid(&id)).collect();
     if parent_oids.len() < 2 || parent_oids.len() > 3 {
+        return false;
+    }
+    let Ok(raw_message) = commit.message_raw() else {
+        return false;
+    };
+    let message = String::from_utf8_lossy(raw_message);
+    let trimmed = message.trim_start();
+    if !(trimmed.starts_with("WIP on ")
+        || trimmed.starts_with("On ")
+        || trimmed.starts_with("index on "))
+    {
         return false;
     }
     let head_oid = parent_oids[0];
@@ -2033,10 +2050,12 @@ fn is_stash_commit(repo: &gix::Repository, parent_oids: &[Oid]) -> bool {
         let Ok(obj) = repo.find_object(gix_id) else {
             return false;
         };
-        let Ok(commit) = obj.try_into_commit() else {
+        let Ok(extra_commit) = obj.try_into_commit() else {
             return false;
         };
-        let dominated = commit.parent_ids().any(|p| gix_id_to_oid(&p) == head_oid);
+        let dominated = extra_commit
+            .parent_ids()
+            .any(|p| gix_id_to_oid(&p) == head_oid);
         if !dominated {
             return false;
         }
@@ -3967,7 +3986,7 @@ fn inject_token_into_url(url: &str, token: &str, username: Option<&str>) -> Stri
             if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
                 let mut b = [0u8; 4];
                 let s = c.encode_utf8(&mut b);
-                vec![format!("{}", s)]
+                vec![s.to_string()]
             } else {
                 let mut b = [0u8; 4];
                 let s = c.encode_utf8(&mut b);
@@ -5271,6 +5290,53 @@ mod tests {
         assert!(
             details.changed_files.is_empty(),
             "merge with no overlapping changes should have empty changed_files"
+        );
+    }
+
+    #[test]
+    fn combined_diff_for_single_commit_pr_merge_is_not_mistaken_for_stash() {
+        // Regression: a merge whose second parent is a DIRECT CHILD of the first
+        // parent (single-commit PR branch merged back at its base) has the same
+        // parent shape as a stash commit. It must be treated as a merge, so a
+        // trivial merge yields an empty combined diff instead of the patch
+        // relative to its first parent.
+        let temp = TempRepo::new();
+        let _ = temp.commit_file("f.txt", "base\n", "base");
+        let base = get_head_oid(temp.path());
+
+        run_git(temp.path(), &["checkout", "-b", "topic"]);
+        let _ = temp.commit_file("f.txt", "topic\n", "topic change");
+        let topic = get_head_oid(temp.path());
+
+        // Merge tree equals the topic tree (trivial merge).
+        let merge_tree = write_tree(temp.path());
+        let merge_hex = commit_tree(
+            temp.path(),
+            &merge_tree,
+            &[&base, &topic],
+            "Merge pull request #49 from someone/topic",
+        );
+
+        let repo = GixRepository::open(temp.path()).expect("open");
+        let merge_oid = Oid::from_hex(&merge_hex).expect("valid oid");
+        let details = repo.combined_diff(merge_oid, true).expect("combined diff");
+        assert!(
+            details.changed_files.is_empty(),
+            "trivial single-commit PR merge should have empty combined changed_files"
+        );
+
+        let fd = repo
+            .combined_file_diff(
+                merge_oid,
+                std::path::Path::new("f.txt"),
+                DiffMode::Normal,
+                WhitespaceMode::None,
+                None,
+            )
+            .expect("combined_file_diff");
+        assert!(
+            fd.hunks.is_empty(),
+            "trivial single-commit PR merge should have no combined hunks"
         );
     }
 

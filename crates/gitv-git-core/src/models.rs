@@ -73,7 +73,7 @@ impl Oid {
             40 => {
                 let s_bytes = s.as_bytes();
                 let mut bytes = [0u8; 20];
-                for (i, chunk) in s_bytes.chunks_exact(2).enumerate() {
+                for (i, chunk) in s_bytes.as_chunks::<2>().0.iter().enumerate() {
                     let hi = hex_val(chunk[0], i * 2)?;
                     let lo = hex_val(chunk[1], i * 2 + 1)?;
                     bytes[i] = (hi << 4) | lo;
@@ -83,7 +83,7 @@ impl Oid {
             64 => {
                 let s_bytes = s.as_bytes();
                 let mut bytes = [0u8; 32];
-                for (i, chunk) in s_bytes.chunks_exact(2).enumerate() {
+                for (i, chunk) in s_bytes.as_chunks::<2>().0.iter().enumerate() {
                     let hi = hex_val(chunk[0], i * 2)?;
                     let lo = hex_val(chunk[1], i * 2 + 1)?;
                     bytes[i] = (hi << 4) | lo;
