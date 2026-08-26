@@ -82,7 +82,10 @@
 		getClampedLayout,
 		updateLayout,
 		restoreWindowGeometry,
-		saveWindowGeometry
+		saveWindowGeometry,
+		clampDetailPanelHeight,
+		commitListReservePx,
+		DETAIL_PANEL_ABSOLUTE_MIN_PX
 	} from '$lib/stores/layout';
 	import { registerCommand, unregisterCommandsByPrefix } from '$lib/stores/commands';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -1047,6 +1050,19 @@
 		updateLayout({ detailPanelHeight });
 	}
 
+	let detailMaxHeight = $derived(
+		Math.max(viewportHeight - commitListReservePx(viewportHeight), DETAIL_PANEL_ABSOLUTE_MIN_PX)
+	);
+
+	// Live re-clamp on window resize: keep the commit list at its reserve
+	// instead of letting the fixed-height detail panel squeeze it to zero.
+	$effect(() => {
+		void viewportHeight;
+		untrack(() => {
+			detailPanelHeight = clampDetailPanelHeight(detailPanelHeight, viewportHeight);
+		});
+	});
+
 	function registerCommands() {
 		registerCommand({
 			id: 'open-repo',
@@ -1815,7 +1831,8 @@
 				{#if $selectedOid}
 					<ResizeHandle
 						bind:panelHeight={detailPanelHeight}
-						maxHeight={Math.floor(viewportHeight * 0.9)}
+						minHeight={Math.min(200, detailMaxHeight)}
+						maxHeight={detailMaxHeight}
 						onDragEnd={persistDetailPanelHeight}
 					/>
 					<div

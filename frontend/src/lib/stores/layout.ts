@@ -31,14 +31,29 @@ const MIN: Partial<LayoutState> = {
 	graphWidth: 100
 };
 
+export const COMMIT_LIST_MIN_ROWS = 5;
+const ROW_HEIGHT_FALLBACK_PX = 28;
+export const DETAIL_PANEL_ABSOLUTE_MIN_PX = 80;
+
 const MAX_FRACTIONS: Partial<LayoutState> = {
 	sidebarWidth: 0.4,
-	detailPanelHeight: 0.5,
 	rightPanelWidth: 0.4
 };
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
+}
+
+/// Vertical space reserved for the commit list when clamping the detail
+/// panel: the larger of a minimal row count and a viewport fraction.
+export function commitListReservePx(viewportH: number): number {
+	return Math.max(COMMIT_LIST_MIN_ROWS * ROW_HEIGHT_FALLBACK_PX, Math.floor(viewportH * 0.25));
+}
+
+/// Clamp the detail panel height so the commit list always keeps its reserve.
+export function clampDetailPanelHeight(h: number, viewportH: number): number {
+	const max = Math.max(viewportH - commitListReservePx(viewportH), DETAIL_PANEL_ABSOLUTE_MIN_PX);
+	return clamp(h, Math.min(max, MIN.detailPanelHeight ?? 200), max);
 }
 
 function loadLayout(): LayoutState {
@@ -78,11 +93,7 @@ export function getClampedLayout(): LayoutState {
 			MIN.sidebarWidth ?? 150,
 			Math.floor(vw * (MAX_FRACTIONS.sidebarWidth ?? 0.4))
 		),
-		detailPanelHeight: clamp(
-			layout.detailPanelHeight,
-			MIN.detailPanelHeight ?? 200,
-			Math.floor(vh * 0.9)
-		),
+		detailPanelHeight: clampDetailPanelHeight(layout.detailPanelHeight, vh),
 		rightPanelWidth: clamp(
 			layout.rightPanelWidth,
 			MIN.rightPanelWidth ?? 160,
