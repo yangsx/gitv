@@ -15,12 +15,14 @@
 - **差异查看器** — 统一视图或并排视图；普通/词差异/仅统计模式；空白符修饰符（忽略空白变更、忽略所有空白、忽略空行）；滚动同步文件列表
 - **双提交比较** — Ctrl+点击或右键点击选择任意两个提交，显示合并差异
 - **补丁文本搜索** — 使用正则表达式搜索提交差异，匹配行在差异查看器中高亮显示
-- **提交搜索** — RoaringBitmap 倒排索引，10 万+ 提交仓库上实现亚 100ms 的提交消息和作者搜索
+- **提交搜索** — RoaringBitmap 倒排索引，10 万+ 提交仓库上实现亚 100ms 的提交消息和作者搜索；前缀匹配、作者/日期范围/文件路径过滤、正则模式
 - **文件树浏览器** — 浏览任意提交下的仓库内容；查看文件内容、追溯和文件历史（支持 `--follow` 重命名追踪）
 - **引用日志** — 浏览 reflog 条目，导航到任意提交（包括 rebase 或 reset 后的悬挂提交）
 - **命令面板** — Ctrl+P 模糊搜索所有操作、最近仓库和导航
+- **远程仓库** — 通过 URL（https、ssh、git）打开远程仓库；浅克隆（深度 1000）到本地裸仓库缓存，重开时增量拉取；私有仓库支持身份验证令牌
+- **SHA-256 支持** — 与 SHA-1 一样支持打开使用新版 SHA-256 对象格式的仓库
 - **持久化缓存** — 磁盘缓存（postcard 序列化）实现已访问仓库的即时重开；引用变更时增量更新
-- **键盘导航** — 完整的键盘控制：方向键、J/K、Page Up/Down、Home/End、作者跳转、分支切换
+- **键盘导航** — 完整的键盘控制：方向键、J/K、Page Up/Down、Home/End、作者跳转、分支切换、字体缩放（Ctrl+= / Ctrl+- / Ctrl+0）
 - **多实例** — 每次启动打开独立窗口；无标签页复杂度，无共享状态
 - **首选项** — 持久化 JSON 配置于 `$XDG_CONFIG_HOME/gitv/preferences.json`，带防抖自动保存；主题（深色/浅色/自动）、字体大小、图/差异默认设置
 - **国际化** — 英文、简体中文、德文（社区贡献；在 `locales/` 中添加 JSON 文件即可增加语言）
@@ -59,6 +61,9 @@ gitv /path/to/repo
 
 # 打开多个仓库（各在独立窗口中）
 gitv /repo1 /repo2
+
+# 打开远程仓库（浅克隆到本地缓存，重开时增量拉取）
+gitv https://github.com/user/repo
 
 # 设置日志级别（debug、trace）
 gitv /path/to/repo --log-level=debug
@@ -175,11 +180,12 @@ JSON 输出包含：
 
 | 特性 | gitv | gitk |
 |------|------|------|
-| 渲染 | Canvas 2D（GPU 加速） | Tk 画布（CPU） |
+| 渲染 | Canvas 2D，虚拟化视口 | Tk 画布（CPU） |
 | 存储显示 | 单图节点带分支边 + 合并差异 | 双节点双差异显示 |
 | 搜索 | RoaringBitmap 索引（10 万提交亚 100ms） | 线性扫描 |
 | 差异模式 | 普通、词差异、仅统计；空白符修饰符 | 仅普通 |
 | 打开方式 | 独立启动器 + 仓库选择器 | 需在仓库目录内运行 |
+| 远程仓库 | 通过 URL 打开——浅克隆 + 增量拉取 | 需先手动克隆 |
 | 多仓库 | 多实例，各在独立窗口中 | 单窗口标签页 |
 | 缓存 | 持久化磁盘缓存，即时重开 | 无 |
 | 配色模式 | 按分支、按作者、色盲安全调色板 | 仅按分支 |
@@ -196,11 +202,12 @@ gitv/
 │   │   └── lib.rs              # 应用设置、状态、命令注册
 │   └── Cargo.toml
 ├── crates/
-│   ├── gitv-git-core/          # 纯 Rust Git 逻辑（无 Tauri 依赖）— 170 个测试
+│   ├── gitv-git-core/          # 纯 Rust Git 逻辑（无 Tauri 依赖）— 198 个测试
 │   │   └── src/
-│   │       ├── repository.rs   # 基于 gix 的仓库抽象
-│   │       ├── graph/          # 布局计算器、存储插入
-│   │       ├── search/         # RoaringBitmap 搜索引擎
+│   │       ├── repository.rs   # 仓库抽象 trait
+│   │       ├── gix_repo.rs     # gix 实现：本地/远程打开、增量拉取、追溯、状态
+│   │       ├── graph/          # 布局计算器（gitk 弧拓扑移植）、属性检查、存储插入
+│   │       ├── search/         # RoaringBitmap + BTreeMap 前缀搜索引擎
 │   │       ├── stream/         # 流式提交迭代器
 │   │       ├── cache/          # 持久化磁盘缓存
 │   │       └── models.rs       # 核心类型（Oid、CommitInfo、Diff 等）
@@ -214,15 +221,15 @@ gitv/
 │   │       ├── locales/        # en.json、zh-CN.json、de.json
 │   │       └── utils/          # a11y.ts、markdown.ts、format-date.ts
 │   └── package.json
-├── design.md                   # 架构文档（3196 行）
-├── requirements.md             # 70 项需求
+├── design.md                   # 架构文档（3290 行）
+├── requirements.md             # 72 项需求
 └── AGENTS.md                   # AI 代理约定与工具链
 ```
 
 ### 关键设计决策
 
 - **解耦的 Git 核心**：`gitv-git-core` 是独立的 crate，提供基于 trait 的模拟接口——可独立测试，无 Tauri 依赖
-- **Oid**：20 字节二进制 newtype（`[u8; 20]`），而非字符串——节省 3 倍内存，哈希更快
+- **Oid**：固定大小枚举——`Sha1([u8; 20])` 或 `Sha256([u8; 32])`，而非字符串——节省 3 倍内存，哈希更快，并支持 SHA-256 仓库
 - **二进制 IPC**：postcard 序列化传输提交批次（体积小 3-5 倍，速度快 5-10 倍于 JSON）
 - **虚拟滚动**：仅渲染可见提交；图画布和提交列表共享同步滚动容器
 
@@ -238,7 +245,7 @@ gitv/
 ## 项目文档
 
 - [`design.md`](design.md) — 完整架构文档：组件层次结构、数据模型、CLI、键盘快捷键、ADR、测试策略、可访问性
-- [`requirements.md`](requirements.md) — 70 项需求及验收标准
+- [`requirements.md`](requirements.md) — 72 项需求及验收标准
 - [`AGENTS.md`](AGENTS.md) — AI 代理约定、代码质量门禁、工具链
 
 ## 开发
@@ -299,7 +306,7 @@ cargo nextest run -p gitv-git-core --test graph_tests
 cargo test --workspace
 ```
 
-`gitv-git-core` 中有 170 个测试——无 Tauri 依赖，完全可模拟。
+`gitv-git-core` 中有 198 个测试——无 Tauri 依赖，完全可模拟。
 
 ### 基准测试
 

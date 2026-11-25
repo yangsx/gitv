@@ -38,6 +38,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 11. WHEN a user selects a subdirectory within a Git repository (e.g., via native dialog or drag-and-drop), THE gitv_Application SHALL discover and use the repository root path, not the subdirectory
 12. THE gitv_Application SHALL support Ctrl+W / Cmd+W to close the current repository and return to the welcome screen, with all per-repository state cleared
 13. THE command palette SHALL list recent repositories under a "Recent" category, allowing the user to open any recent repo by name
+14. WHEN a user enters a remote repository URL (https://, http://, ssh://, git://, or git@host:path) in the repository input, THE gitv_Application SHALL recognize it as a remote and offer to open it (see Requirement 71); local paths (including file:// URLs) SHALL keep their local-open semantics
 
 ### Requirement 2: Commit History Visualization
 
@@ -111,6 +112,11 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 10. THE gitv_Application SHALL allow users to combine commit message search with diff search
 11. WHEN a diff search is performed, THE gitv_Application SHALL highlight the matching lines within the diff viewer
 12. THE gitv_Application SHALL support regex pattern matching in diff searches
+13. WHEN a text search term is entered, THE search engine SHALL use prefix matching, so that partial words match (e.g., "test" matches "testing")
+14. WHEN search results are displayed, THE gitv_Application SHALL tint the matching commit rows in addition to highlighting the matched text inline
+15. THE gitv_Application SHALL treat author name and email matches case-insensitively and SHALL match on any whitespace-separated token of the author identity
+16. WHEN a date range filter is applied, THE search engine SHALL filter commits by author date, not committer date
+17. WHEN search filters are combined with regex mode, invalid regular expressions SHALL produce a localized error without clearing previous results
 
 ### Requirement 7: File History (Git Blame)
 
@@ -335,7 +341,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 #### Acceptance Criteria
 
-1. THE Commit_Graph SHALL use GPU-accelerated rendering for optimal performance
+1. THE Commit_Graph SHALL use efficient Canvas 2D rendering for optimal performance
 2. THE Commit_Graph SHALL implement virtualized rendering to only draw visible commits
 3. THE Commit_Graph SHALL maintain 60 frames per second during pan and zoom operations
 4. THE Commit_Graph SHALL cache rendered elements to minimize redraws
@@ -542,7 +548,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 
 1. THE gitv_Application SHALL display the welcome screen within 500ms of launch on a modern machine
 2. THE gitv_Application binary SHALL be under 15MB (excluding the system webview runtime)
-3. THE gitv_Application SHALL have zero network dependency for all core functionality
+3. THE gitv_Application SHALL have zero network dependency for all core functionality; the only network access SHALL be user-initiated remote repository opens (Req 71), never telemetry or updates
 4. THE gitv_Application SHALL use binary serialization for commit batch streaming to minimize IPC overhead
 
 ### Requirement 41: Saved Searches
@@ -894,7 +900,7 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 1. THE gitv_Application SHALL provide a debug overlay toggled via keyboard shortcut (F12 or Ctrl+Shift+D / Cmd+Shift+D)
 2. WHEN the debug overlay is visible, IT SHALL display: current FPS, memory usage (physical RSS via `memory-stats` crate), loaded commit count, streaming progress, current operation state (Req 62)
 3. THE debug overlay SHALL display the last 10 IPC command durations (command name, duration in ms)
-4. THE debug overlay SHALL display GPU stats: draw call count, vertex count, viewport size
+4. THE debug overlay SHALL display load phase timings (duration of each startup/loading phase, e.g., graph computation, arc topology phases)
 5. THE debug overlay SHALL display cache stats: cache hit/miss ratio, last cache load duration
 6. THE debug overlay SHALL be positioned in the top-right corner, semi-transparent, and SHALL NOT interfere with normal UI interaction
 7. THE debug overlay SHALL be available in all builds (debug and release), toggled via keyboard shortcut (F12 or Ctrl+Shift+D / Cmd+Shift+D)
@@ -911,3 +917,28 @@ gitv is a modern cross-platform Git visualization tool built with Rust and Tauri
 4. THE gitv_Application SHALL retain at most 5 crash log files, evicting the oldest
 5. THE application SHALL display a button to open the log directory in an info dialog, making it easy for users to attach logs to bug reports
 6. THE gitv_Application SHALL NOT include any personally identifiable information or repository content in crash logs (only metadata: paths, SHAs, error messages, stack traces)
+
+> Requirements 71-72 added for remote repository browsing and SHA-256 object format support.
+
+### Requirement 71: Remote Repository Support
+
+**User Story:** As a developer, I want to open a remote repository by URL without cloning it manually, so that I can browse and search repositories I do not have locally.
+
+#### Acceptance Criteria
+
+1. WHEN a user enters a remote URL (https://, http://, ssh://, git://, or git@host:path) in the repository input, THE gitv_Application SHALL clone it as a shallow bare repository (clone depth 1000) into a cache under `$XDG_CACHE_HOME/gitv/remote/` and open it read-only
+2. WHEN a cached remote repository is re-opened, THE gitv_Application SHALL perform an incremental fetch against the default remote instead of re-cloning
+3. WHEN a remote requires authentication, THE gitv_Application SHALL provide an auth token input; THE token SHALL be injected into the fetch URL with per-provider username detection (GitHub, GitLab, Bitbucket, Azure DevOps) and percent-encoding, and SHALL NOT be persisted
+4. WHEN authentication fails, THE gitv_Application SHALL display a localized `remote_auth_required` error; other remote failures SHALL surface as `remote_failed` with details
+5. THE remote cache key SHALL be derived from the normalized URL; URL normalization SHALL strip `..` and `.` path segments, and cache path canonicalization SHALL assert containment in the cache root
+6. WHEN saving a remote repository to the recent list, THE gitv_Application SHALL store the original URL and display a name with the scheme and `.git` suffix stripped
+
+### Requirement 72: SHA-256 Repository Support
+
+**User Story:** As a developer using SHA-256 repositories, I want gitv to open them like any other repository, so that I do not need a separate tool for the newer object format.
+
+#### Acceptance Criteria
+
+1. THE gitv_Application SHALL open repositories initialized with `--object-format=sha256` alongside SHA-1 repositories
+2. THE `Oid` type SHALL represent both hash variants (`Sha1([u8; 20])` and `Sha256([u8; 32])`); `from_hex()` SHALL auto-detect the variant by hex length (40 → SHA-1, 64 → SHA-256)
+3. SHA prefix search SHALL work for both hash lengths

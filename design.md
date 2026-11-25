@@ -13,12 +13,13 @@ gitv is a modern, cross-platform Git visualization tool built with Rust and Taur
 3. **Modern UX**: Provide a polished, responsive experience with smooth animations and intuitive navigation
 4. **Gitk Compatibility**: Maintain the dense, information-rich commit graph alignment that gitk users expect
 5. **Decoupled Architecture**: Separate Git logic from UI for maintainability and testability
-6. **Lightweight**: Binary under 15MB; zero network dependency; persistent cache for instant re-open
+6. **Lightweight**: Binary under 15MB; network access only for user-initiated remote repository opens (Req 71), never for telemetry or updates; persistent cache for instant re-open
 
 ### Key Differentiators from gitk
 
 - Independent application launch with repository picker
-- Modern GPU-accelerated rendering
+- Open remote repositories by URL with shallow clone + incremental fetch
+- Modern Canvas 2D rendering with a virtualized viewport
 - Cross-platform consistency
 - Streaming data loading for large repositories
 - Command palette for quick navigation
@@ -233,16 +234,21 @@ graph TB
 #### Git Repository Module (`gitv-git-core::repository`)
 
 ```rust
-/// Unique object identifier — 20-byte binary SHA-1, not a hex string.
+/// Unique object identifier — binary hash, not a hex string. Supports both
+/// SHA-1 (20 bytes) and SHA-256 (32 bytes) object formats (Req 72).
 /// Display via `.to_hex()` for UI rendering; compare/index as raw bytes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Oid([u8; 20]);
+pub enum Oid {
+    Sha1([u8; 20]),
+    Sha256([u8; 32]),
+}
 
 impl Oid {
+    /// Auto-detects the variant by hex length (40 → SHA-1, 64 → SHA-256)
     pub fn from_hex(s: &str) -> Result<Self, OidError>;
     pub fn to_hex(&self) -> String;
     pub fn short_hex(&self) -> String;
-    pub fn as_bytes(&self) -> &[u8; 20];
+    pub fn as_bytes(&self) -> &[u8];
 }
 
 /// Core repository abstraction - the main entry point for Git operations
@@ -271,6 +277,19 @@ pub struct WorktreeStatus {
 impl Repository {
     /// Open a repository at the given path
     pub fn open(path: &Path) -> Result<Self, RepositoryError>;
+
+    /// Open (or clone) a remote repository by URL, with optional auth token.
+    /// Clones shallow + bare (depth 1000) into the remote cache under
+    /// $XDG_CACHE_HOME/gitv/remote/ on first open; re-opens the cached
+    /// bare repo with an incremental fetch on subsequent opens (Req 71).
+    pub fn open_remote_with_token(
+        url: &str,
+        cache_root: &Path,
+        auth_token: Option<&str>,
+    ) -> Result<Self, GitError>;
+
+    /// Incremental fetch against the default remote of a cached bare clone
+    pub fn fetch_remote(&self) -> Result<(), GitError>;
 
     /// Check if a path contains a Git repository
     pub fn is_repository(path: &Path) -> bool;
@@ -457,8 +476,10 @@ impl GraphCalculator {
         options: GraphOptions,
     ) -> Self;
 
-    /// Calculate graph layout using temporal topological sort
-    /// Based on algorithm from https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html
+    /// Calculate graph layout using gitk's arc topology system (faithful port,
+    /// see `graph/arc.rs`): arc ordertokens + `trace_thread` produce gitk-style
+    /// column assignment; edge occupancy is tracked to avoid detour waypoint
+    /// collisions.
     /// Stash markers are placed on their parent commit rows after layout calculation.
     /// When hide_merges is true, merge commits are excluded and edges reconnect
     /// through the hidden merge to its first parent (Req 53.3).
@@ -520,9 +541,11 @@ pub struct Highlight {
 
 /// Commit message inverted index for sub-100ms search on large repos.
 /// Built lazily on first search, updated incrementally on repo changes.
+/// `text` queries use prefix matching via `BTreeMap::range()` (O(log n + k)),
+/// so partial words match (e.g., "test" matches "testing").
 pub struct CommitMessageIndex {
-    /// term -> set of commit row indices
-    postings: HashMap<String, RoaringBitmap>,
+    /// term prefix -> set of commit row indices (BTreeMap enables range scans)
+    postings: BTreeMap<String, RoaringBitmap>,
     /// Indexed up to which commit
     indexed_up_to: Oid,
 }
@@ -919,10 +942,10 @@ frontend/
 │       │   ├── FileHistoryPanel.svelte   (file history with --follow, Req 36)
 │       │   ├── FileTree.svelte           (file tree browser at selected commit, Req 44)
 │       │   ├── InfoDialog.svelte         (draggable — shortcuts, logging, app info)
+│       │   ├── OpenRepoInput.svelte      (repo path/URL input with autocomplete + remote auth token, Req 1/71)
 │       │   ├── PreferencesModal.svelte   (draggable — theme, language, font, graph, diff prefs)
 │       │   ├── ResizeHandle.svelte       (panel resize drag handle)
-│       │   ├── SearchBar.svelte          (text/SHA/author search, saved search support, Req 41)
-│       │   ├── ShortcutHelp.svelte       (keyboard shortcuts reference)
+│       │   ├── SearchBar.svelte          (text/SHA/author/date/file-path search, saved searches, Req 6/41)
 │       │   ├── ToastContainer.svelte     (Req 66: transient toast notifications)
 │       │   ├── Toolbar.svelte            (toolbar — search, refresh, open repo, gear, info buttons)
 │       │   ├── Tooltip.svelte            (generic tooltip component)
@@ -1225,9 +1248,12 @@ Comparison is triggered by Ctrl+Click (or Cmd+Click) on a second commit, or via 
 ### Core Data Structures
 
 ```rust
-/// Unique object identifier — 20-byte binary SHA-1
+/// Unique object identifier — binary SHA-1 (20 bytes) or SHA-256 (32 bytes)
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Oid([u8; 20]);
+pub enum Oid {
+    Sha1([u8; 20]),
+    Sha256([u8; 32]),
+}
 
 /// Branch view mode (Req 32)
 pub struct BranchViewMode {
@@ -2315,7 +2341,7 @@ This feature involves a GUI application with Git operations, Canvas 2D rendering
 - Graph layout algorithm correctness
 - Search query parsing and execution
 - Diff generation and parsing
-- Oid hex conversion (20-byte ↔ hex string)
+- Oid hex conversion (20/32-byte ↔ hex string, both hash variants)
 - Cache incremental diff calculation
 
 ### Integration Tests
@@ -2415,17 +2441,14 @@ This feature involves a GUI application with Git operations, Canvas 2D rendering
 
 The commit graph is the most performance-critical component. The design uses several strategies to achieve 60 FPS with 100,000+ commits:
 
-#### Temporal Topological Sort Algorithm
+#### Arc Topology Algorithm (gitk-faithful)
 
-Based on research from [Pierre Vigier's commit graph algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html), we implement:
+The column assignment is a faithful port of gitk's arc topology system (`graph/arc.rs`), replacing the earlier temporal-topological-sort approach:
 
-1. **Temporal Topological Sort**: Combines topological ordering with timestamp awareness
-2. **Straight Branch Algorithm**: Keeps commits on the same branch in the same column
-3. **Forbidden Index Calculation**: Prevents edge overlaps using interval trees
-4. **Lane Assignment**: Each commit is assigned to a column (lane) based on branch affinity:
-   - Branch children (first parent same column) inherit the parent's lane
-   - Merge children (non-first parent) acquire a free slot, avoiding lanes in the `forbidden` set (lanes occupied by earlier branches in the same row range)
-   - When freeing a branch-child lane, `last_occupied_row` is reset to 0 (the lane is fully released); merge-child lanes keep their `last_occupied_row` (preventing two parents of the same merge from sharing a column)
+1. **Ordertokens**: Each branch is tracked by an order token that determines column priority, matching gitk's draw line ordering
+2. **Thread tracing** (`trace_thread`): Commits are threaded by tracing arcs from branch points through descendants; the arc ordertokens from `graph/arc.rs` pass column priority down threads
+3. **Edge occupancy tracking**: Column cells claimed by an edge are recorded so detour waypoints do not collide with existing threads
+4. **Detour waypoints** (`build_detour_waypoints`): When a thread must yield a column, detour waypoints route it around occupied cells with thread compaction preservation
 
 ```
 Time Complexity: O(n log n + m) where n = commits, m = edges
@@ -2469,24 +2492,23 @@ effectiveGraphWidth = max(persistedGraphWidth, totalColumns * GRAPH_LANE_WIDTH +
 - The persisted user preference is treated as a minimum, not a fixed value
 - Viewport width is tracked via a `$state` variable with a resize listener for reactivity
 
-#### GPU Rendering Pipeline
+#### Render Pipeline
 
 ```mermaid
 graph LR
-    A[Commit Data] --> B[Vertex Buffer]
-    B --> C[GPU Pipeline]
-    C --> D[Frame Buffer]
+    A[Commit Data] --> B[Canvas 2D Draw Calls]
+    B --> C[WebView Frame Present]
 
     E[Scroll Event] --> F[Update Viewport]
-    F --> G[Update Vertex Buffer]
-    G --> C
+    F --> G[Redraw Visible Rows]
+    G --> B
 
     H[Zoom Event] --> I[Update Scale]
-    I --> C
+    I --> B
 
     J[Panel Resize Drag] --> K[requestAnimationFrame Gate]
-    K --> L[Update Projection Matrix Only]
-    L --> C
+    K --> L[Recompute Layout-Dependent Styles Only]
+    L --> B
 ```
 
 #### Panel Resize Performance (Req 59.8-10)
@@ -2505,7 +2527,7 @@ function onPanelResize(newWidth: number) {
   sidebarWidth = newWidth; // immediate CSS update (cheap)
   if (rafId === null) {
     rafId = requestAnimationFrame(() => {
-      updateGpuViewport(); // at most once per frame
+      updateGraphViewport(); // at most once per frame
       rafId = null;
     });
   }
@@ -2589,10 +2611,13 @@ pub struct GraphCache {
 ### Memory Management
 
 ```rust
-/// Oid is 20 bytes on the stack — no heap allocation.
-/// For 100k commits with avg 1.5 parents: ~5MB total OID data
+/// Oid is a fixed-size enum on the stack (20 or 32 bytes) — no heap allocation.
+/// For 100k commits with avg 1.5 parents: ~5-8MB total OID data
 /// vs. ~32MB with String-based OIDs
-pub struct Oid([u8; 20]);
+pub enum Oid {
+    Sha1([u8; 20]),
+    Sha256([u8; 32]),
+}
 ```
 
 ---
@@ -2805,18 +2830,25 @@ gitv/
 │   ├── Cargo.toml
 │   ├── src/
 │   │   ├── main.rs               # Tauri entry point
-│   │   ├── lib.rs
+│   │   ├── lib.rs                # App setup, state, command registration
+│   │   ├── cli.rs                # clap CLI parsing
+│   │   ├── state.rs              # Per-window repository state
 │   │   ├── commands/             # Tauri IPC commands
 │   │   │   ├── mod.rs
-│   │   │   ├── repository.rs
+│   │   │   ├── args.rs           # Startup paths, debug-overlay flag
+│   │   │   ├── repository.rs     # Open/info, remote auth (Req 71)
 │   │   │   ├── commits.rs
+│   │   │   ├── graph.rs          # getInitialData (merged IPC), graph layout
 │   │   │   ├── diff.rs
 │   │   │   ├── search.rs
-│   │   │   ├── reflog.rs
-│   │   │   ├── stash.rs
-│   │   │   ├── working_changes.rs
-│   │   │   └── file_tree.rs
-│   │   └── error.rs
+│   │   │   ├── reflog_stash.rs
+│   │   │   ├── saved_searches.rs
+│   │   │   ├── preferences.rs
+│   │   │   ├── file_tree.rs
+│   │   │   ├── dump.rs           # --dump-graph / --self-test headless analysis
+│   │   │   ├── debug.rs          # Memory tracking for debug overlay
+│   │   │   ├── diagnostics.rs    # Panic hook, crash logs
+│   │   │   └── util.rs
 │   └── tauri.conf.json
 │
 ├── crates/                       # Separate Rust crates
@@ -2824,84 +2856,66 @@ gitv/
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs
-│           ├── repository.rs
+│           ├── repository.rs     # Trait-based repo abstraction
+│           ├── gix_repo.rs       # gix implementation: local + remote open,
+│           │                     # incremental fetch, blame, status
 │           ├── graph/
 │           │   ├── mod.rs
-│           │   ├── calculator.rs
+│           │   ├── calculator.rs # Layout: ordertokens + arc topology
+│           │   ├── arc.rs        # gitk-faithful arc topology port
 │           │   ├── layout.rs
+│           │   ├── properties.rs # Layout property checks
 │           │   └── viewport.rs
 │           ├── search/
 │           │   ├── mod.rs
-│           │   ├── engine.rs
-│           │   └── index.rs
+│           │   ├── engine.rs     # RoaringBitmap + BTreeMap prefix index
+│           │   └── query.rs      # SearchQuery parsing/combination
 │           ├── stream/
-│           │   ├── mod.rs
-│           │   └── iterator.rs
-│           ├── cache/
-│           │   ├── mod.rs
-│           │   ├── persistent.rs
-│           │   └── incremental.rs
-│           ├── models/
-│           │   ├── mod.rs
-│           │   ├── commit.rs
-│           │   ├── diff.rs
-│           │   ├── blame.rs
-│           │   ├── refs.rs
-│           │   ├── reflog.rs
-│           │   ├── stash.rs
-│           │   ├── working_changes.rs
-│           │   └── file_tree.rs
+│           │   └── mod.rs        # Streaming commit iterator
+│           ├── cache/            # Persistent disk cache
+│           ├── models.rs         # Oid (SHA-1/SHA-256), CommitInfo, Diff, refs
+│           ├── self_test.rs      # Headless layout self-test
 │           └── error.rs
 │
-├── src/                          # Frontend (SvelteKit)
-│   ├── app.html                  # HTML shell
-│   ├── app.css                   # Global styles (Tailwind)
-│   ├── routes/
-│   │   ├── +layout.svelte        # Root layout
-│   │   └── +page.svelte          # Main page
-│   ├── lib/
-│   │   ├── components/           # Svelte components
-│   │   │   ├── CommitGraph/
-│   │   │   ├── CommitList/
-│   │   │   ├── DiffViewer/
-│   │   │   ├── ComparisonPanel/
-│   │   │   ├── CommandPalette/
-│   │   │   ├── Sidebar/
-│   │   │   ├── ReflogPanel.svelte
-│   │   │   ├── StashList.svelte
-│   │   │   └── common/
-│   │   ├── stores/               # Svelte stores
-│   │   │   ├── app.svelte.ts
-│   │   │   ├── repository.svelte.ts
-│   │   │   ├── comparison.svelte.ts
-│   │   │   └── ui.svelte.ts
-│   │   ├── actions/              # Svelte actions
-│   │   │   ├── keyboard.ts
-│   │   │   └── virtual-scroll.ts
-│   │   ├── bindings/             # Auto-generated Tauri IPC bindings
-│   │   │   └── index.ts
-│   │   ├── binary-decoder.ts
-│   │   ├── locales/              # i18n JSON files
-│   │   └── types/                # Shared TypeScript types
-│   │       └── index.ts
+├── frontend/                     # Frontend (SvelteKit)
+│   └── src/
+│       ├── app.html              # HTML shell
+│       ├── app.css               # Global styles (Tailwind, deep-dark theme)
+│       ├── routes/
+│       │   ├── +layout.svelte    # Root layout
+│       │   └── +page.svelte      # Main page (keyboard handling, layout)
+│       └── lib/
+│           ├── index.ts          # Re-exports
+│           ├── constants.ts      # App-wide constants
+│           ├── logging.ts        # Frontend logging helpers
+│           ├── semver.ts         # Semver parse/compare
+│           ├── components/       # Svelte 5 components (flat + Sidebar/)
+│           ├── stores/           # commands, repository, preferences, layout,
+│           │                     # locale, dialog, toast, debug
+│           ├── graph/            # graph-math.ts, edge-interaction.ts
+│           ├── bindings/         # Tauri IPC bindings (commands.ts, types.ts)
+│           ├── utils/            # a11y, markdown, highlight, format-date,
+│           │                     # async-guard
+│           ├── actions/          # draggable.ts
+│           ├── assets/           # Static assets
+│           └── locales/          # i18n JSON files (en, zh-CN, de)
 │
-├── static/                       # Static assets
+├── tests/                        # Workspace integration tests
 │
-├── tests/                        # Integration tests
-│   ├── fixtures/                 # Test repositories
-│   └── e2e/                      # E2E tests
+├── crates/gitv-git-core/
+│   ├── benches/                  # Criterion benchmarks
+│   │   ├── graph_bench.rs
+│   │   ├── search_bench.rs
+│   │   └── memory_bench.rs
+│   └── tests/
+│       └── property_tests.rs     # Proptest property-based tests
 │
-├── benches/                      # Performance benchmarks
-│   ├── graph_layout.rs
-│   ├── search.rs
-│   ├── load_time.rs
-│   └── cache_roundtrip.rs
-│
-├── svelte.config.js              # SvelteKit config (static adapter)
-├── vite.config.ts                # Vite config
-├── tailwind.config.ts            # Tailwind config
-├── tsconfig.json
-├── package.json
+├── frontend/
+│   ├── svelte.config.js          # SvelteKit config (static adapter)
+│   ├── vite.config.ts            # Vite config
+│   ├── tailwind.config.ts        # Tailwind config
+│   ├── tsconfig.json
+│   └── package.json
 └── mise.toml                     # Toolchain (npm)
 ```
 
@@ -2962,7 +2976,7 @@ gitv/
 
 ### Phase 7: Accessibility and Polish
 - Reduced-motion support and focus management (Req 67)
-- GPU optimization
+- Rendering performance tuning
 - Performance benchmarks and regression testing
 - Accessibility audit
 - Localization
@@ -3168,7 +3182,7 @@ gitv/
 
 ### Property 35: OID Round-Trip
 
-*For any* valid 20-byte SHA-1, converting to hex and back shall produce the identical byte sequence. *For any* valid 40-character hex string, parsing to Oid and formatting back shall produce the identical string (lowercase).
+*For any* valid 20-byte SHA-1 or 32-byte SHA-256 hash, converting to hex and back shall produce the identical byte sequence. *For any* valid 40- or 64-character hex string, parsing to Oid and formatting back shall produce the identical string (lowercase).
 
 **Validates: OID internal consistency**
 
@@ -3261,10 +3275,11 @@ No redundant properties were found. Each provides unique validation value.
 ### Research Sources
 
 1. [Gitoxide (gix) Repository](https://github.com/GitoxideLabs/gitoxide) - Pure Rust Git implementation
-2. [Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) - Pierre Vigier's algorithm research
-3. [Git Commit-Graph Design](https://raw.githubusercontent.com/git/git/master/Documentation/technical/commit-graph.adoc) - Git's internal commit-graph format
-4. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
-7. [postcard](https://docs.rs/postcard) - Binary serialization for Rust
+2. [Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) - Pierre Vigier's algorithm research (inspired the earlier layout; since replaced by the gitk arc topology port)
+3. [gitk source](https://git.kernel.org/pub/scm/git.git/tree/gitk) - Reference for the arc topology / ordertoken column assignment ported in `graph/arc.rs`
+4. [Git Commit-Graph Design](https://raw.githubusercontent.com/git/git/master/Documentation/technical/commit-graph.adoc) - Git's internal commit-graph format
+5. [RoaringBitmap](https://roaringbitmap.org/) - Compressed bitmap for inverted index
+6. [postcard](https://docs.rs/postcard) - Binary serialization for Rust
 
 ### Technology Documentation
 

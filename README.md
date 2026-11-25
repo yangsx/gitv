@@ -2,8 +2,8 @@
 
 [**简体中文版**](README.zh-CN.md)
 
-A modern, cross-platform Git repository visualizer. GPU-accelerated commit graph,
-streaming data, and persistent cache — built with Rust + Tauri.
+A modern, cross-platform Git repository visualizer. Canvas 2D rendered commit
+graph, streaming data, and persistent cache — built with Rust + Tauri.
 
 Think gitk, but with Canvas 2D rendering, stash-as-graph-node display, sub-100ms
 search, and instant re-open for cached repos.
@@ -25,13 +25,19 @@ search, and instant re-open for cached repos.
 - **Patch text search** — search commit diffs with regex, matching lines
   highlighted in-place within the diff viewer
 - **Commit search** — RoaringBitmap inverted index for sub-100ms commit message
-  and author search on 100k+ commit repos
+  and author search on 100k+ commit repos; prefix matching, author/date-range/
+  file-path filters, regex mode
 - **File tree browser** — browse repository contents at any commit; view file
   contents, blame, and file history with rename following (`--follow`)
 - **Reflog** — browse reflog entries, navigate to any commit (even dangling
   ones after rebase or reset)
 - **Command palette** — Ctrl+P fuzzy search for all actions, recent repos,
   and navigation
+- **Remote repositories** — open remote repos by URL (https, ssh, git);
+  shallow-cloned (depth 1000) into a local bare cache with incremental fetch
+  on re-open; auth token support for private repos
+- **SHA-256 support** — opens repositories using the newer SHA-256 object
+  format alongside SHA-1
 - **Persistent cache** — disk cache (postcard serialized) for instant re-open
   of previously visited repos; incremental updates on ref changes
 - **Keyboard navigation** — full keyboard control: arrow keys, J/K, Page Up/Down,
@@ -80,6 +86,10 @@ gitv /path/to/repo
 
 # Open multiple repositories (each in its own window)
 gitv /repo1 /repo2
+
+# Open a remote repository (shallow-cloned into the local cache,
+# fetched incrementally on re-open)
+gitv https://github.com/user/repo
 
 # Set log level (debug, trace)
 gitv /path/to/repo --log-level=debug
@@ -197,11 +207,12 @@ JSON output includes:
 
 | Feature | gitv | gitk |
 |---------|------|------|
-| Rendering | Canvas 2D (GPU-accelerated) | Tk canvas (CPU) |
+| Rendering | Canvas 2D, virtualized viewport | Tk canvas (CPU) |
 | Stash display | Single graph node with branch-out edge + combined diff | Two-node double-diff display |
 | Search | RoaringBitmap indexed (sub-100ms on 100k commits) | Linear scan |
 | Diff modes | Normal, word-diff, stat-only; whitespace modifiers | Normal only |
 | Open model | Independent launcher with repository picker | Must be run from inside a repo |
+| Remote repos | Open by URL — shallow clone + incremental fetch | Clone manually first |
 | Multi-repo | Multi-instance, each in its own window | Single-window tabs |
 | Cache | Persistent disk cache for instant re-open | None |
 | Color modes | By-branch, by-author, colorblind-safe palettes | By-branch only |
@@ -218,11 +229,14 @@ gitv/
 │   │   └── lib.rs              # App setup, state, command registration
 │   └── Cargo.toml
 ├── crates/
-│   ├── gitv-git-core/          # Pure Rust Git logic (no Tauri deps) — 170 tests
+│   ├── gitv-git-core/          # Pure Rust Git logic (no Tauri deps) — 198 tests
 │   │   └── src/
-│   │       ├── repository.rs   # gix-based repo abstraction
-│   │       ├── graph/          # Layout calculator, stash insertion
-│   │       ├── search/         # RoaringBitmap search engine
+│   │       ├── repository.rs   # Repo abstraction trait
+│   │       ├── gix_repo.rs     # gix implementation: local + remote open,
+│   │       │                   #   incremental fetch, blame, status
+│   │       ├── graph/          # Layout calculator (gitk arc topology port),
+│   │       │                   #   property checks, stash insertion
+│   │       ├── search/         # RoaringBitmap + BTreeMap prefix search engine
 │   │       ├── stream/         # Streaming commit iterator
 │   │       ├── cache/          # Persistent disk cache
 │   │       └── models.rs       # Core types (Oid, CommitInfo, Diff, etc.)
@@ -236,8 +250,8 @@ gitv/
 │   │       ├── locales/        # en.json, zh-CN.json, de.json
 │   │       └── utils/          # a11y.ts, markdown.ts, format-date.ts
 │   └── package.json
-├── design.md                   # Architecture document (3196 lines)
-├── requirements.md             # 70 requirements
+├── design.md                   # Architecture document (3290 lines)
+├── requirements.md             # 72 requirements
 └── AGENTS.md                   # AI agent conventions and toolchain
 ```
 
@@ -245,8 +259,8 @@ gitv/
 
 - **Decoupled Git core**: `gitv-git-core` is a standalone crate with trait-based
   interfaces for mocking — independently testable, no Tauri dependency
-- **Oid**: 20-byte binary newtype (`[u8; 20]`), not a String — 3x less memory,
-  faster hashing
+- **Oid**: fixed-size enum — `Sha1([u8; 20])` or `Sha256([u8; 32])`, not a
+  String — 3x less memory, faster hashing, and SHA-256 repo support
 - **Binary IPC**: postcard serialization for commit batches (3-5x smaller,
   5-10x faster than JSON)
 - **Virtual scroll**: only visible commits rendered; graph canvas and commit
@@ -265,7 +279,7 @@ gitv/
 
 - [`design.md`](design.md) — Full architecture document: component hierarchy,
   data models, CLI, keyboard shortcuts, ADRs, testing strategy, accessibility
-- [`requirements.md`](requirements.md) — 70 requirements with acceptance criteria
+- [`requirements.md`](requirements.md) — 72 requirements with acceptance criteria
 - [`AGENTS.md`](AGENTS.md) — AI agent conventions, code quality gates, toolchain
 
 ## Development
@@ -332,7 +346,7 @@ cargo nextest run -p gitv-git-core --test graph_tests
 cargo test --workspace
 ```
 
-170 tests in `gitv-git-core` — no Tauri dependency, fully mockable.
+198 tests in `gitv-git-core` — no Tauri dependency, fully mockable.
 
 ### Benchmarks
 
