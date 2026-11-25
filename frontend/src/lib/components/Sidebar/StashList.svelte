@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { t, translate } from '$lib/stores/locale';
-	import type { StashEntry } from '$lib/bindings/types';
-	import { getStashList } from '$lib/bindings/commands';
-	import { formatGitDateTime } from '$lib/utils/format-date';
-	import { showToast } from '$lib/stores/toast';
+	import { t, translate } from '#lib/stores/locale.ts';
+	import type { StashEntry } from '#lib/bindings/types.ts';
+	import { getStashList } from '#lib/bindings/commands.ts';
+	import { formatGitDateTime } from '#lib/utils/format-date.ts';
+	import { showToast } from '#lib/stores/toast.ts';
 
 	let {
 		repoPath,

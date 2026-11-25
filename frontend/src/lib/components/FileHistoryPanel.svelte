@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { FileHistoryEntry } from '$lib/bindings/types';
-	import { getFileHistory } from '$lib/bindings/commands';
-	import { t, translate } from '$lib/stores/locale';
-	import { formatGitDateTime } from '$lib/utils/format-date';
-	import { showToast } from '$lib/stores/toast';
+	import type { FileHistoryEntry } from '#lib/bindings/types.ts';
+	import { getFileHistory } from '#lib/bindings/commands.ts';
+	import { t, translate } from '#lib/stores/locale.ts';
+	import { formatGitDateTime } from '#lib/utils/format-date.ts';
+	import { showToast } from '#lib/stores/toast.ts';
 
 	function entrySummary(entry: FileHistoryEntry): string {
 		return entry.message.split('\n')[0] || '';

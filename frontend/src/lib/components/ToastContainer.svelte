@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import { toasts, dismissToast, type Toast } from '$lib/stores/toast';
+	import { t } from '#lib/stores/locale.ts';
+	import { toasts, dismissToast, type Toast } from '#lib/stores/toast.ts';
 
 	function severityClasses(severity: Toast['severity']): string {
 		switch (severity) {

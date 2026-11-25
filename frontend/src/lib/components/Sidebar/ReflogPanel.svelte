@@ -1,10 +1,14 @@
 <script lang="ts">
-	import type { Ref, ReflogEntry } from '$lib/bindings/types';
-	import { getReflog } from '$lib/bindings/commands';
-	import { t, translate } from '$lib/stores/locale';
-	import { formatGitDateTime } from '$lib/utils/format-date';
-	import { showToast } from '$lib/stores/toast';
-	import { REFLOG_DISPLAY_LIMIT, REFLOG_MSG_MAX_LEN, REFLOG_OID_DISPLAY_LEN } from '$lib/constants';
+	import type { Ref, ReflogEntry } from '#lib/bindings/types.ts';
+	import { getReflog } from '#lib/bindings/commands.ts';
+	import { t, translate } from '#lib/stores/locale.ts';
+	import { formatGitDateTime } from '#lib/utils/format-date.ts';
+	import { showToast } from '#lib/stores/toast.ts';
+	import {
+		REFLOG_DISPLAY_LIMIT,
+		REFLOG_MSG_MAX_LEN,
+		REFLOG_OID_DISPLAY_LEN
+	} from '#lib/constants.ts';
 
 	let {
 		repoPath,
@@ -140,8 +144,9 @@
 						<span class="rounded bg-gray-700/50 px-1 text-[10px] text-gray-400 shrink-0">
 							{extractOpType(entry.message)}
 						</span>
-						<span class="font-mono text-gray-400">{entry.oid.slice(0, REFLOG_OID_DISPLAY_LEN)}</span
-						>
+						<span class="font-mono text-gray-400">
+							{entry.oid.slice(0, REFLOG_OID_DISPLAY_LEN)}
+						</span>
 						<span class="truncate text-gray-300" title={stripReflogPrefix(entry.message)}>
 							{stripReflogPrefix(entry.message)}
 						</span>

@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { GraphLayout, NodePosition, CommitInfo } from '$lib/bindings/types';
-	import { commitSummary } from '$lib/bindings/types';
-	import { updateGraphDrawTime } from '$lib/stores/debug';
+	import { t } from '#lib/stores/locale.ts';
+	import type { GraphLayout, NodePosition, CommitInfo } from '#lib/bindings/types.ts';
+	import { commitSummary } from '#lib/bindings/types.ts';
+	import { updateGraphDrawTime } from '#lib/stores/debug.ts';
 	import {
 		colorToCSS,
 		columnCenterX,
@@ -10,21 +10,21 @@
 		SELECTED_COLOR,
 		COMPARISON_COLOR,
 		STASH_COLOR
-	} from '$lib/graph/graph-math';
+	} from '#lib/graph/graph-math.ts';
 	import {
 		computeVisibleEdgeCoords,
 		edgeHitTest,
 		edgeFarOid,
 		drawArrowHead,
 		type VisibleEdgeSegment
-	} from '$lib/graph/edge-interaction';
+	} from '#lib/graph/edge-interaction.ts';
 
 	import {
 		GRAPH_PADDING_LEFT as PADDING_LEFT,
 		GRAPH_EDGE_HIT_TOLERANCE as EDGE_HIT_TOLERANCE,
 		STAGED_OID,
 		UNSTAGED_OID
-	} from '$lib/constants';
+	} from '#lib/constants.ts';
 
 	interface TooltipData {
 		x: number;

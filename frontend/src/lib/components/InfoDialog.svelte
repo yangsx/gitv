@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { getVersion } from '@tauri-apps/api/app';
-	import { commands as commandsStore } from '$lib/stores/commands';
-	import { t } from '$lib/stores/locale';
-	import { logPath } from '$lib/stores/debug';
-	import { openLogDirectory, getCommitSha } from '$lib/bindings/commands';
-	import { draggable } from '$lib/actions/draggable';
-	import { dialogStackOffset } from '$lib/stores/dialog';
+	import { commands as commandsStore } from '#lib/stores/commands.ts';
+	import { t } from '#lib/stores/locale.ts';
+	import { logPath } from '#lib/stores/debug.ts';
+	import { openLogDirectory, getCommitSha } from '#lib/bindings/commands.ts';
+	import { draggable } from '#lib/actions/draggable.ts';
+	import { dialogStackOffset } from '#lib/stores/dialog.ts';
 
 	interface Props {
 		onclose: () => void;

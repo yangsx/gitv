@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
+	import { t } from '#lib/stores/locale.ts';
 
 	let {
 		panelHeight = $bindable(300),

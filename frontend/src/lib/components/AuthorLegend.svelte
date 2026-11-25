@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { GraphLayout } from '$lib/bindings/types';
-	import { graphColorMode } from '$lib/stores/repository';
+	import { t } from '#lib/stores/locale.ts';
+	import type { GraphLayout } from '#lib/bindings/types.ts';
+	import { graphColorMode } from '#lib/stores/repository.ts';
 
 	let { layout }: { layout: GraphLayout } = $props();
 

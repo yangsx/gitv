@@ -1,4 +1,4 @@
-import type { Color, Edge, EdgeType } from '$lib/bindings/types';
+import type { Color, Edge, EdgeType } from '#lib/bindings/types.ts';
 
 // Selection highlight colors (as hex RGB tuples)
 export const SELECT_RGB: [number, number, number] = [0x60, 0xa5, 0xfa];

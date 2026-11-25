@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
+	import { t } from '#lib/stores/locale.ts';
 
 	interface Props {
 		onopensettings?: () => void;

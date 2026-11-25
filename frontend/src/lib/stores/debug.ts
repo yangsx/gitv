@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { getMemoryUsage } from '$lib/bindings/commands';
+import { getMemoryUsage } from '#lib/bindings/commands.ts';
 
 export interface IpcTiming {
 	command: string;

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
-	import { initLogging } from '$lib/logging';
-	import { locale } from '$lib/stores/locale';
+	import { initLogging } from '#lib/logging.ts';
+	import { locale } from '#lib/stores/locale.ts';
 
 	initLogging();
 

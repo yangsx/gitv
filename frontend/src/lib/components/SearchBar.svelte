@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { searchCommits, cancelPatchSearch } from '$lib/bindings/commands';
+	import { searchCommits, cancelPatchSearch } from '#lib/bindings/commands.ts';
 	import type {
 		PatchSearchProgress,
 		PatchSearchComplete,
 		PatchSearchError
-	} from '$lib/bindings/types';
+	} from '#lib/bindings/types.ts';
 	import { listen } from '@tauri-apps/api/event';
 	import {
 		searchQuery,
@@ -16,9 +16,9 @@
 		patchSearchActive,
 		patchSearchId,
 		patchSearchProgress
-	} from '$lib/stores/repository';
-	import { showToast, updateToast, dismissToast } from '$lib/stores/toast';
-	import { t, translate } from '$lib/stores/locale';
+	} from '#lib/stores/repository.ts';
+	import { showToast, updateToast, dismissToast } from '#lib/stores/toast.ts';
+	import { t, translate } from '#lib/stores/locale.ts';
 
 	interface Props {
 		repoPath: string;

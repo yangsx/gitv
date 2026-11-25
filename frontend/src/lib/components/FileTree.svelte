@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { FileTreeNode } from '$lib/bindings/types';
+	import { t } from '#lib/stores/locale.ts';
+	import type { FileTreeNode } from '#lib/bindings/types.ts';
 
 	interface Props {
 		node: FileTreeNode;
@@ -102,9 +102,9 @@
 		<span class="shrink-0 text-sm" aria-hidden="true">{nodeIcon(node)}</span>
 		<span class="flex-1 truncate font-mono text-gray-300">{node.name}</span>
 		{#if node.size !== null && node.node_type === 'File'}
-			<span class="shrink-0 text-[10px] text-gray-500"
-				>{node.size > 1024 ? (node.size / 1024).toFixed(1) + 'K' : node.size + 'B'}</span
-			>
+			<span class="shrink-0 text-[10px] text-gray-500">
+				{node.size > 1024 ? (node.size / 1024).toFixed(1) + 'K' : node.size + 'B'}
+			</span>
 		{/if}
 	</button>
 {/if}

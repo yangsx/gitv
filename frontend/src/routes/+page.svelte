@@ -20,7 +20,7 @@
 		validateRepoPath,
 		suggestPaths,
 		cancelPatchSearch
-	} from '$lib/bindings/commands';
+	} from '#lib/bindings/commands.ts';
 	import type {
 		CommitInfo,
 		GraphLayout,
@@ -32,7 +32,7 @@
 		RepoPathValidation,
 		PathSuggestion,
 		RecentRepository
-	} from '$lib/bindings/types';
+	} from '#lib/bindings/types.ts';
 	import {
 		repoInfo,
 		selectedOid,
@@ -53,21 +53,21 @@
 		patchSearchId,
 		searchQuery,
 		searchResults
-	} from '$lib/stores/repository';
-	import { STAGED_OID, VIRTUAL_OIDS } from '$lib/constants';
-	import CommitList from '$lib/components/CommitList.svelte';
-	import SearchBar from '$lib/components/SearchBar.svelte';
-	import CommitDetailPanel from '$lib/components/CommitDetailPanel.svelte';
-	import ResizeHandle from '$lib/components/ResizeHandle.svelte';
-	import Sidebar from '$lib/components/Sidebar/Sidebar.svelte';
-	import RefList from '$lib/components/Sidebar/RefList.svelte';
-	import StashList from '$lib/components/Sidebar/StashList.svelte';
-	import ReflogPanel from '$lib/components/Sidebar/ReflogPanel.svelte';
-	import FileHistoryPanel from '$lib/components/FileHistoryPanel.svelte';
-	import Toolbar from '$lib/components/Toolbar.svelte';
-	import AuthorLegend from '$lib/components/AuthorLegend.svelte';
-	import ToastContainer from '$lib/components/ToastContainer.svelte';
-	import { showToast, updateToast, dismissToast } from '$lib/stores/toast';
+	} from '#lib/stores/repository.ts';
+	import { STAGED_OID, VIRTUAL_OIDS } from '#lib/constants.ts';
+	import CommitList from '#lib/components/CommitList.svelte';
+	import SearchBar from '#lib/components/SearchBar.svelte';
+	import CommitDetailPanel from '#lib/components/CommitDetailPanel.svelte';
+	import ResizeHandle from '#lib/components/ResizeHandle.svelte';
+	import Sidebar from '#lib/components/Sidebar/Sidebar.svelte';
+	import RefList from '#lib/components/Sidebar/RefList.svelte';
+	import StashList from '#lib/components/Sidebar/StashList.svelte';
+	import ReflogPanel from '#lib/components/Sidebar/ReflogPanel.svelte';
+	import FileHistoryPanel from '#lib/components/FileHistoryPanel.svelte';
+	import Toolbar from '#lib/components/Toolbar.svelte';
+	import AuthorLegend from '#lib/components/AuthorLegend.svelte';
+	import ToastContainer from '#lib/components/ToastContainer.svelte';
+	import { showToast, updateToast, dismissToast } from '#lib/stores/toast.ts';
 	import {
 		toggleDebug,
 		tickFps,
@@ -76,8 +76,8 @@
 		logPath,
 		startMemoryTracking,
 		stopMemoryTracking
-	} from '$lib/stores/debug';
-	import DebugOverlay from '$lib/components/DebugOverlay.svelte';
+	} from '#lib/stores/debug.ts';
+	import DebugOverlay from '#lib/components/DebugOverlay.svelte';
 	import {
 		getClampedLayout,
 		updateLayout,
@@ -86,24 +86,24 @@
 		clampDetailPanelHeight,
 		commitListReservePx,
 		DETAIL_PANEL_ABSOLUTE_MIN_PX
-	} from '$lib/stores/layout';
-	import { registerCommand, unregisterCommandsByPrefix } from '$lib/stores/commands';
-	import CommandPalette from '$lib/components/CommandPalette.svelte';
-	import ContextMenu from '$lib/components/ContextMenu.svelte';
-	import type { ContextMenuItem } from '$lib/components/ContextMenu.svelte';
-	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
-	import InfoDialog from '$lib/components/InfoDialog.svelte';
-	import OpenRepoInput from '$lib/components/OpenRepoInput.svelte';
+	} from '#lib/stores/layout.ts';
+	import { registerCommand, unregisterCommandsByPrefix } from '#lib/stores/commands.ts';
+	import CommandPalette from '#lib/components/CommandPalette.svelte';
+	import ContextMenu from '#lib/components/ContextMenu.svelte';
+	import type { ContextMenuItem } from '#lib/components/ContextMenu.svelte';
+	import PreferencesModal from '#lib/components/PreferencesModal.svelte';
+	import InfoDialog from '#lib/components/InfoDialog.svelte';
+	import OpenRepoInput from '#lib/components/OpenRepoInput.svelte';
 	import {
 		initPreferences,
 		resolvedTheme,
 		fontSize,
 		adjustFontSize,
 		resolvedHighContrast
-	} from '$lib/stores/preferences';
-	import { t, translate, locale } from '$lib/stores/locale';
+	} from '#lib/stores/preferences.ts';
+	import { t, translate, locale } from '#lib/stores/locale.ts';
 
-	import { announce } from '$lib/utils/a11y';
+	import { announce } from '#lib/utils/a11y.ts';
 
 	let repoPath = $state('');
 	let startupComplete = $state(false);
@@ -529,19 +529,6 @@
 			if (selected) {
 				repoInput = selected;
 				validateInput(selected);
-			}
-		} catch {
-			showToast(translate('page.dialog_failed'), 'error');
-		}
-	}
-
-	async function browseForRepoNewWindow() {
-		try {
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			const title = translate('page.select_repo_title');
-			const selected = await open({ directory: true, multiple: false, title });
-			if (selected) {
-				await openInNewWindow(selected);
 			}
 		} catch {
 			showToast(translate('page.dialog_failed'), 'error');
@@ -1536,9 +1523,9 @@
 										>
 											<span class="font-medium">{repo.name}</span>
 											<span class="ml-2 font-mono text-xs text-gray-600">{repo.path}</span>
-											<span class="ml-auto text-xs text-gray-600"
-												>{formatAbsoluteDate(repo.last_opened)}</span
-											>
+											<span class="ml-auto text-xs text-gray-600">
+												{formatAbsoluteDate(repo.last_opened)}
+											</span>
 										</button>
 									</li>
 								{/each}
@@ -1548,18 +1535,18 @@
 						<p class="text-center text-sm text-gray-500">{$t('page.open_first')}</p>
 					{/if}
 					<div class="flex justify-center gap-4 text-xs text-gray-600">
-						<span
-							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">{modKey}O</kbd>
-							{$t('page.browse_repo')}</span
-						>
-						<span
-							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">{modKey}P</kbd>
-							{$t('page.cmd_palette')}</span
-						>
-						<span
-							><kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">F1</kbd>
-							{$t('toolbar.info')}</span
-						>
+						<span>
+							<kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">{modKey}O</kbd>
+							{$t('page.browse_repo')}
+						</span>
+						<span>
+							<kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">{modKey}P</kbd>
+							{$t('page.cmd_palette')}
+						</span>
+						<span>
+							<kbd class="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px]">F1</kbd>
+							{$t('toolbar.info')}
+						</span>
 					</div>
 					<div class="flex justify-center gap-1">
 						<button
@@ -1685,10 +1672,11 @@
 							stroke-width="2"
 							viewBox="0 0 24 24"
 							aria-hidden="true"
-							><path
-								d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-							/></svg
 						>
+							<path
+								d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+							/>
+						</svg>
 					</button>
 				</div>
 				<div class="flex-1 min-w-0 overflow-x-auto">

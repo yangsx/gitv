@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createGenerationGuard } from '$lib/utils/async-guard';
+import { createGenerationGuard } from '#lib/utils/async-guard.ts';
 
 describe('createGenerationGuard', () => {
 	it('starts at generation 0', () => {

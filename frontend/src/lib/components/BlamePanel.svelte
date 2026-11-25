@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { Blame } from '$lib/bindings/types';
-	import { getBlame } from '$lib/bindings/commands';
-	import { formatGitDateTime } from '$lib/utils/format-date';
-	import { createGenerationGuard } from '$lib/utils/async-guard';
-	import { highlightLines, type HighlightToken } from '$lib/utils/highlight';
-	import { draggable } from '$lib/actions/draggable';
-	import { dialogStackOffset } from '$lib/stores/dialog';
+	import { t } from '#lib/stores/locale.ts';
+	import type { Blame } from '#lib/bindings/types.ts';
+	import { getBlame } from '#lib/bindings/commands.ts';
+	import { formatGitDateTime } from '#lib/utils/format-date.ts';
+	import { createGenerationGuard } from '#lib/utils/async-guard.ts';
+	import { highlightLines, type HighlightToken } from '#lib/utils/highlight.ts';
+	import { draggable } from '#lib/actions/draggable.ts';
+	import { dialogStackOffset } from '#lib/stores/dialog.ts';
 
 	const loadGen = createGenerationGuard();
 

@@ -1,6 +1,6 @@
 import type { Highlighter } from 'shiki';
 import { get } from 'svelte/store';
-import { highlightLineCap } from '$lib/stores/preferences';
+import { highlightLineCap } from '#lib/stores/preferences.ts';
 
 export interface HighlightToken {
 	content: string;

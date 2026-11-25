@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { t } from '$lib/stores/locale';
+	import { t } from '#lib/stores/locale.ts';
 
 	type Tab = 'refs' | 'stash' | 'reflog' | 'history';
 

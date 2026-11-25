@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import { debug, avgIpcTime, recentIpcTimings, formatBytes } from '$lib/stores/debug';
-	import { operationState } from '$lib/stores/repository';
-	import { runSelfTest } from '$lib/bindings/commands';
-	import type { SelfTestResult } from '$lib/bindings/types';
+	import { t } from '#lib/stores/locale.ts';
+	import { debug, avgIpcTime, recentIpcTimings, formatBytes } from '#lib/stores/debug.ts';
+	import { operationState } from '#lib/stores/repository.ts';
+	import { runSelfTest } from '#lib/bindings/commands.ts';
+	import type { SelfTestResult } from '#lib/bindings/types.ts';
 
 	interface Props {
 		repoPath?: string | null;
@@ -171,16 +171,16 @@
 					<span class="text-gray-500">{$t('debug.col_waste')}</span>
 					<span>{selfTestResult.column_waste}</span>
 					<span class="text-gray-500">{$t('debug.waypoints')}</span>
-					<span
-						>{selfTestResult.total_waypoints}
-						{$t('debug.max_per_edge', { n: selfTestResult.max_waypoints_per_edge })}</span
-					>
+					<span>
+						{selfTestResult.total_waypoints}
+						{$t('debug.max_per_edge', { n: selfTestResult.max_waypoints_per_edge })}
+					</span>
 					<span class="text-gray-500">{$t('debug.arrow_gaps')}</span>
 					<span>{selfTestResult.arrow_gap_count}</span>
 					<span class="text-gray-500">{$t('debug.edge_types')}</span>
-					<span
-						>{selfTestResult.straight_edges}/{selfTestResult.branch_edges}/{selfTestResult.merge_edges}</span
-					>
+					<span>
+						{selfTestResult.straight_edges}/{selfTestResult.branch_edges}/{selfTestResult.merge_edges}
+					</span>
 					<span class="text-gray-500">{$t('debug.col_shifts')}</span>
 					<span class="truncate max-w-[140px]" title={selfTestResult.column_shift_histogram}>
 						{selfTestResult.column_shift_histogram || 'none'}

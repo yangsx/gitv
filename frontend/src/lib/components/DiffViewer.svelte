@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { DiffLine, Hunk, PatchMatchLocation, WordDiffSegment } from '$lib/bindings/types';
+	import { t } from '#lib/stores/locale.ts';
+	import type { DiffLine, Hunk, PatchMatchLocation, WordDiffSegment } from '#lib/bindings/types.ts';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	interface Props {
@@ -292,17 +292,18 @@
 							? 'ring-1 ring-inset ring-yellow-500/50 bg-yellow-900/20'
 							: ''}"
 					>
-						<span class="w-10 shrink-0 select-none text-right text-gray-600"
-							>{leftLine ? oldLineNum(leftLine) : ''}</span
-						>
+						<span class="w-10 shrink-0 select-none text-right text-gray-600">
+							{leftLine ? oldLineNum(leftLine) : ''}
+						</span>
 						<span
 							class="shrink-0 select-none text-center {leftLine &&
 							(lineKind(leftLine) === 'deletion' || lineKind(leftLine) === 'worddiff')
 								? 'text-red-400'
 								: 'text-gray-500'}"
 							style="width: {Math.max(maxPrefixLen, 1)}ch"
-							>{leftLine ? linePrefix(leftLine) : '\u00a0'}</span
 						>
+							{leftLine ? linePrefix(leftLine) : '\u00a0'}
+						</span>
 						{#if leftLine && wordDiffSegments(leftLine)}
 							<pre
 								class="whitespace-pre-wrap break-all flex-1 min-w-0"
@@ -336,17 +337,18 @@
 							? 'ring-1 ring-inset ring-yellow-500/50 bg-yellow-900/20'
 							: ''}"
 					>
-						<span class="w-10 shrink-0 select-none text-right text-gray-600"
-							>{rightLine ? newLineNum(rightLine) : ''}</span
-						>
+						<span class="w-10 shrink-0 select-none text-right text-gray-600">
+							{rightLine ? newLineNum(rightLine) : ''}
+						</span>
 						<span
 							class="shrink-0 select-none text-center {rightLine &&
 							(lineKind(rightLine) === 'addition' || lineKind(rightLine) === 'worddiff')
 								? 'text-green-400'
 								: 'text-gray-500'}"
 							style="width: {Math.max(maxPrefixLen, 1)}ch"
-							>{rightLine ? linePrefix(rightLine) : '\u00a0'}</span
 						>
+							{rightLine ? linePrefix(rightLine) : '\u00a0'}
+						</span>
 						{#if rightLine && wordDiffSegments(rightLine)}
 							<pre
 								class="whitespace-pre-wrap break-all flex-1 min-w-0"

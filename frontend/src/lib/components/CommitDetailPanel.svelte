@@ -4,30 +4,30 @@
 		FileDiff,
 		FileTreeNode,
 		PatchMatchLocation
-	} from '$lib/bindings/types';
-	import { commitSummary } from '$lib/bindings/types';
+	} from '#lib/bindings/types.ts';
+	import { commitSummary } from '#lib/bindings/types.ts';
 	import {
 		getFileDiff,
 		getCombinedFileDiff,
 		getFileTree,
 		getBlobContent,
 		getWorkingChangesDiffs
-	} from '$lib/bindings/commands';
+	} from '#lib/bindings/commands.ts';
 	import DiffViewer from './DiffViewer.svelte';
 	import FileTree from './FileTree.svelte';
 	import BlamePanel from './BlamePanel.svelte';
 	import ResizeHandle from './ResizeHandle.svelte';
-	import { getClampedLayout, updateLayout } from '$lib/stores/layout';
-	import { diffMode, diffViewMode, diffWhitespace } from '$lib/stores/preferences';
+	import { getClampedLayout, updateLayout } from '#lib/stores/layout.ts';
+	import { diffMode, diffViewMode, diffWhitespace } from '#lib/stores/preferences.ts';
 	import ContextMenu from './ContextMenu.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import { untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { t, translate } from '$lib/stores/locale';
-	import { renderMarkdown } from '$lib/utils/markdown';
-	import { highlightLines, type HighlightToken } from '$lib/utils/highlight';
-	import { createGenerationGuard } from '$lib/utils/async-guard';
-	import { showToast } from '$lib/stores/toast';
+	import { t, translate } from '#lib/stores/locale.ts';
+	import { renderMarkdown } from '#lib/utils/markdown.ts';
+	import { highlightLines, type HighlightToken } from '#lib/utils/highlight.ts';
+	import { createGenerationGuard } from '#lib/utils/async-guard.ts';
+	import { showToast } from '#lib/stores/toast.ts';
 	import {
 		CHANGE_COLORS,
 		CHANGE_LETTERS,
@@ -35,8 +35,8 @@
 		DIFF_FILE_LIMIT,
 		STAGED_OID,
 		UNSTAGED_OID
-	} from '$lib/constants';
-	import { formatGitDateTime } from '$lib/utils/format-date';
+	} from '#lib/constants.ts';
+	import { formatGitDateTime } from '#lib/utils/format-date.ts';
 
 	function copyToClipboard(text: string) {
 		navigator.clipboard
@@ -458,8 +458,10 @@
 						loadAllDiffs();
 					}}
 					role="radio"
-					aria-checked={localDiffMode === 'normal'}>{$t('preferences.mode_normal')}</button
+					aria-checked={localDiffMode === 'normal'}
 				>
+					{$t('preferences.mode_normal')}
+				</button>
 				<button
 					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
 					'word-diff'
@@ -470,8 +472,10 @@
 						loadAllDiffs();
 					}}
 					role="radio"
-					aria-checked={localDiffMode === 'word-diff'}>{$t('preferences.mode_word_diff')}</button
+					aria-checked={localDiffMode === 'word-diff'}
 				>
+					{$t('preferences.mode_word_diff')}
+				</button>
 				<button
 					class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffMode ===
 					'stat-only'
@@ -482,8 +486,10 @@
 						loadAllDiffs();
 					}}
 					role="radio"
-					aria-checked={localDiffMode === 'stat-only'}>{$t('preferences.mode_stat_only')}</button
+					aria-checked={localDiffMode === 'stat-only'}
 				>
+					{$t('preferences.mode_stat_only')}
+				</button>
 			</div>
 			{#if localDiffMode !== 'stat-only'}
 				<div class="flex items-center gap-1">
@@ -498,8 +504,10 @@
 							loadAllDiffs();
 						}}
 						role="radio"
-						aria-checked={localDiffWhitespace === 'none'}>{$t('preferences.ws_show')}</button
+						aria-checked={localDiffWhitespace === 'none'}
 					>
+						{$t('preferences.ws_show')}
+					</button>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
 						'ignore-space-change'
@@ -511,8 +519,9 @@
 						}}
 						role="radio"
 						aria-checked={localDiffWhitespace === 'ignore-space-change'}
-						>{$t('preferences.ws_space')}</button
 					>
+						{$t('preferences.ws_space')}
+					</button>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
 						'ignore-all-space'
@@ -524,8 +533,9 @@
 						}}
 						role="radio"
 						aria-checked={localDiffWhitespace === 'ignore-all-space'}
-						>{$t('preferences.ws_all')}</button
 					>
+						{$t('preferences.ws_all')}
+					</button>
 					<button
 						class="whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors {localDiffWhitespace ===
 						'ignore-blank-lines'
@@ -537,8 +547,9 @@
 						}}
 						role="radio"
 						aria-checked={localDiffWhitespace === 'ignore-blank-lines'}
-						>{$t('preferences.ws_blanks')}</button
 					>
+						{$t('preferences.ws_blanks')}
+					</button>
 				</div>
 			{/if}
 			{#if !isComparison}
@@ -590,14 +601,17 @@
 							<div class="flex hover:bg-gray-800/50">
 								<span
 									class="select-none text-right text-gray-600 shrink-0 sticky left-0 bg-gray-900"
-									style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;">{i + 1}</span
+									style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;"
 								>
-								<span class="text-gray-300 whitespace-pre flex-1 pr-4"
-									>{#each lineTokens as token (token)}<span
+									{i + 1}
+								</span>
+								<span class="text-gray-300 whitespace-pre flex-1 pr-4">
+									{#each lineTokens as token (token)}<span
 											style={token.color ? `color: ${token.color}` : undefined}
-											>{token.content}</span
-										>{/each}</span
-								>
+										>
+											{token.content}
+										</span>{/each}
+								</span>
 							</div>
 						{/each}
 					{:else}
@@ -605,8 +619,10 @@
 							<div class="flex hover:bg-gray-800/50">
 								<span
 									class="select-none text-right text-gray-600 shrink-0 sticky left-0 bg-gray-900"
-									style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;">{i + 1}</span
+									style="min-width: 3.5rem; padding: 0 0.75rem 0 0.5rem;"
 								>
+									{i + 1}
+								</span>
 								<span class="text-gray-300 whitespace-pre flex-1 pr-4">{line}</span>
 							</div>
 						{/each}
@@ -646,11 +662,11 @@
 					{:else}
 						<div class="px-4 py-3 border-b border-gray-800">
 							<div class="flex items-baseline gap-3 text-sm">
-								<span class="font-mono text-gray-500"
-									>{$t('commit_detail.commit_prefix', {
+								<span class="font-mono text-gray-500">
+									{$t('commit_detail.commit_prefix', {
 										oid: details.info.oid.substring(0, 7)
-									})}</span
-								>
+									})}
+								</span>
 								{#each details.info.refs as r (r.Branch ? 'b:' + r.Branch.name : r.Tag ? 't:' + r.Tag.name : r.Remote ? 'r:' + r.Remote.remote + '/' + r.Remote.name : '')}
 									{#if r.Branch?.is_head}
 										<span class="rounded bg-green-700/50 px-1.5 py-0.5 text-xs text-green-300">
@@ -714,11 +730,11 @@
 							aria-label={$t('comparison.close')}
 							onclick={onclose}
 						>
-							<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"
-								><path
+							<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+								<path
 									d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"
-								/></svg
-							>
+								/>
+							</svg>
 						</button>
 						<span class="text-xs font-semibold text-gray-400">
 							{$t('page.comparing')}
@@ -732,12 +748,12 @@
 							aria-label={$t('comparison.swap')}
 							onclick={onswap}
 						>
-							<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"
-								><path
+							<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+								<path
 									fill-rule="evenodd"
 									d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5zm14-7a.5.5 0 0 1-.5.5H2.707l2.147 2.146a.5.5 0 1 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5z"
-								/></svg
-							>
+								/>
+							</svg>
 						</button>
 					</div>
 				{/if}
@@ -777,12 +793,12 @@
 								<span class="font-mono text-xs text-gray-300">{file.path}</span>
 								{#if !file.is_binary && !file.is_submodule}
 									<span class="ml-1 font-mono text-[10px]">
-										<span class="text-green-500"
-											>{file.additions > 0 ? '+' + file.additions : ''}</span
-										>
-										<span class="text-red-500"
-											>{file.deletions > 0 ? '-' + file.deletions : ''}</span
-										>
+										<span class="text-green-500">
+											{file.additions > 0 ? '+' + file.additions : ''}
+										</span>
+										<span class="text-red-500">
+											{file.deletions > 0 ? '-' + file.deletions : ''}
+										</span>
 									</span>
 								{:else if file.is_binary}
 									<span class="text-[10px] text-gray-500">{$t('comparison.binary_label')}</span>

@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { CommitInfo, GraphLayout } from '$lib/bindings/types';
-	import { searchResults } from '$lib/stores/repository';
-	import { debug } from '$lib/stores/debug';
+	import { t } from '#lib/stores/locale.ts';
+	import type { CommitInfo, GraphLayout } from '#lib/bindings/types.ts';
+	import { searchResults } from '#lib/stores/repository.ts';
+	import { debug } from '#lib/stores/debug.ts';
 	import {
 		GRAPH_PADDING_LEFT,
 		GRAPH_LANE_WIDTH,
@@ -10,7 +10,7 @@
 		DATE_COLUMN_WIDTH,
 		GRAPH_GAP,
 		MIN_TEXT_WIDTH
-	} from '$lib/constants';
+	} from '#lib/constants.ts';
 	import CommitRow from './CommitRow.svelte';
 	import CommitGraph from './CommitGraph.svelte';
 

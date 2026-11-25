@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { commands as commandsStore, fuzzyMatch, type Command } from '$lib/stores/commands';
-	import { t } from '$lib/stores/locale';
+	import { commands as commandsStore, fuzzyMatch, type Command } from '#lib/stores/commands.ts';
+	import { t } from '#lib/stores/locale.ts';
 
 	interface Props {
 		onclose: () => void;

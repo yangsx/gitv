@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { recordIpcTiming } from '$lib/stores/debug';
+import { recordIpcTiming } from '#lib/stores/debug.ts';
 import type {
 	GraphLayout,
 	RepositoryInfo,

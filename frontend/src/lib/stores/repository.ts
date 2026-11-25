@@ -1,15 +1,11 @@
 import { writable, derived } from 'svelte/store';
-import type { RepositoryInfo, SearchQuery, SearchResult } from '$lib/bindings/types';
+import type { RepositoryInfo, SearchQuery, SearchResult } from '#lib/bindings/types.ts';
 
 export const repoInfo = writable<RepositoryInfo | null>(null);
 export const selectedOid = writable<string | null>(null);
 export const comparisonOid = writable<string | null>(null);
 export type OperationState =
-	| 'Idle'
-	| 'LoadingRepo'
-	| 'LoadingDetails'
-	| 'Searching'
-	| 'ApplyingFilter';
+	'Idle' | 'LoadingRepo' | 'LoadingDetails' | 'Searching' | 'ApplyingFilter';
 
 export const operationState = writable<OperationState>('Idle');
 

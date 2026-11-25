@@ -213,12 +213,7 @@ export interface FileLineStats {
 }
 
 export type ChangeType =
-	| 'Added'
-	| 'Deleted'
-	| 'Modified'
-	| 'Renamed'
-	| 'Copied'
-	| 'SubmoduleUpdated';
+	'Added' | 'Deleted' | 'Modified' | 'Renamed' | 'Copied' | 'SubmoduleUpdated';
 
 export interface DiffSummary {
 	files: FileDiffSummary[];

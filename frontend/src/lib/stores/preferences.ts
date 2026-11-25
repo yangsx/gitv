@@ -1,6 +1,6 @@
 import { writable, get, derived } from 'svelte/store';
-import { getPreferences, setPreferences } from '$lib/bindings/commands';
-import type { AppPreferences } from '$lib/bindings/types';
+import { getPreferences, setPreferences } from '#lib/bindings/commands.ts';
+import type { AppPreferences } from '#lib/bindings/types.ts';
 import {
 	graphColorMode,
 	graphHideMerges,

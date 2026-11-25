@@ -5,7 +5,7 @@
 		graphOrientation,
 		arrowGapThreshold,
 		graphPalette
-	} from '$lib/stores/repository';
+	} from '#lib/stores/repository.ts';
 	import {
 		diffMode,
 		diffViewMode,
@@ -17,16 +17,16 @@
 		FONT_SIZE_MIN,
 		FONT_SIZE_MAX,
 		savePreferences
-	} from '$lib/stores/preferences';
+	} from '#lib/stores/preferences.ts';
 	import {
 		t,
 		locale,
 		setLocale as setAppLocale,
 		SUPPORTED_LOCALES,
 		getLocaleSelfName
-	} from '$lib/stores/locale';
-	import { draggable } from '$lib/actions/draggable';
-	import { dialogStackOffset } from '$lib/stores/dialog';
+	} from '#lib/stores/locale.ts';
+	import { draggable } from '#lib/actions/draggable.ts';
+	import { dialogStackOffset } from '#lib/stores/dialog.ts';
 
 	interface Props {
 		onclose: () => void;

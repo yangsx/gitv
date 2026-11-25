@@ -1,5 +1,5 @@
-import type { Edge, GraphLayout } from '$lib/bindings/types';
-import { columnCenterX, nodeCenterY, isCrossColumn } from '$lib/graph/graph-math';
+import type { Edge, GraphLayout } from '#lib/bindings/types.ts';
+import { columnCenterX, nodeCenterY, isCrossColumn } from '#lib/graph/graph-math.ts';
 
 const CHAMFER_FRAC = 0.5;
 

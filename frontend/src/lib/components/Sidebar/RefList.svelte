@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Ref } from '$lib/bindings/types';
-	import { t } from '$lib/stores/locale';
-	import { parseSemver, compareSemverDesc } from '$lib/semver';
+	import type { Ref } from '#lib/bindings/types.ts';
+	import { t } from '#lib/stores/locale.ts';
+	import { parseSemver, compareSemverDesc } from '#lib/semver.ts';
 
 	let {
 		refs,
@@ -102,14 +102,14 @@
 							<span class="truncate text-gray-300">{branch.name}</span>
 							<span class="ml-auto flex gap-1 shrink-0">
 								{#if branch.ahead > 0}
-									<span class="text-[10px] text-green-500 font-mono" title="ahead {branch.ahead}"
-										>↑{branch.ahead}</span
-									>
+									<span class="text-[10px] text-green-500 font-mono" title="ahead {branch.ahead}">
+										↑{branch.ahead}
+									</span>
 								{/if}
 								{#if branch.behind > 0}
-									<span class="text-[10px] text-red-500 font-mono" title="behind {branch.behind}"
-										>↓{branch.behind}</span
-									>
+									<span class="text-[10px] text-red-500 font-mono" title="behind {branch.behind}">
+										↓{branch.behind}
+									</span>
 								{/if}
 							</span>
 						</button>

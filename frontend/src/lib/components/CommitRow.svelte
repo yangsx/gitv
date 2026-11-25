@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { t } from '$lib/stores/locale';
-	import type { CommitInfo, Ref, Highlight, MatchType } from '$lib/bindings/types';
-	import { commitSummary } from '$lib/bindings/types';
+	import { t } from '#lib/stores/locale.ts';
+	import type { CommitInfo, Ref, Highlight, MatchType } from '#lib/bindings/types.ts';
+	import { commitSummary } from '#lib/bindings/types.ts';
 	import {
 		STAGED_OID,
 		UNSTAGED_OID,
 		HASH_COLUMN_WIDTH,
 		AUTHOR_COLUMN_WIDTH,
 		DATE_COLUMN_WIDTH
-	} from '$lib/constants';
-	import { formatGitDateTime } from '$lib/utils/format-date';
+	} from '#lib/constants.ts';
+	import { formatGitDateTime } from '#lib/utils/format-date.ts';
 
 	interface Props {
 		commit: CommitInfo;
