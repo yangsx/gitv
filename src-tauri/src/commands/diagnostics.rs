@@ -5,6 +5,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+use time::OffsetDateTime;
+use time::format_description::FormatItem;
+use time::macros::format_description;
 use tracing::instrument;
 
 use serde::Serialize;
@@ -68,6 +71,16 @@ static CRASH_LOCK: Mutex<()> = Mutex::new(());
 
 const CRASH_RETENTION_COUNT: usize = 5;
 
+/// Compact timestamp for crash-log filenames, e.g. `20260101-123456`.
+const CRASH_TS_FORMAT: &[FormatItem<'static>] =
+    format_description!("[year][month][day]-[hour][minute][second]");
+
+fn crash_timestamp() -> String {
+    OffsetDateTime::now_utc()
+        .format(&CRASH_TS_FORMAT)
+        .unwrap_or_else(|_| "unknown".into())
+}
+
 fn get_crash_dir() -> &'static PathBuf {
     CRASH_DIR.get_or_init(|| {
         let dir = dirs::data_dir()
@@ -102,7 +115,7 @@ fn evict_old_crashes(dir: &Path, max: usize) {
 pub fn install_panic_hook(app_version: &str) {
     let version = app_version.to_string();
     std::panic::set_hook(Box::new(move |panic_info| {
-        let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let timestamp = crash_timestamp();
         let msg = panic_info
             .payload()
             .downcast_ref::<&str>()
@@ -139,7 +152,7 @@ pub fn install_panic_hook(app_version: &str) {
 #[tauri::command]
 #[instrument(skip(message, stack), fields(command = "log_frontend_error"))]
 pub fn log_frontend_error(message: String, stack: Option<String>) {
-    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let timestamp = crash_timestamp();
     let detail = match &stack {
         Some(s) => format!("{message}\n{s}"),
         None => message.clone(),

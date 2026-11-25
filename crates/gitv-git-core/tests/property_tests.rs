@@ -1,10 +1,10 @@
-use chrono::Utc;
 use gitv_git_core::graph::{GraphCalculator, GraphOptions};
 use gitv_git_core::models::*;
 use gitv_git_core::repository::Repository;
 use gitv_git_core::search::{CombineMode, SearchEngine, SearchQuery};
 use proptest::prelude::*;
 use std::collections::HashMap;
+use time::OffsetDateTime;
 
 fn make_oid(seed: u64) -> Oid {
     let mut bytes = [0u8; 20];
@@ -25,8 +25,8 @@ fn make_commit(oid_seed: u64, parent_seeds: Vec<u64>, author_name: &str) -> Comm
             name: author_name.into(),
             email: format!("{author_name}@example.com"),
         },
-        author_time: Utc::now(),
-        commit_time: Utc::now(),
+        author_time: OffsetDateTime::now_utc(),
+        commit_time: OffsetDateTime::now_utc(),
         parent_oids: parent_seeds.into_iter().map(make_oid).collect(),
         refs: vec![],
     }

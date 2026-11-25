@@ -314,8 +314,8 @@ impl GraphCalculator {
         available.sort_by(|&a, &b| {
             commits[b]
                 .commit_time
-                .timestamp()
-                .cmp(&commits[a].commit_time.timestamp())
+                .unix_timestamp()
+                .cmp(&commits[a].commit_time.unix_timestamp())
         });
 
         let mut order = Vec::with_capacity(n);
@@ -373,7 +373,7 @@ impl GraphCalculator {
         let t1 = std::time::Instant::now();
         for &idx in &insertion_order {
             let c = &commits[idx];
-            arc_tree.insert_commit(c.oid, &c.parent_oids, c.commit_time.timestamp());
+            arc_tree.insert_commit(c.oid, &c.parent_oids, c.commit_time.unix_timestamp());
         }
         let _t_ins = t1.elapsed();
         arc_tree.sort_children_all();
@@ -2609,7 +2609,7 @@ fn extract_columns(rowidlist: &[Vec<Option<Oid>>], displayorder: &[Oid]) -> Hash
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
+    use time::OffsetDateTime;
 
     /// Assert that a GraphLayout passes all property checks.
     /// On failure, prints the full dump for debugging.
@@ -2650,8 +2650,8 @@ mod tests {
                 name: "Test".to_string(),
                 email: "test@test.com".to_string(),
             },
-            author_time: Utc.timestamp_opt(1000 + oid as i64, 0).single().unwrap(),
-            commit_time: Utc.timestamp_opt(1000 + oid as i64, 0).single().unwrap(),
+            author_time: OffsetDateTime::from_unix_timestamp(1000 + oid as i64).unwrap(),
+            commit_time: OffsetDateTime::from_unix_timestamp(1000 + oid as i64).unwrap(),
             parent_oids: parents.into_iter().map(make_oid).collect(),
             refs: Vec::new(),
         }
@@ -4365,8 +4365,8 @@ mod tests {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
                 },
-                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
-                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                author_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
+                commit_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
                 parent_oids: parents.into_iter().map(make_oid).collect(),
                 refs: Vec::new(),
             }
@@ -4421,8 +4421,8 @@ mod tests {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
                 },
-                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
-                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                author_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
+                commit_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
                 parent_oids: parents.into_iter().map(make_oid).collect(),
                 refs: Vec::new(),
             }
@@ -4479,8 +4479,8 @@ mod tests {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
                 },
-                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
-                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                author_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
+                commit_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
                 parent_oids: parents.into_iter().map(make_oid).collect(),
                 refs: Vec::new(),
             }
@@ -4541,8 +4541,8 @@ mod tests {
                     name: "T".into(),
                     email: "t@t.com".into(),
                 },
-                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
-                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                author_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
+                commit_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
                 parent_oids: vec![make_oid(parent)],
                 refs: Vec::new(),
             });
@@ -4561,8 +4561,8 @@ mod tests {
                 name: "T".into(),
                 email: "t@t.com".into(),
             },
-            author_time: Utc.timestamp_opt(root_time, 0).single().unwrap(),
-            commit_time: Utc.timestamp_opt(root_time, 0).single().unwrap(),
+            author_time: OffsetDateTime::from_unix_timestamp(root_time).unwrap(),
+            commit_time: OffsetDateTime::from_unix_timestamp(root_time).unwrap(),
             parent_oids: vec![],
             refs: Vec::new(),
         });
@@ -4579,8 +4579,8 @@ mod tests {
                 name: "T".into(),
                 email: "t@t.com".into(),
             },
-            author_time: Utc.timestamp_opt(229, 0).single().unwrap(),
-            commit_time: Utc.timestamp_opt(229, 0).single().unwrap(),
+            author_time: OffsetDateTime::from_unix_timestamp(229).unwrap(),
+            commit_time: OffsetDateTime::from_unix_timestamp(229).unwrap(),
             parent_oids: vec![make_oid(1)],
             refs: Vec::new(),
         });
@@ -4598,8 +4598,8 @@ mod tests {
                 name: "T".into(),
                 email: "t@t.com".into(),
             },
-            author_time: Utc.timestamp_opt(230, 0).single().unwrap(),
-            commit_time: Utc.timestamp_opt(230, 0).single().unwrap(),
+            author_time: OffsetDateTime::from_unix_timestamp(230).unwrap(),
+            commit_time: OffsetDateTime::from_unix_timestamp(230).unwrap(),
             parent_oids: vec![make_oid(120), make_oid(121)],
             refs: Vec::new(),
         });
@@ -5622,8 +5622,8 @@ mod tests {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
                 },
-                author_time: Utc.timestamp_opt(time, 0).single().unwrap(),
-                commit_time: Utc.timestamp_opt(time, 0).single().unwrap(),
+                author_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
+                commit_time: OffsetDateTime::from_unix_timestamp(time).unwrap(),
                 parent_oids: parents.into_iter().map(make_oid).collect(),
                 refs: Vec::new(),
             }

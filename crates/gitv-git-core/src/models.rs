@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use time::OffsetDateTime;
 
 use crate::error::OidError;
 
@@ -200,8 +200,10 @@ pub struct CommitInfo {
     pub message: String,
     pub author: Author,
     pub committer: Author,
-    pub author_time: DateTime<Utc>,
-    pub commit_time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub author_time: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub commit_time: OffsetDateTime,
     pub parent_oids: Vec<Oid>,
     pub refs: Vec<Ref>,
 }
@@ -275,7 +277,8 @@ pub struct TagRef {
 pub struct TagAnnotation {
     pub tagger: Author,
     pub message: String,
-    pub time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -454,7 +457,8 @@ pub struct StashEntry {
     pub parent_oid: Oid,
     pub message: String,
     pub author: Author,
-    pub time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub time: OffsetDateTime,
     pub file_summary: Vec<StashFileSummary>,
 }
 
@@ -478,7 +482,8 @@ pub struct FileHistoryEntry {
     pub old_path: Option<PathBuf>,
     pub message: String,
     pub author: Author,
-    pub time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -488,7 +493,8 @@ pub struct ReflogEntry {
     pub ref_name: String,
     pub message: String,
     pub author: Author,
-    pub time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -503,7 +509,8 @@ pub struct BlameLine {
     pub content: String,
     pub commit_oid: Oid,
     pub author: Author,
-    pub time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub time: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -517,7 +524,8 @@ pub struct SavedSearch {
     pub id: String,
     pub name: String,
     pub query: String,
-    pub created_at: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -532,7 +540,8 @@ pub struct Color {
 pub struct RecentRepository {
     pub path: PathBuf,
     pub name: String,
-    pub last_opened: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub last_opened: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -568,8 +577,10 @@ impl CommitFilter {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DateRange {
-    pub from: Option<DateTime<Utc>>,
-    pub to: Option<DateTime<Utc>>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub from: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub to: Option<OffsetDateTime>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -584,8 +595,10 @@ pub struct CachedCommitSummary {
     pub oid: Oid,
     pub message: String,
     pub author: Author,
-    pub author_time: DateTime<Utc>,
-    pub commit_time: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub author_time: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub commit_time: OffsetDateTime,
     pub parent_oids: Vec<Oid>,
     pub refs: Vec<Ref>,
 }

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
+use time::OffsetDateTime;
 use tracing::instrument;
 
 const RECENT_REPOS_FILENAME: &str = "recent_repos.json";
@@ -144,7 +145,7 @@ pub async fn save_recent_repository(path: String) -> Result<(), String> {
                 .unwrap_or_else(|| canonical.to_string_lossy().to_string());
             (canonical, name)
         };
-        let now = chrono::Utc::now();
+        let now = OffsetDateTime::now_utc();
 
         let mut repos = load_recent_repos()?;
         repos.retain(|r| r.path != canonical);

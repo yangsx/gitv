@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use chrono::{TimeZone, Utc};
+use time::OffsetDateTime;
 
 use crate::error::{DiffError, GitError};
 use crate::models::*;
@@ -951,7 +951,7 @@ impl Repository for GixRepository {
             let time = author_sig
                 .and_then(|s| s.time().ok())
                 .map(|t| gix_time_to_datetime(&t))
-                .unwrap_or_default();
+                .unwrap_or(OffsetDateTime::UNIX_EPOCH);
 
             let message = stash_commit
                 .message_raw()
@@ -1143,8 +1143,7 @@ impl Repository for GixRepository {
         let mut lines = Vec::new();
         let mut line_num = 1usize;
 
-        let mut commit_cache: HashMap<gix::ObjectId, (Author, chrono::DateTime<Utc>)> =
-            HashMap::new();
+        let mut commit_cache: HashMap<gix::ObjectId, (Author, OffsetDateTime)> = HashMap::new();
 
         for (entry, entry_lines) in outcome.entries_with_lines() {
             let commit_oid = gix_object_id_to_oid(entry.commit_id);
@@ -1169,7 +1168,7 @@ impl Repository for GixRepository {
                     let time = author_sig
                         .and_then(|s| s.time().ok())
                         .map(|t| gix_time_to_datetime(&t))
-                        .unwrap_or_default();
+                        .unwrap_or(OffsetDateTime::UNIX_EPOCH);
                     commit_cache.insert(entry.commit_id, (author.clone(), time));
                     (author, time)
                 }
@@ -1715,7 +1714,7 @@ impl Repository for GixRepository {
                 let time = committer_sig
                     .time()
                     .map(|t| gix_time_to_datetime(&t))
-                    .unwrap_or_default();
+                    .unwrap_or(OffsetDateTime::UNIX_EPOCH);
                 let message = commit
                     .message_raw()
                     .map(|m| m.to_string())
@@ -1958,7 +1957,7 @@ fn read_tag_annotation(
             email: tagger.email.to_string(),
         },
         message: tag_ref.message.to_string(),
-        time: Utc.timestamp_opt(time_secs, 0).single().unwrap_or_default(),
+        time: OffsetDateTime::from_unix_timestamp(time_secs).unwrap_or(OffsetDateTime::UNIX_EPOCH),
     })
 }
 
@@ -2070,11 +2069,8 @@ fn gix_signature_to_author(sig: &gix::actor::SignatureRef) -> Author {
     }
 }
 
-fn gix_time_to_datetime(time: &gix::date::Time) -> chrono::DateTime<Utc> {
-    chrono::Utc
-        .timestamp_opt(time.seconds, 0)
-        .single()
-        .unwrap_or_default()
+fn gix_time_to_datetime(time: &gix::date::Time) -> OffsetDateTime {
+    OffsetDateTime::from_unix_timestamp(time.seconds).unwrap_or(OffsetDateTime::UNIX_EPOCH)
 }
 
 fn commit_to_commit_info(oid: &Oid, commit: &gix::Commit, refs: Vec<Ref>) -> CommitInfo {
@@ -2090,11 +2086,11 @@ fn commit_to_commit_info(oid: &Oid, commit: &gix::Commit, refs: Vec<Ref>) -> Com
     let author_time = author_sig
         .time()
         .map(|t| gix_time_to_datetime(&t))
-        .unwrap_or_default();
+        .unwrap_or(OffsetDateTime::UNIX_EPOCH);
     let commit_time = committer_sig
         .time()
         .map(|t| gix_time_to_datetime(&t))
-        .unwrap_or_default();
+        .unwrap_or(OffsetDateTime::UNIX_EPOCH);
     let message = commit
         .message_raw()
         .map(|m| m.to_string())
@@ -2628,7 +2624,7 @@ fn staged_change_to_file_diff(
             let loc = change.location();
             cache
                 .set_resource(
-                    src,
+                    Some(src),
                     gix_object::tree::EntryKind::Blob,
                     loc,
                     gix_diff::blob::ResourceKind::OldOrSource,
@@ -2637,7 +2633,7 @@ fn staged_change_to_file_diff(
                 .map_err(|e| DiffError::Gix(e.to_string()))?;
             cache
                 .set_resource(
-                    dst,
+                    Some(dst),
                     gix_object::tree::EntryKind::Blob,
                     loc,
                     gix_diff::blob::ResourceKind::NewOrDestination,
@@ -3018,7 +3014,7 @@ fn compute_hunks_for_change(
 
     cache
         .set_resource(
-            *source_id,
+            Some(*source_id),
             gix_object::tree::EntryKind::Blob,
             location,
             gix_diff::blob::ResourceKind::OldOrSource,
@@ -3028,7 +3024,7 @@ fn compute_hunks_for_change(
 
     cache
         .set_resource(
-            *dest_id,
+            Some(*dest_id),
             gix_object::tree::EntryKind::Blob,
             location,
             gix_diff::blob::ResourceKind::NewOrDestination,
@@ -3190,24 +3186,30 @@ fn run_blob_diff(cache: &mut gix_diff::blob::Platform) -> Result<BlobDiffResult,
         .prepare_diff()
         .map_err(|e| DiffError::Gix(e.to_string()))?;
 
-    let is_binary = matches!(
-        outcome.operation,
-        gix_diff::blob::platform::prepare_diff::Operation::SourceOrDestinationIsBinary
-    );
-
-    if is_binary {
-        return Ok(BlobDiffResult {
-            hunks: Vec::new(),
-            is_binary: true,
-        });
-    }
-
-    let algorithm = match outcome.operation {
-        gix_diff::blob::platform::prepare_diff::Operation::InternalDiff { algorithm } => algorithm,
-        _ => gix_diff::blob::Algorithm::Histogram,
+    let (algorithm, input) = match outcome.operation {
+        gix_diff::blob::platform::prepare_diff::Operation::SourceOrDestinationIsBinary => {
+            return Ok(BlobDiffResult {
+                hunks: Vec::new(),
+                is_binary: true,
+            });
+        }
+        // No comparison possible — neither side exists.
+        gix_diff::blob::platform::prepare_diff::Operation::NeitherExists => {
+            return Ok(BlobDiffResult {
+                hunks: Vec::new(),
+                is_binary: false,
+            });
+        }
+        gix_diff::blob::platform::prepare_diff::Operation::InternalDiff { algorithm, change } => {
+            (algorithm, change.patch_input())
+        }
+        // An external diff driver is configured; fall back to the internal
+        // algorithm so we still produce hunks for display.
+        gix_diff::blob::platform::prepare_diff::Operation::ExternalCommand { change, .. } => {
+            (gix_diff::blob::Algorithm::Histogram, change.patch_input())
+        }
     };
 
-    let input = outcome.interned_input();
     let diff = gix_diff::blob::Diff::compute(algorithm, &input);
 
     let collector = HunkCollector { hunks: Vec::new() };

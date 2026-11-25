@@ -15,8 +15,8 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-use chrono::Utc;
 use std::collections::HashMap;
+use time::OffsetDateTime;
 
 use gitv_git_core::graph::{GraphCalculator, GraphOptions};
 use gitv_git_core::models::*;
@@ -59,8 +59,8 @@ fn make_commits(count: usize) -> Vec<CommitInfo> {
                 name: "committer".into(),
                 email: "c@example.com".into(),
             },
-            author_time: Utc::now(),
-            commit_time: Utc::now(),
+            author_time: OffsetDateTime::now_utc(),
+            commit_time: OffsetDateTime::now_utc(),
             parent_oids: if i > 0 {
                 vec![make_oid((i - 1) as u64)]
             } else {

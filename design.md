@@ -2762,7 +2762,7 @@ pub struct KeyBinding {
 | Application Framework | Tauri 2.0 | Small bundle size, native performance, Rust backend |
 | Git Library | gix (gitoxide) | Pure Rust, production-grade, no C dependencies |
 | Refresh | Manual refresh via toolbar button | User-initiated status reload |
-| Date/Time | chrono | Comprehensive timezone support |
+| Date/Time | time | Compact, maintained date/time library; RFC3339 serde via well-known formats |
 | Serialization | serde + postcard | serde for JSON IPC; postcard for batch streaming and cache |
 | Search Index | RoaringBitmap-based inverted index | Compact, fast union/intersection for combined queries |
 | Async Runtime | tokio | Required for Tauri, well-supported |
@@ -3270,6 +3270,6 @@ No redundant properties were found. Each provides unique validation value.
 
 - [Tauri 2.0 Documentation](https://tauri.app/)
 - [gix crate documentation](https://docs.rs/gix/)
-- [chrono documentation](https://docs.rs/chrono/)
+- [time crate documentation](https://docs.rs/time/)
 - [Svelte 5 Runes](https://svelte-5-preview.vercel.app/)
 - [Vite Documentation](https://vitejs.dev/)

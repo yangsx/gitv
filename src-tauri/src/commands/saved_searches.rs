@@ -1,9 +1,9 @@
-use chrono::Utc;
 use gitv_git_core::models::SavedSearch;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use time::OffsetDateTime;
 use tracing::instrument;
 
 fn resolve_git_dir(repo_path: &str) -> Result<PathBuf, String> {
@@ -44,7 +44,7 @@ fn save_searches_atomic(path: &Path, searches: &[SavedSearch]) -> Result<(), Str
 }
 
 fn generate_id(name: &str) -> String {
-    let ts = chrono::Utc::now().timestamp_millis();
+    let ts = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
     let mut hasher = DefaultHasher::new();
     name.hash(&mut hasher);
     ts.hash(&mut hasher);
@@ -61,7 +61,7 @@ pub fn save_search(repo_path: String, name: String, query: String) -> Result<Sav
         id: id.clone(),
         name,
         query,
-        created_at: Utc::now(),
+        created_at: OffsetDateTime::now_utc(),
     };
     searches.push(search.clone());
     save_searches_atomic(&path, &searches)?;

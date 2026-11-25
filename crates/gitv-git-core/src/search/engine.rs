@@ -440,7 +440,7 @@ impl SearchEngine {
 mod tests {
     use super::*;
     use crate::models::*;
-    use chrono::{TimeZone, Utc};
+    use time::OffsetDateTime;
 
     fn make_oid(n: u8) -> Oid {
         let mut bytes = [0u8; 20];
@@ -461,8 +461,8 @@ mod tests {
                 name: author_name.to_string(),
                 email: format!("{author_name}@test.com"),
             },
-            author_time: Utc.timestamp_opt(1000 + oid as i64, 0).single().unwrap(),
-            commit_time: Utc.timestamp_opt(1000 + oid as i64, 0).single().unwrap(),
+            author_time: OffsetDateTime::from_unix_timestamp(1000 + oid as i64).unwrap(),
+            commit_time: OffsetDateTime::from_unix_timestamp(1000 + oid as i64).unwrap(),
             parent_oids: parents.into_iter().map(make_oid).collect(),
             refs: Vec::new(),
         }
@@ -613,8 +613,8 @@ mod tests {
         let engine = SearchEngine::new(make_commits());
         let query = SearchQuery {
             date_range: Some(DateRange {
-                from: Some(Utc.timestamp_opt(1002, 0).single().unwrap()),
-                to: Some(Utc.timestamp_opt(1004, 0).single().unwrap()),
+                from: Some(OffsetDateTime::from_unix_timestamp(1002).unwrap()),
+                to: Some(OffsetDateTime::from_unix_timestamp(1004).unwrap()),
             }),
             ..Default::default()
         };
@@ -628,14 +628,14 @@ mod tests {
         // The date-range filter must match on author_time, not commit_time, so the
         // commit is found by its original author date and not by the cherry-pick date.
         let mut cherry_picked = make_commit(1, vec![], "cherry-picked fix", "alice");
-        cherry_picked.commit_time = Utc.timestamp_opt(5000, 0).single().unwrap();
+        cherry_picked.commit_time = OffsetDateTime::from_unix_timestamp(5000).unwrap();
         let engine = SearchEngine::new(vec![cherry_picked]);
 
         // Range covers only commit_time (5000), not author_time (1001) → no match.
         let query_by_commit_date = SearchQuery {
             date_range: Some(DateRange {
-                from: Some(Utc.timestamp_opt(4000, 0).single().unwrap()),
-                to: Some(Utc.timestamp_opt(6000, 0).single().unwrap()),
+                from: Some(OffsetDateTime::from_unix_timestamp(4000).unwrap()),
+                to: Some(OffsetDateTime::from_unix_timestamp(6000).unwrap()),
             }),
             ..Default::default()
         };
@@ -649,8 +649,8 @@ mod tests {
         // Range covers author_time (1001), not commit_time (5000) → match.
         let query_by_author_date = SearchQuery {
             date_range: Some(DateRange {
-                from: Some(Utc.timestamp_opt(0, 0).single().unwrap()),
-                to: Some(Utc.timestamp_opt(2000, 0).single().unwrap()),
+                from: Some(OffsetDateTime::from_unix_timestamp(0).unwrap()),
+                to: Some(OffsetDateTime::from_unix_timestamp(2000).unwrap()),
             }),
             ..Default::default()
         };

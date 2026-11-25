@@ -1,8 +1,8 @@
-use chrono::Utc;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gitv_git_core::models::*;
 use gitv_git_core::search::{CombineMode, SearchEngine, SearchQuery};
 use std::hint::black_box;
+use time::OffsetDateTime;
 
 fn make_oid(seed: u64) -> Oid {
     let mut bytes = [0u8; 20];
@@ -38,8 +38,8 @@ fn generate_commits_for_search(count: usize) -> Vec<CommitInfo> {
                 name: "committer".into(),
                 email: "c@example.com".into(),
             },
-            author_time: Utc::now(),
-            commit_time: Utc::now(),
+            author_time: OffsetDateTime::now_utc(),
+            commit_time: OffsetDateTime::now_utc(),
             parent_oids: vec![],
             refs: vec![],
         });

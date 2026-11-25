@@ -14,6 +14,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::State;
+use time::OffsetDateTime;
 use tracing::instrument;
 
 fn get_ref_snapshot(repo: &dyn Repository) -> HashMap<String, Oid> {
@@ -114,7 +115,7 @@ pub fn make_virtual_commits(
         name: String::new(),
         email: String::new(),
     };
-    let now = chrono::Utc::now();
+    let now = OffsetDateTime::now_utc();
     let head = head_oid.cloned().unwrap_or(Oid::from_bytes([0u8; 20]));
 
     let mut virtuals = Vec::with_capacity(2);

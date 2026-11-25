@@ -94,7 +94,7 @@ impl CachedRepoData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     fn test_cache_dir() -> PathBuf {
         let dir = tempfile::TempDir::new().expect("temp dir");
@@ -140,8 +140,8 @@ mod tests {
                     name: "Test".to_string(),
                     email: "test@test.com".to_string(),
                 },
-                author_time: Utc::now(),
-                commit_time: Utc::now(),
+                author_time: OffsetDateTime::now_utc(),
+                commit_time: OffsetDateTime::now_utc(),
                 parent_oids: vec![],
                 refs: vec![],
             }],

@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-chrono = { workspace = true }
+time = { workspace = true }
 rayon = { workspace = true }
 dirs = { workspace = true }
 gix = { workspace = true }

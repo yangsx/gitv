@@ -4,6 +4,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gitv_git_core::graph::{GraphCalculator, GraphOptions};
 use gitv_git_core::models::*;
 use std::hint::black_box;
+use time::OffsetDateTime;
 
 fn make_oid(seed: u64) -> Oid {
     let mut bytes = [0u8; 20];
@@ -21,7 +22,7 @@ fn generate_linear_commits(count: usize) -> Vec<CommitInfo> {
         } else {
             vec![]
         };
-        let time = chrono::DateTime::from_timestamp(i as i64, 0).unwrap();
+        let time = OffsetDateTime::from_unix_timestamp(i as i64).unwrap();
         commits.push(CommitInfo {
             oid,
             short_oid: format!("{:07x}", i),
@@ -65,7 +66,7 @@ fn generate_branchy_commits(count: usize, branch_freq: usize) -> Vec<CommitInfo>
         } else {
             vec![make_oid((i - 1) as u64)]
         };
-        let time = chrono::DateTime::from_timestamp(i as i64, 0).unwrap();
+        let time = OffsetDateTime::from_unix_timestamp(i as i64).unwrap();
         commits.push(CommitInfo {
             oid,
             short_oid: format!("{:07x}", i),

@@ -227,7 +227,13 @@ fn build_dump(
                 message: ci.map(|c| c.summary().to_string()).unwrap_or_default(),
                 author_name: ci.map(|c| c.author.name.clone()).unwrap_or_default(),
                 author_email: ci.map(|c| c.author.email.clone()).unwrap_or_default(),
-                commit_time: ci.map(|c| c.commit_time.to_rfc3339()).unwrap_or_default(),
+                commit_time: ci
+                    .map(|c| {
+                        c.commit_time
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default(),
                 parent_oids: ci.map(|c| c.parent_oids.clone()).unwrap_or_default(),
                 refs: ci.map(|c| c.refs.clone()).unwrap_or_default(),
             }

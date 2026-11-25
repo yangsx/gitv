@@ -6,24 +6,24 @@ members = [
 ]
 
 [workspace.package]
-version = "0.9.7"
+version = "0.9.8"
 edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
 dirs = "6"
 gitv-git-core = { path = "crates/gitv-git-core" }
-gix = { version = "0.86", default-features = false, features = ["basic", "max-performance", "sha1", "sha256", "blame", "status", "blocking-network-client", "blocking-http-transport-reqwest-rust-tls"] }
-gix-diff = "0.66"
-gix-index = "0.54"
-gix-object = "0.63"
+gix = { version = "0.91", default-features = false, features = ["basic", "max-performance", "sha1", "sha256", "blame", "status", "blocking-network-client", "blocking-http-transport-reqwest-rust-tls"] }
+gix-diff = "0.71"
+gix-index = "0.59"
+gix-object = "0.67"
 postcard = { version = "1", features = ["alloc"] }
 regex = "1"
 roaring = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["serde", "serde-well-known", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
