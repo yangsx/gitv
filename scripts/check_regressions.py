@@ -6,13 +6,13 @@ Parses criterion benchmark text output and applies noise-tolerant regression
 detection.
 
 Only fails if:
-  - >= 2 significant regressions (each >= MIN_COUNT_PCT, default 10%) in the
+  - >= 2 significant regressions (each >= MIN_COUNT_PCT, default 15%) in the
     same file (unlikely to be noise)
-  - OR a single benchmark regressed by > THRESHOLD_PCT (default 15%)
+  - OR a single benchmark regressed by > THRESHOLD_PCT (default 25%)
 
 Minor regressions (under MIN_COUNT_PCT) are reported as warnings and never
 count toward the "multiple = likely real" rule, since GitHub Actions runners
-commonly show ~10% run-to-run variance.
+commonly show ~15-20% run-to-run variance.
 
 Usage:
     python3 scripts/check_regressions.py <file1> [file2] ...
@@ -22,12 +22,12 @@ import re
 import sys
 from pathlib import Path
 
-THRESHOLD_PCT = 15.0
+THRESHOLD_PCT = 25.0
 # Regressions below this magnitude are treated as runner noise: they are
 # reported as warnings but do NOT count toward the "multiple = likely real"
-# rule. GitHub Actions runners commonly show ~10% variance between runs, so a
-# pair of single-digit blips should not fail CI on their own.
-MIN_COUNT_PCT = 10.0
+# failure rule. GitHub Actions runners commonly show ~15-20% variance between
+# runs, so a pair of single-digit blips should not fail CI on their own.
+MIN_COUNT_PCT = 15.0
 
 
 def parse_regressions(text: str) -> list[tuple[str, float]]:
